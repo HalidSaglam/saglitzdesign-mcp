@@ -9,7 +9,7 @@ expert‑level guidance on **web, iOS, Android and macOS design** — plus the
 **UX, copywriting, SEO, GEO and marketing** knowledge that makes a product
 actually convert.
 
-56 curated knowledge documents · 10 tools · 5 build/review workflows · phased roadmaps · real‑world visual examples
+57 curated knowledge documents · 12 tools · 7 build/review workflows · real token & a11y generators · phased roadmaps · real‑world visual examples
 
 [![npm](https://img.shields.io/npm/v/saglitzdesign-mcp?color=cb3837&logo=npm)](https://www.npmjs.com/package/saglitzdesign-mcp)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -71,6 +71,8 @@ scores it against the critique rubric, and iterates until it passes.
 | **`build_landing_page`** | Designs & builds a conversion‑focused landing page, copy‑first, with a visual critique loop. |
 | **`build_website`** | Builds a multi‑page marketing site — positioning, IA, SEO/GEO, shared design system. |
 | **`build_mobile_app_ui`** | Builds iOS or Android screens on the correct platform baseline (HIG/Liquid Glass or Material 3). |
+| **`critique_screenshot`** | Grounded, reproducible critique of an attached UI screenshot against the fixed 0–40 rubric — cites specific elements, no padding. |
+| **`review_paywall`** | Scores a paywall / subscription onboarding against real RevenueCat 2026 conversion benchmarks. |
 | **`design_review`** | Audits an existing site/app against the checklists and the 0–40 critique rubric, ranked by severity. |
 | **`redesign`** | Improves an existing UI (bolder / quieter / higher‑converting) using the craft standards, with before→after scoring. |
 
@@ -92,6 +94,8 @@ scores it against the critique rubric, and iterates until it passes.
 | **`get_design_examples`** | **Real screenshots** of a pattern from top apps/sites, returned as images with notes on what each does well. |
 | **`design_review_checklist`** | An assembled audit checklist per project type and focus (UI, UX, accessibility, SEO, GEO, conversion, copywriting). |
 | **`seo_geo_guide`** | SEO and GEO guides, optionally narrowed to a topic. |
+| **`generate_design_tokens`** | **Real artifacts, not advice** — turns a color/spacing/type spec into CSS variables, Tailwind v4, SwiftUI, Jetpack Compose, and W3C DTCG JSON. |
+| **`audit_accessibility`** | Deterministic WCAG 2.2 checks — exact contrast ratios for color pairs + tap‑target sizes per platform, with fixes. |
 | **`list_design_knowledge`** | Browse the full knowledge index by category / platform. |
 | **`knowledge_freshness`** | Reports each doc's age vs a per‑category staleness threshold, so the base can be kept current. |
 

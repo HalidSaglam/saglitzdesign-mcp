@@ -111,6 +111,43 @@ Finish with: screens built, how to run/preview, critique scores, platform-fit no
 
 const ACTION_PROMPTS: PromptDef[] = [
   {
+    name: "critique_screenshot",
+    title: "Critique a screenshot (SaglitzDesign)",
+    description: "Grounded, reproducible visual critique of an attached UI screenshot against the fixed 0–40 rubric — cites specific elements, no padding.",
+    build: (brief) => `Critique the **attached UI screenshot**${brief ? ` (context: ${brief})` : ""} as a rigorous senior designer, using the SaglitzDesign method.
+
+${TOOLS_NOTE}
+
+## Method — avoid the failure modes of typical AI critique
+Research shows most AI critiques (a) hallucinate issues inconsistently, (b) pad the list to look thorough, and (c) critique a text description instead of the actual pixels. Do NOT do these. Instead:
+
+1. **Look at the image first.** Describe what you actually see (layout, hierarchy, the primary action, states shown) before judging. If you're unsure what an element is, say so — don't invent.
+2. **Apply the fixed rubric.** Call get_design_doc("design-critique-scoring") and score each of the 10 heuristics 0–4 for a total /40. Use the SAME rubric every time so scores are reproducible.
+3. **Cite specific elements.** Every finding must point to a concrete element ("the secondary 'Learn more' button competes with the primary CTA — two filled buttons"), not generic advice.
+4. **No padding.** Report only real issues. If the screen is genuinely good, a short list is the correct answer — do not manufacture findings to seem thorough.
+5. **Rank by severity P0→P3** and give one concrete fix per finding, citing the SaglitzDesign rule/doc it comes from.
+6. If it's a known screen type, also run the matching design_review_checklist and get_design_examples to compare against how top apps handle it.
+
+Output: the /40 score with per-heuristic line, then findings ranked by severity (element → problem → why (cite rule) → fix), then the 3 highest-impact changes. Keep it tight and specific.`,
+  },
+  {
+    name: "review_paywall",
+    title: "Review a paywall / onboarding (SaglitzDesign)",
+    description: "Score a paywall or subscription onboarding against real RevenueCat 2026 conversion benchmarks and paywall-anatomy rules.",
+    build: (brief) => `Review this **paywall / subscription onboarding**${brief ? `: ${brief}` : ""} using the SaglitzDesign method and real 2026 benchmarks.
+
+${TOOLS_NOTE}
+
+## Method
+1. Load the data: get_design_doc("paywall-benchmarks") (RevenueCat 2026: hard paywall ~10.7% vs freemium ~2.1%; 17–32 day trials convert 42.5% vs 25.5% for <4 days; 55% of 3-day-trial cancels happen Day 0; Android involuntary churn ~2.2× iOS) and get_design_doc("onboarding-paywall") for anatomy.
+2. If given a screenshot, look at it and describe the actual paywall (model, plans, trial, price placement, CTA, trust copy). If given a description, work from that; ask up to 3 questions only if a benchmark-critical fact is missing (model, trial length, platform).
+3. Score it against the review rubric in paywall-benchmarks.md — each item pass/fail with the benchmark it maps to.
+4. Estimate where it likely leaves conversion on the table (e.g. "≤4-day trial → ~40% relative conversion lost vs a 14–30 day trial").
+5. Give prioritized, concrete fixes (model choice, trial length, price placement, trial reminder, Android dunning, trust microcopy), each tied to a benchmark number.
+
+Output: a pass/fail scorecard, the top 3 conversion risks with their benchmark impact, and the exact changes to make. Be specific and numeric — no generic "add social proof" advice.`,
+  },
+  {
     name: "design_review",
     title: "Design review (SaglitzDesign)",
     description: "Audit an existing website / app / landing page against SaglitzDesign checklists and the 0–40 critique rubric.",

@@ -8,6 +8,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { loadKnowledge, searchKnowledge, sections, type KnowledgeDoc } from "./knowledge.js";
 import { loadExamples, searchExamples, imageMime } from "./examples.js";
 import { registerPrompts } from "./prompts.js";
+import {
+  generateTokens, validateColors, DEFAULT_SPACING, DEFAULT_RADII, DEFAULT_FONT_SIZES, DEFAULT_FONT_FAMILIES,
+  type TokenSpec, type TokenFormat,
+} from "./tokens.js";
+import { contrastReport, type ContrastPair, type TapTarget } from "./a11y.js";
 
 // knowledge/ sits next to dist/ (repo root) both in dev (tsx) and after build
 const here = dirname(fileURLToPath(import.meta.url));
@@ -22,7 +27,7 @@ const examples = loadExamples(examplesDir);
 
 const server = new McpServer({
   name: "saglitzdesign",
-  version: "0.4.0",
+  version: "0.5.0",
 });
 
 function docHeader(d: KnowledgeDoc): string {
@@ -451,6 +456,64 @@ server.tool(
       ),
     ];
     return text(lines.join("\n"));
+  },
+);
+
+// ── Tool 11: generate design tokens ──────────────────────────────────────────
+server.tool(
+  "generate_design_tokens",
+  "Turn a design-token spec (semantic colors + optional spacing/radius/type scales) into REAL, ready-to-use artifact files: CSS custom properties, Tailwind v4 @theme, SwiftUI, Jetpack Compose, and W3C DTCG JSON. Deterministic — outputs code, not advice. Use it to give a project one source of truth across web, iOS and Android. Pair with audit_accessibility to verify the palette's contrast.",
+  {
+    name: z.string().optional().describe("Token set / brand name (default 'Brand')"),
+    colors: z.record(z.string()).describe("Semantic color roles → hex. e.g. {\"primary\":\"#4F46E5\",\"onPrimary\":\"#FFFFFF\",\"surface\":\"#0A0A0B\",\"textPrimary\":\"#F5F5F5\",\"danger\":\"#EF4444\"}"),
+    format: z.enum(["css", "tailwind", "swiftui", "compose", "dtcg", "all"]).optional().describe("Output format (default 'all')"),
+    spacing: z.array(z.number()).optional().describe("px spacing scale (default 8pt scale 2..96)"),
+    radii: z.record(z.number()).optional().describe("radius name→px (default sm/md/lg/xl/full; use 9999 for pill)"),
+    fontSizes: z.record(z.number()).optional().describe("type scale name→px (default xs..4xl)"),
+    fontFamilies: z.record(z.string()).optional().describe("font role→stack (default sans/mono)"),
+  },
+  async ({ name, colors, format, spacing, radii, fontSizes, fontFamilies }) => {
+    const bad = validateColors(colors);
+    if (bad.length) return text(`Invalid hex value(s): ${bad.join(", ")}. Use #RGB, #RRGGBB, or #RRGGBBAA.`);
+    if (Object.keys(colors).length === 0) return text("Provide at least one color role in `colors`.");
+    const spec: TokenSpec = {
+      name: name || "Brand",
+      colors,
+      spacing: spacing && spacing.length ? spacing : DEFAULT_SPACING,
+      radii: radii && Object.keys(radii).length ? radii : DEFAULT_RADII,
+      fontSizes: fontSizes && Object.keys(fontSizes).length ? fontSizes : DEFAULT_FONT_SIZES,
+      fontFamilies: fontFamilies && Object.keys(fontFamilies).length ? fontFamilies : DEFAULT_FONT_FAMILIES,
+    };
+    return text(generateTokens(spec, (format as TokenFormat) ?? "all"));
+  },
+);
+
+// ── Tool 12: accessibility audit ─────────────────────────────────────────────
+server.tool(
+  "audit_accessibility",
+  "Deterministic design-time accessibility checks: WCAG 2.2 color-contrast ratios for text/UI color pairs, and minimum tap/target sizes per platform (iOS 44pt, Android 48dp, web 24px min / 44 recommended). Returns exact ratios, pass/fail, and fixes — the machine-verifiable slice of a11y you can run before code. For keyboard/screen-reader/Dynamic Type checks, see get_design_doc('accessibility').",
+  {
+    contrast_pairs: z.array(z.object({
+      foreground: z.string().describe("text/element hex"),
+      background: z.string().describe("background hex"),
+      label: z.string().optional().describe("what this is, e.g. 'body text on surface'"),
+      large_text: z.boolean().optional().describe("true if ≥24px or ≥18.66px bold (threshold drops to 3:1)"),
+      ui_component: z.boolean().optional().describe("true for non-text UI: borders, icons, focus rings (3:1)"),
+    })).optional().describe("Color pairs to check for contrast"),
+    tap_targets: z.array(z.object({
+      label: z.string().optional(),
+      width: z.number().describe("width in pt/dp/px"),
+      height: z.number().describe("height in pt/dp/px"),
+      platform: z.enum(["ios", "android", "web"]).optional().describe("default web"),
+    })).optional().describe("Interactive targets to check for minimum size"),
+  },
+  async ({ contrast_pairs, tap_targets }) => {
+    const pairs = (contrast_pairs ?? []) as ContrastPair[];
+    const targets = (tap_targets ?? []) as TapTarget[];
+    if (pairs.length === 0 && targets.length === 0) {
+      return text("Provide `contrast_pairs` and/or `tap_targets` to audit. Example: {\"contrast_pairs\":[{\"foreground\":\"#6B7280\",\"background\":\"#FFFFFF\",\"label\":\"muted text\"}]}");
+    }
+    return text(contrastReport(pairs, targets));
   },
 );
 
