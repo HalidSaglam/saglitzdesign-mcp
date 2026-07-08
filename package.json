@@ -1,0 +1,64 @@
+{
+  "name": "saglitzdesign-mcp",
+  "version": "0.3.1",
+  "description": "SaglitzDesign — expert MCP server for mobile app & website design: UI, UX, buttons, design languages, SEO and GEO guidance backed by a curated knowledge base and real-world pattern research.",
+  "type": "module",
+  "bin": {
+    "saglitzdesign-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "knowledge",
+    "!knowledge/examples/images",
+    "scripts/regenerate-examples.md",
+    "LICENSE",
+    "README.md",
+    "NOTICE.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/index.js",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "design",
+    "ui",
+    "ux",
+    "seo",
+    "geo",
+    "design-system",
+    "mobile-design",
+    "web-design",
+    "claude"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/HalidSaglam/saglitzdesign-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HalidSaglam/saglitzdesign-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/HalidSaglam/saglitzdesign-mcp/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "author": "Saglitz Design"
+}
