@@ -9,7 +9,7 @@ expert‑level guidance on **web, iOS, Android and macOS design** — plus the
 **UX, copywriting, SEO, GEO and marketing** knowledge that makes a product
 actually convert.
 
-56 curated knowledge documents · 10 tools · phased roadmaps · real‑world visual examples
+56 curated knowledge documents · 10 tools · 5 build/review workflows · phased roadmaps · real‑world visual examples
 
 [![npm](https://img.shields.io/npm/v/saglitzdesign-mcp?color=cb3837&logo=npm)](https://www.npmjs.com/package/saglitzdesign-mcp)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -57,6 +57,28 @@ instead of guessing.
 | 🤖 **GEO** | Generative Engine Optimization — visibility in ChatGPT / Perplexity / AI Overviews, llms.txt, citation tactics |
 | 📣 **Marketing** | Branding & identity (strategy, logo systems, brand voice) · email marketing (design, lifecycle, deliverability) · ad creative (hooks, platform specs, testing) |
 | 🖼️ **Patterns & examples** | Real‑world patterns studied from top apps & sites, plus a curated screenshot library served as images |
+
+## Workflows (`/` prompts) — "build me a…"
+
+Beyond answering questions, SaglitzDesign ships **prompts** that orchestrate an
+entire build end‑to‑end. In Claude Code they appear in the `/` menu; invoke one
+and the agent runs the full method — roadmap → positioning & copy → real
+examples → **writes the actual code** → opens it in a browser, screenshots,
+scores it against the critique rubric, and iterates until it passes.
+
+| Prompt | What it does |
+|---|---|
+| **`build_landing_page`** | Designs & builds a conversion‑focused landing page, copy‑first, with a visual critique loop. |
+| **`build_website`** | Builds a multi‑page marketing site — positioning, IA, SEO/GEO, shared design system. |
+| **`build_mobile_app_ui`** | Builds iOS or Android screens on the correct platform baseline (HIG/Liquid Glass or Material 3). |
+| **`design_review`** | Audits an existing site/app against the checklists and the 0–40 critique rubric, ranked by severity. |
+| **`redesign`** | Improves an existing UI (bolder / quieter / higher‑converting) using the craft standards, with before→after scoring. |
+
+> Just say, e.g., *"/build_landing_page for a SaaS invoicing tool for freelancers"* — the workflow asks for anything missing, then builds it.
+>
+> The visual critique loop uses whatever browser tool is connected (Claude in
+> Chrome, Playwright, or chrome‑devtools MCP) to see and refine its own output.
+> Without one, it reviews the code directly.
 
 ## Tools
 

@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { loadKnowledge, searchKnowledge, sections, type KnowledgeDoc } from "./knowledge.js";
 import { loadExamples, searchExamples, imageMime } from "./examples.js";
+import { registerPrompts } from "./prompts.js";
 
 // knowledge/ sits next to dist/ (repo root) both in dev (tsx) and after build
 const here = dirname(fileURLToPath(import.meta.url));
@@ -21,7 +22,7 @@ const examples = loadExamples(examplesDir);
 
 const server = new McpServer({
   name: "saglitzdesign",
-  version: "0.3.2",
+  version: "0.4.0",
 });
 
 function docHeader(d: KnowledgeDoc): string {
@@ -452,6 +453,14 @@ server.tool(
     return text(lines.join("\n"));
   },
 );
+
+// ── prompts (user-invocable build/review/redesign workflows) ─────────────────
+registerPrompts(server as never, {
+  brief: z
+    .string()
+    .optional()
+    .describe("What to build/review, in your words (audience, offer, stack, URL…). Optional — the workflow will ask for anything missing."),
+});
 
 // ── start ────────────────────────────────────────────────────────────────────
 const transport = new StdioServerTransport();
