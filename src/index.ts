@@ -27,7 +27,7 @@ const examples = loadExamples(examplesDir);
 
 const server = new McpServer({
   name: "saglitzdesign",
-  version: "0.5.0",
+  version: "0.6.1",
 });
 
 function docHeader(d: KnowledgeDoc): string {
@@ -43,7 +43,7 @@ function text(s: string) {
   return { content: [{ type: "text" as const, text: s }] };
 }
 
-const CATEGORIES = ["design-language", "component", "ux", "seo", "geo", "pattern", "craft", "book", "process"] as const;
+const CATEGORIES = ["design-language", "component", "ux", "seo", "geo", "pattern", "craft", "book", "process", "marketing"] as const;
 const PLATFORMS = ["mobile", "web", "macos"] as const;
 
 // ── Tool 1: list ─────────────────────────────────────────────────────────────
@@ -167,7 +167,8 @@ const REVIEW_MAP: Record<string, string[]> = {
     "mobile-ux", "ios-app-design", "android-app-design", "android-patterns",
     "buttons", "forms-inputs", "navigation", "cards-lists-modals",
     "principles-heuristics", "accessibility", "typography", "color-systems",
-    "spacing-layout", "motion-microinteractions", "visual-craft-standards", "ux-writing",
+    "spacing-layout", "motion-microinteractions", "visual-craft-standards",
+    "clean-app-design", "interaction-design-classics", "ux-writing",
   ],
   "macos-app": [
     "macos-app-design", "apple-hig-liquid-glass", "buttons", "forms-inputs",
@@ -175,20 +176,20 @@ const REVIEW_MAP: Record<string, string[]> = {
     "color-systems", "spacing-layout", "visual-craft-standards", "ux-writing",
   ],
   website: [
-    "conversion-ux", "storybrand-copywriting", "buttons", "forms-inputs", "navigation",
+    "conversion-ux", "storybrand-copywriting", "value-proposition-jtbd", "buttons", "forms-inputs", "navigation",
     "principles-heuristics", "accessibility", "typography", "color-systems", "spacing-layout",
-    "motion-microinteractions", "visual-craft-standards", "ux-writing",
-    "technical-seo", "on-page-seo", "seo-for-designers", "geo-tactics-checklist",
+    "motion-microinteractions", "visual-craft-standards", "clean-app-design", "ux-writing",
+    "technical-seo", "on-page-seo", "seo-for-designers", "geo-tactics-checklist", "analytics-experimentation",
   ],
   "landing-page": [
-    "conversion-ux", "storybrand-copywriting", "influence-persuasion", "buttons",
-    "typography", "color-systems", "spacing-layout", "visual-craft-standards",
+    "conversion-ux", "storybrand-copywriting", "value-proposition-jtbd", "influence-persuasion", "buttons",
+    "typography", "color-systems", "spacing-layout", "visual-craft-standards", "clean-app-design",
     "seo-for-designers", "on-page-seo", "geo-tactics-checklist", "accessibility",
   ],
   dashboard: [
-    "navigation", "cards-lists-modals", "principles-heuristics", "typography",
-    "color-systems", "spacing-layout", "accessibility", "buttons", "forms-inputs",
-    "visual-craft-standards", "ux-writing",
+    "navigation", "cards-lists-modals", "data-visualization", "design-systems-methodology",
+    "principles-heuristics", "typography", "color-systems", "spacing-layout", "accessibility",
+    "buttons", "forms-inputs", "visual-craft-standards", "clean-app-design", "ux-writing",
   ],
 };
 
@@ -257,21 +258,21 @@ const ROADMAPS: Record<string, Roadmap> = {
     intro: "Marketing/company website. Order matters: positioning → copy → structure/SEO → design → CRO loop. Upstream fixes beat downstream polish.",
     fullGuides: ["marketing-website-roadmap", "product-design-roadmap"],
     phases: [
-      { title: "1. Positioning & strategy", goal: "One positioning statement, one conversion goal", docs: ["positioning-messaging", "marketing-website-roadmap"] },
+      { title: "1. Positioning & strategy", goal: "One positioning statement, one conversion goal, clear value prop", docs: ["positioning-messaging", "value-proposition-jtbd", "marketing-website-roadmap"] },
       { title: "2. Message & copy", goal: "Homepage narrative + proof inventory before wireframes", docs: ["storybrand-copywriting", "influence-persuasion", "ux-writing"] },
       { title: "3. Architecture & SEO/GEO foundations", goal: "Page map by search intent; rendering, schema, llms.txt planned", docs: ["on-page-seo", "technical-seo", "geo-tactics-checklist", "navigation"] },
-      { title: "4. Wireframe & visual design", goal: "Real copy in layouts; conversion patterns; craft pass", docs: ["conversion-ux", "hero-sections", "pricing-sections", "landing-signup", ...CORE_FOUNDATION, ...CORE_CRAFT] },
-      { title: "5. Build & performance", goal: "CWV budget met; semantic, extractable HTML", docs: ["seo-for-designers", "accessibility", "motion-microinteractions"] },
-      { title: "6. Launch & CRO loop", goal: "Instrumented funnel; one-variable tests; GEO visibility tracking", docs: ["marketing-website-roadmap", "geo-fundamentals", "design-critique-scoring"] },
+      { title: "4. Wireframe & visual design", goal: "Real copy in layouts; conversion patterns; clean craft pass", docs: ["conversion-ux", "hero-sections", "pricing-sections", "landing-signup", "clean-app-design", "design-engineering", ...CORE_FOUNDATION, ...CORE_CRAFT] },
+      { title: "5. Build & performance", goal: "CWV budget met; semantic, extractable HTML", docs: ["seo-for-designers", "design-engineering", "accessibility", "motion-microinteractions"] },
+      { title: "6. Launch & growth loop", goal: "Instrumented funnel; growth loops; one-variable tests; GEO visibility", docs: ["marketing-website-roadmap", "growth-frameworks", "analytics-experimentation", "geo-fundamentals", "design-critique-scoring"] },
     ],
   },
   "landing-page": {
     intro: "Single conversion-focused page. Condensed website roadmap: one goal, one narrative, ruthless proof.",
     fullGuides: ["marketing-website-roadmap"],
     phases: [
-      { title: "1. Offer & message", goal: "Headline/subhead/CTA + risk reducers written first", docs: ["positioning-messaging", "storybrand-copywriting", "conversion-ux"] },
+      { title: "1. Offer & message", goal: "Value prop + headline/subhead/CTA + risk reducers written first", docs: ["positioning-messaging", "value-proposition-jtbd", "storybrand-copywriting", "conversion-ux"] },
       { title: "2. Page narrative", goal: "Hero → proof → benefits → objections → final CTA", docs: ["conversion-ux", "hero-sections", "social-proof-footer", "influence-persuasion"] },
-      { title: "3. Design & craft", goal: "CTA pops (squint test); mobile-first", docs: ["buttons", ...CORE_FOUNDATION, "visual-craft-standards", "refactoring-ui"] },
+      { title: "3. Design & craft", goal: "CTA pops (squint test); clean & mobile-first", docs: ["buttons", ...CORE_FOUNDATION, "clean-app-design", "visual-craft-standards", "refactoring-ui"] },
       { title: "4. Performance, SEO/GEO & launch", goal: "Lighthouse ≥90; schema + answer-first content; funnel instrumented", docs: ["seo-for-designers", "on-page-seo", "geo-tactics-checklist", "accessibility"] },
     ],
   },
@@ -283,9 +284,9 @@ const ROADMAPS: Record<string, Roadmap> = {
       { title: "2. IA & flows", goal: "≤5 tab destinations; critical flows mapped; trunk test", docs: ["navigation", "ios-app-design", "navigation-home"] },
       { title: "3. Wireframes, copy & edge states", goal: "Real copy; empty/loading/error/offline designed", docs: ["ux-writing", "empty-states-buttons", "dont-make-me-think"] },
       { title: "4. Design system on HIG baseline", goal: "Tokens + core components; Dynamic Type; dark mode", docs: ["apple-hig-liquid-glass", "ios-app-design", ...CORE_FOUNDATION] },
-      { title: "5. Hi-fi design & craft", goal: "All states, all sizes; motion + haptics spec; reduced motion", docs: ["mobile-ux", "buttons", "forms-inputs", "cards-lists-modals", "motion-microinteractions", ...CORE_CRAFT] },
-      { title: "6. Patterns for key flows", goal: "Onboarding/paywall/auth/checkout follow proven patterns", docs: ["onboarding-paywall", "auth-patterns", "checkout-payments", "settings-lists", "hooked-retention"] },
-      { title: "7. Validate & ship", goal: "5-user tests; a11y audit; App Store assets; design QA on device", docs: [...CORE_VALIDATE, "ios-app-design"] },
+      { title: "5. Hi-fi design & craft", goal: "All states, all sizes; clean & calm; motion + haptics; reduced motion", docs: ["mobile-ux", "buttons", "forms-inputs", "cards-lists-modals", "clean-app-design", "motion-microinteractions", ...CORE_CRAFT] },
+      { title: "6. Monetization & key flows", goal: "Onboarding/paywall/auth/checkout patterns; pricing & growth loops", docs: ["onboarding-paywall", "paywall-benchmarks", "pricing-strategy", "auth-patterns", "checkout-payments", "settings-lists", "hooked-retention", "growth-frameworks"] },
+      { title: "7. Validate & ship", goal: "5-user tests; a11y audit; App Store assets; activation instrumented", docs: [...CORE_VALIDATE, "analytics-experimentation", "ios-app-design"] },
     ],
   },
   "android-app": {
@@ -296,9 +297,9 @@ const ROADMAPS: Record<string, Roadmap> = {
       { title: "2. IA & flows", goal: "Nav bar destinations; critical flows; predictive back correct", docs: ["android-app-design", "navigation", "navigation-home"] },
       { title: "3. Wireframes, copy & edge states", goal: "Real copy; all edge states", docs: ["ux-writing", "empty-states-buttons", "dont-make-me-think"] },
       { title: "4. Design system on M3 baseline", goal: "Dynamic color, shape scale, motion springs, dark theme, edge-to-edge", docs: ["material-3", "android-app-design", ...CORE_FOUNDATION] },
-      { title: "5. Hi-fi design & craft", goal: "All states/sizes; 60fps; reduced motion", docs: ["mobile-ux", "buttons", "forms-inputs", "cards-lists-modals", "motion-microinteractions", ...CORE_CRAFT] },
-      { title: "6. Patterns for key flows", goal: "Onboarding/paywall/auth/checkout via proven patterns; Android conventions respected", docs: ["android-patterns", "onboarding-paywall", "auth-patterns", "checkout-payments", "settings-lists", "hooked-retention"] },
-      { title: "7. Validate & ship", goal: "Usability tests; a11y (TalkBack); Play Store assets", docs: [...CORE_VALIDATE, "android-app-design"] },
+      { title: "5. Hi-fi design & craft", goal: "All states/sizes; clean & calm; 60fps; reduced motion", docs: ["mobile-ux", "buttons", "forms-inputs", "cards-lists-modals", "clean-app-design", "motion-microinteractions", ...CORE_CRAFT] },
+      { title: "6. Monetization & key flows", goal: "Onboarding/paywall/auth/checkout patterns; pricing & growth loops; Android conventions", docs: ["android-patterns", "onboarding-paywall", "paywall-benchmarks", "pricing-strategy", "auth-patterns", "checkout-payments", "settings-lists", "hooked-retention", "growth-frameworks"] },
+      { title: "7. Validate & ship", goal: "Usability tests; a11y (TalkBack); Play Store assets; activation instrumented", docs: [...CORE_VALIDATE, "analytics-experimentation", "android-app-design"] },
     ],
   },
   "macos-app": {
@@ -314,16 +315,16 @@ const ROADMAPS: Record<string, Roadmap> = {
     ],
   },
   "saas-web-app": {
-    intro: "SaaS product UI (dashboard/app shell). Density, navigation clarity and empty states decide perceived quality.",
+    intro: "SaaS product UI (dashboard/app shell). Density, navigation clarity, data-viz and empty states decide perceived quality; pricing & growth loops decide the business.",
     fullGuides: ["product-design-roadmap"],
     phases: [
-      { title: "1. Discovery & jobs", goal: "Core workflows ranked; success metric per workflow", docs: ["product-design-roadmap", "positioning-messaging"] },
+      { title: "1. Discovery & jobs", goal: "Core workflows ranked; jobs-to-be-done; success metric per workflow", docs: ["product-design-roadmap", "value-proposition-jtbd", "positioning-messaging"] },
       { title: "2. IA & app shell", goal: "Sidebar structure, command palette, breadcrumbs", docs: ["navigation", "dashboards"] },
       { title: "3. Wireframes, copy & edge states", goal: "Real data shapes; empty/loading/error/zero-results for every view", docs: ["ux-writing", "cards-lists-modals", "empty-states-buttons"] },
-      { title: "4. Design system", goal: "Tokens incl. density mode; tables/forms/charts standardized", docs: [...CORE_FOUNDATION, "forms-inputs", "buttons"] },
-      { title: "5. Hi-fi & craft", goal: "Dense screens first; keyboard support; dark mode", docs: [...CORE_CRAFT, "motion-microinteractions", "principles-heuristics"] },
-      { title: "6. Onboarding & retention", goal: "Time-to-value <60s; activation instrumented", docs: ["onboarding-paywall", "hooked-retention", "conversion-ux"] },
-      { title: "7. Validate & iterate", goal: "Task-based tests; heuristic score; funnel review cadence", docs: CORE_VALIDATE },
+      { title: "4. Design system & data-viz", goal: "Token system + governance; density mode; tables/forms/charts standardized", docs: ["design-systems-methodology", "data-visualization", ...CORE_FOUNDATION, "forms-inputs", "buttons"] },
+      { title: "5. Hi-fi & craft", goal: "Dense screens first; keyboard support; dark mode; clean & maintainable", docs: [...CORE_CRAFT, "clean-app-design", "design-engineering", "motion-microinteractions", "principles-heuristics"] },
+      { title: "6. Pricing, onboarding & retention", goal: "Value-based pricing; time-to-value <60s; activation instrumented", docs: ["pricing-strategy", "onboarding-paywall", "hooked-retention", "growth-frameworks", "conversion-ux"] },
+      { title: "7. Validate & iterate", goal: "Task-based tests; heuristic score; metrics + experiments", docs: [...CORE_VALIDATE, "analytics-experimentation"] },
     ],
   },
 };
