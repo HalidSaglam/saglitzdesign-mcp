@@ -9,9 +9,10 @@ expert‑level guidance on **web, iOS, Android and macOS design** — plus the
 **UX, copywriting, SEO, GEO and marketing** knowledge that makes a product
 actually convert.
 
-68 curated knowledge documents · 12 tools · 7 build/review workflows · real token & a11y generators · phased roadmaps · real‑world visual examples
+72 curated knowledge documents · 12 tools · 7 build/review workflows · real token & a11y generators · phased roadmaps · real‑world visual examples
 
 [![npm](https://img.shields.io/npm/v/saglitzdesign-mcp?color=cb3837&logo=npm)](https://www.npmjs.com/package/saglitzdesign-mcp)
+[![skills](https://skills.sh/b/HalidSaglam/saglitzdesign-mcp)](https://skills.sh/HalidSaglam/saglitzdesign-mcp)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![MCP](https://img.shields.io/badge/Model_Context_Protocol-server-000)](https://modelcontextprotocol.io)
 
@@ -43,17 +44,17 @@ instead of guessing.
 
 ## What's inside
 
-**68 knowledge documents across 11 categories:**
+**72 knowledge documents across 11 categories:**
 
 | Category | Coverage |
 |---|---|
 | 🎨 **Design languages** | Material 3 & M3 Expressive · Apple HIG + Liquid Glass (iOS 26) · deep **iOS**, **Android** (Android 16 / M3 Expressive) and **macOS** app‑design guides · Fluent 2 · 2026 web trends · design tokens & theming (W3C DTCG) · Apple WWDC design principles (fluid interfaces) |
 | 🧩 **Components** | Buttons (hierarchy, sizing, states, labels) · forms & inputs · navigation · cards / lists / modals / sheets / empty states |
-| 🧠 **UX** | Nielsen heuristics & behavioral laws · accessibility (WCAG 2.2) · typography · color & dark mode · spacing & grids · motion · mobile UX · conversion / CRO · **data visualization** (Tufte + Storytelling with Data) |
+| 🧠 **UX** | Nielsen heuristics & behavioral laws · accessibility (WCAG 2.2) · typography · color & dark mode · spacing & grids · motion · mobile UX · conversion / CRO · **data visualization** · **information architecture** · **i18n / localization (RTL)** |
 | ✨ **Craft** | Expert polish standards · typographic craft · animation craft (easing, springs, interruptibility) · UX writing & cognitive load · 0–40 critique rubric · **clean/minimal app design** · **design‑engineering** (semantic HTML, CSS architecture, tokens‑in‑code) |
-| 📚 **Books** | Distilled classics — *design:* Norman, Krug, Refactoring UI, psychology of design, grid/typography, **interaction design (Cooper/Tidwell)** · *marketing:* Cialdini, Positioning, StoryBrand + Ogilvy, Hooked |
+| 📚 **Books** | Distilled classics — *design:* Norman, Krug, Refactoring UI, psychology of design, grid/typography, interaction design (Cooper/Tidwell), **emotional design (Walter/Norman)** · *marketing:* Cialdini, Positioning, StoryBrand + Ogilvy, Hooked |
 | 🗺️ **Process** | Product‑design & marketing‑website roadmaps · **design‑systems methodology** (Atomic Design, component API, governance) |
-| 📣 **Marketing** | Branding & identity · email marketing · ad creative · paywall benchmarks (RevenueCat 2026) · **growth frameworks** (loops/AARRR/PLG) · **pricing strategy** · **analytics & experimentation** · **value proposition & JTBD** |
+| 📣 **Marketing** | Branding & identity · email marketing · ad creative · paywall benchmarks (RevenueCat 2026) · growth frameworks (loops/AARRR/PLG) · pricing strategy · analytics & experimentation · value proposition & JTBD · **content & distribution** (topic clusters, community, referral) |
 | 🔎 **SEO** | Technical SEO (Core Web Vitals) · on‑page & E‑E‑A‑T · SEO for designers |
 | 🤖 **GEO** | Generative Engine Optimization — visibility in ChatGPT / Perplexity / AI Overviews, llms.txt, citation tactics |
 | 🖼️ **Patterns & examples** | Real‑world patterns studied from top apps & sites, plus a curated screenshot library served as images |
@@ -150,6 +151,20 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ### Cursor / other MCP clients
 
 Run `npx -y saglitzdesign-mcp` over stdio (or `node /absolute/path/to/dist/index.js` from a clone).
+
+### As skills (no MCP server)
+
+Prefer lightweight, self-contained skills? Install the condensed SaglitzDesign
+skills into any [skills](https://skills.sh)-compatible agent:
+
+```bash
+npx skills@latest add HalidSaglam/saglitzdesign-mcp
+```
+
+Five skills — `clean-interface-design`, `landing-page-conversion`,
+`design-review`, `motion-and-animation`, `apple-platform-design` — each
+standalone guidance that also points to the full MCP for depth. See
+[`skills/`](skills/).
 
 ### Dev & debug
 

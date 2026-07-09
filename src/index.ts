@@ -27,7 +27,7 @@ const examples = loadExamples(examplesDir);
 
 const server = new McpServer({
   name: "saglitzdesign",
-  version: "0.7.0",
+  version: "0.8.0",
 });
 
 function docHeader(d: KnowledgeDoc): string {
