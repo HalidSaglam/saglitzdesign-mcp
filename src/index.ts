@@ -27,7 +27,7 @@ const examples = loadExamples(examplesDir);
 
 const server = new McpServer({
   name: "saglitzdesign",
-  version: "0.6.1",
+  version: "0.7.0",
 });
 
 function docHeader(d: KnowledgeDoc): string {
@@ -148,10 +148,10 @@ server.tool(
 // ── Tool 5: design language ──────────────────────────────────────────────────
 server.tool(
   "get_design_language",
-  "Full reference for a modern design language / platform design system: Material 3 (& Expressive), Apple HIG + Liquid Glass, deep iOS / Android / macOS app design guides, Fluent 2, 2026 web design trends, or design-token/theming architecture.",
+  "Full reference for a modern design language / platform design system: Material 3 (& Expressive), Apple HIG + Liquid Glass, deep iOS / Android / macOS app design guides, Apple's WWDC design principles (fluid interfaces, interruptibility, springs, materials), Fluent 2, 2026 web design trends, or design-token/theming architecture.",
   {
     language: z
-      .enum(["material-3", "apple-hig-liquid-glass", "ios-app-design", "android-app-design", "macos-app-design", "fluent-2", "web-trends-2026", "design-tokens-theming"])
+      .enum(["material-3", "apple-hig-liquid-glass", "ios-app-design", "android-app-design", "macos-app-design", "wwdc-design-principles", "fluent-2", "web-trends-2026", "design-tokens-theming"])
       .describe("Which design language / platform reference to fetch"),
   },
   async ({ language }) => {
@@ -167,18 +167,18 @@ const REVIEW_MAP: Record<string, string[]> = {
     "mobile-ux", "ios-app-design", "android-app-design", "android-patterns",
     "buttons", "forms-inputs", "navigation", "cards-lists-modals",
     "principles-heuristics", "accessibility", "typography", "color-systems",
-    "spacing-layout", "motion-microinteractions", "visual-craft-standards",
+    "spacing-layout", "motion-microinteractions", "animation-craft", "wwdc-design-principles", "visual-craft-standards",
     "clean-app-design", "interaction-design-classics", "ux-writing",
   ],
   "macos-app": [
     "macos-app-design", "apple-hig-liquid-glass", "buttons", "forms-inputs",
     "cards-lists-modals", "principles-heuristics", "accessibility", "typography",
-    "color-systems", "spacing-layout", "visual-craft-standards", "ux-writing",
+    "color-systems", "spacing-layout", "wwdc-design-principles", "animation-craft", "visual-craft-standards", "ux-writing",
   ],
   website: [
     "conversion-ux", "storybrand-copywriting", "value-proposition-jtbd", "buttons", "forms-inputs", "navigation",
     "principles-heuristics", "accessibility", "typography", "color-systems", "spacing-layout",
-    "motion-microinteractions", "visual-craft-standards", "clean-app-design", "ux-writing",
+    "motion-microinteractions", "animation-craft", "visual-craft-standards", "clean-app-design", "ux-writing",
     "technical-seo", "on-page-seo", "seo-for-designers", "geo-tactics-checklist", "analytics-experimentation",
   ],
   "landing-page": [
@@ -250,7 +250,7 @@ interface Roadmap {
 }
 
 const CORE_FOUNDATION = ["typography", "color-systems", "spacing-layout", "design-tokens-theming"];
-const CORE_CRAFT = ["visual-craft-standards", "typography-craft", "refactoring-ui"];
+const CORE_CRAFT = ["visual-craft-standards", "typography-craft", "animation-craft", "refactoring-ui"];
 const CORE_VALIDATE = ["design-critique-scoring", "accessibility", "principles-heuristics", "dont-make-me-think"];
 
 const ROADMAPS: Record<string, Roadmap> = {
