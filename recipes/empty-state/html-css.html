@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign — Empty State</title>
+<style>
+  :root {
+    --ring: #2563eb; --primary: #2563eb; --primary-hover: #1d4ed8;
+    --text: #171717; --muted: #525252; --icon: #a3a3a3; --border: #e5e5e5;
+    --ghost-hover: #f5f5f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ring: #60a5fa; --primary: #3b82f6; --primary-hover: #2563eb;
+      --text: #fafafa; --muted: #a3a3a3; --icon: #525252; --border: #262626;
+      --ghost-hover: #262626;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: Canvas; color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, sans-serif;
+  }
+  .empty {
+    max-width: 28rem; margin: 0 auto; padding: 48px 24px; text-align: center;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .empty + .empty { border-top: 1px solid var(--border); }
+  .empty__icon { color: var(--icon); margin-bottom: 16px; }
+  .empty__headline { margin: 0; font-size: 1.125rem; font-weight: 600; }
+  .empty__desc { margin: 4px 0 0; font-size: .875rem; color: var(--muted); }
+  .empty__actions { margin-top: 24px; }
+
+  /* One primary action; secondary is visibly lower emphasis */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 44px; padding: 0 20px; border: 0; border-radius: 10px;
+    font: inherit; font-size: .875rem; font-weight: 500; cursor: pointer;
+  }
+  .btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .btn--primary { background: var(--primary); color: #fff; }
+  .btn--primary:hover { background: var(--primary-hover); }
+  .btn--ghost { background: transparent; color: var(--text); padding: 0 16px; }
+  .btn--ghost:hover { background: var(--ghost-hover); }
+
+  /* enter animation — transform/opacity only, ease-out, reduced-motion safe */
+  @media (prefers-reduced-motion: no-preference) {
+    .empty { animation: fadeIn .2s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  }
+</style>
+</head>
+<body>
+  <!-- first-use -->
+  <section class="empty" role="region" aria-labelledby="es1-h">
+    <div class="empty__icon" aria-hidden="true">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>
+      </svg>
+    </div>
+    <h2 class="empty__headline" id="es1-h">Create your first project</h2>
+    <p class="empty__desc">Projects keep your work organized. Start with one and invite your team later.</p>
+    <div class="empty__actions">
+      <button type="button" class="btn btn--primary">New project</button>
+    </div>
+  </section>
+
+  <!-- no-results (echoes the query; rendered as text, never HTML) -->
+  <section class="empty" role="region" aria-labelledby="es2-h">
+    <div class="empty__icon" aria-hidden="true">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+      </svg>
+    </div>
+    <h2 class="empty__headline" id="es2-h">No matches found</h2>
+    <p class="empty__desc">We couldn't find anything for &ldquo;<span id="es2-q">quarterly report</span>&rdquo;. Try a different term.</p>
+    <div class="empty__actions">
+      <button type="button" class="btn btn--ghost">Clear search</button>
+    </div>
+  </section>
+
+  <!-- error (announced via role=status) -->
+  <section class="empty" role="status" aria-labelledby="es3-h">
+    <div class="empty__icon" aria-hidden="true">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+      </svg>
+    </div>
+    <h2 class="empty__headline" id="es3-h">Couldn't load this</h2>
+    <p class="empty__desc">Something went wrong loading this. Check your connection and try again.</p>
+    <div class="empty__actions">
+      <button type="button" class="btn btn--primary">Try again</button>
+    </div>
+  </section>
+</body>
+</html>

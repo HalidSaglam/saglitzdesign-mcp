@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign — Tabs</title>
+<style>
+  :root {
+    --ring: #2563eb; --accent: #2563eb; --border: #e5e5e5;
+    --text: #171717; --muted: #525252; --disabled: #a3a3a3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ring: #60a5fa; --accent: #60a5fa; --border: #262626;
+      --text: #fafafa; --muted: #a3a3a3; --disabled: #525252;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: Canvas; color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, sans-serif;
+  }
+  .tabs { max-width: 520px; }
+  [role="tablist"] { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+  [role="tab"] {
+    position: relative; min-height: 44px; padding: 0 16px; margin-bottom: -1px;
+    border: 0; background: none; font: inherit; font-size: .875rem; font-weight: 500;
+    color: var(--muted); cursor: pointer; border-radius: 6px 6px 0 0;
+  }
+  [role="tab"]:hover:not([disabled]) { color: var(--text); }
+  [role="tab"][aria-selected="true"] { color: var(--accent); }
+  [role="tab"]:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  [role="tab"][disabled] { color: var(--disabled); cursor: not-allowed; }
+
+  /* 2px active indicator — shape, not just color */
+  [role="tab"]::after {
+    content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px;
+    background: var(--accent); border-radius: 2px; opacity: 0;
+    transition: opacity .15s ease-out;
+  }
+  [role="tab"][aria-selected="true"]::after { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { [role="tab"]::after { transition: none; } }
+
+  [role="tabpanel"] { padding: 16px; font-size: .875rem; color: var(--text); }
+  [role="tabpanel"]:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  [role="tabpanel"][hidden] { display: none; }
+</style>
+</head>
+<body>
+  <div class="tabs">
+    <div role="tablist" aria-label="Account settings">
+      <button role="tab" id="tab-profile" aria-controls="panel-profile" aria-selected="true"  tabindex="0">Profile</button>
+      <button role="tab" id="tab-billing" aria-controls="panel-billing" aria-selected="false" tabindex="-1">Billing</button>
+      <button role="tab" id="tab-team"    aria-controls="panel-team"    aria-selected="false" tabindex="-1">Team</button>
+      <button role="tab" id="tab-archived" aria-controls="panel-archived" aria-selected="false" tabindex="-1" disabled>Archived</button>
+    </div>
+
+    <div role="tabpanel" id="panel-profile"  aria-labelledby="tab-profile"  tabindex="0">Edit your public profile.</div>
+    <div role="tabpanel" id="panel-billing"  aria-labelledby="tab-billing"  tabindex="0" hidden>Manage your subscription and invoices.</div>
+    <div role="tabpanel" id="panel-team"     aria-labelledby="tab-team"     tabindex="0" hidden>Invite teammates and set roles.</div>
+    <div role="tabpanel" id="panel-archived" aria-labelledby="tab-archived" tabindex="0" hidden>No archived items.</div>
+  </div>
+
+  <script>
+    (function () {
+      var tablist = document.querySelector('[role="tablist"]');
+      var tabs = Array.prototype.slice.call(tablist.querySelectorAll('[role="tab"]'));
+
+      function select(tab, moveFocus) {
+        tabs.forEach(function (t) {
+          var on = t === tab;
+          t.setAttribute('aria-selected', on ? 'true' : 'false');
+          t.tabIndex = on ? 0 : -1; // roving tabindex
+          document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+        });
+        if (moveFocus) tab.focus();
+      }
+
+      // Automatic activation: arrows move focus AND select; Home/End; wrap.
+      function enabledTabs() { return tabs.filter(function (t) { return !t.disabled; }); }
+
+      tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () { if (!tab.disabled) select(tab); });
+        tab.addEventListener('keydown', function (e) {
+          var list = enabledTabs();
+          var i = list.indexOf(tab);
+          var next = null;
+          switch (e.key) {
+            case 'ArrowRight': case 'ArrowDown': next = list[(i + 1) % list.length]; break;
+            case 'ArrowLeft':  case 'ArrowUp':   next = list[(i - 1 + list.length) % list.length]; break;
+            case 'Home': next = list[0]; break;
+            case 'End':  next = list[list.length - 1]; break;
+            default: return;
+          }
+          e.preventDefault();
+          select(next, true);
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

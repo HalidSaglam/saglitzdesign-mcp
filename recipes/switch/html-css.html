@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign — Switch</title>
+<style>
+  :root {
+    --ring: #2563eb; --track-on: #2563eb; --track-off: #d4d4d4;
+    --text: #171717; --muted: #737373; --thumb: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ring: #60a5fa; --track-on: #3b82f6; --track-off: #404040;
+      --text: #fafafa; --muted: #a3a3a3; --thumb: #fff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: Canvas; color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, sans-serif;
+  }
+  .stack { display: flex; flex-direction: column; gap: 24px; max-width: 380px; }
+  .row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .row__label { font-size: .875rem; font-weight: 600; cursor: pointer; }
+  .row__desc { font-size: .75rem; color: var(--muted); }
+
+  /* Button carries a >=44x44 hit area; the visible track is smaller */
+  .switch {
+    position: relative; display: grid; place-items: center;
+    width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer;
+    border-radius: 9999px; flex: none;
+  }
+  .switch:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .switch:disabled { cursor: not-allowed; opacity: .5; }
+
+  .switch__track {
+    width: 52px; height: 32px; border-radius: 9999px; background: var(--track-off);
+    transition: background-color .15s ease-out;
+  }
+  .switch[aria-checked="true"] .switch__track { background: var(--track-on); }
+
+  .switch__thumb {
+    position: absolute; left: 6px; width: 24px; height: 24px; border-radius: 50%;
+    background: var(--thumb); box-shadow: 0 1px 2px rgba(0,0,0,.3);
+    transform: translateX(0); transition: transform .15s ease-out;
+  }
+  .switch[aria-checked="true"] .switch__thumb { transform: translateX(20px); }
+
+  /* Reduced motion: thumb snaps, state still reads */
+  @media (prefers-reduced-motion: reduce) {
+    .switch__track, .switch__thumb { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="stack">
+    <div class="row">
+      <label class="row__label" for="sw-email">
+        Email notifications
+        <div class="row__desc" id="sw-email-desc">Get an email when someone mentions you.</div>
+      </label>
+      <button type="button" class="switch" id="sw-email" role="switch"
+              aria-checked="true" aria-describedby="sw-email-desc">
+        <span class="switch__track" aria-hidden="true"></span>
+        <span class="switch__thumb" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <div class="row">
+      <label class="row__label" for="sw-beta">
+        Beta features
+        <div class="row__desc" id="sw-beta-desc">Try features before they are released.</div>
+      </label>
+      <button type="button" class="switch" id="sw-beta" role="switch"
+              aria-checked="false" aria-describedby="sw-beta-desc">
+        <span class="switch__track" aria-hidden="true"></span>
+        <span class="switch__thumb" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <div class="row">
+      <label class="row__label" for="sw-2fa">Two-factor auth (locked by admin)</label>
+      <button type="button" class="switch" id="sw-2fa" role="switch" aria-checked="true" disabled>
+        <span class="switch__track" aria-hidden="true"></span>
+        <span class="switch__thumb" aria-hidden="true"></span>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // Toggle on click (label's `for` forwards clicks here) and on Space/Enter.
+    document.querySelectorAll('.switch:not([disabled])').forEach(function (sw) {
+      function toggle() {
+        sw.setAttribute('aria-checked', sw.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+      }
+      sw.addEventListener('click', toggle);
+      sw.addEventListener('keydown', function (e) {
+        // <button> fires click on Space itself; wire Enter for switch parity.
+        if (e.key === 'Enter') { e.preventDefault(); toggle(); }
+      });
+    });
+  </script>
+</body>
+</html>

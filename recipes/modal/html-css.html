@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign · Modal</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem;
+    font: 400 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    color: #171717; background: #fafafa;
+  }
+  .btn {
+    height: 44px; padding: 0 16px; border-radius: 8px; font-size: 14px; font-weight: 500;
+    border: 1px solid transparent; cursor: pointer;
+    transition: background-color 150ms ease-out;
+  }
+  .btn:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px currentColor; }
+  .btn--primary { background: #dc2626; color: #fff; }
+  .btn--primary:hover { background: #b91c1c; }
+  .btn--secondary { background: #fff; color: #171717; border-color: #d4d4d4; }
+  .btn--secondary:hover { background: #f5f5f5; }
+
+  /* Native <dialog> gives us the top layer + ::backdrop for free. */
+  dialog.modal {
+    width: min(28rem, calc(100vw - 2rem));
+    padding: 24px; border: none; border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  }
+  dialog.modal::backdrop { background: rgba(0,0,0,0.5); }
+
+  /* Only transform/opacity animate. Enter = ease-out. */
+  dialog.modal[open] { animation: panelIn 150ms ease-out; }
+  dialog.modal[open]::backdrop { animation: fadeIn 150ms ease-out; }
+  @keyframes panelIn {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to   { opacity: 1; transform: none; }
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  .modal__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+  .modal__title { margin: 0; font-size: 18px; font-weight: 600; }
+  .modal__body { margin: 0; font-size: 14px; color: #525252; }
+  .modal__close {
+    width: 44px; height: 44px; display: grid; place-items: center;
+    border: none; background: none; border-radius: 8px; cursor: pointer; color: #737373;
+  }
+  .modal__close:hover { background: #f0f0f0; }
+  .modal__close:focus-visible { outline: none; box-shadow: 0 0 0 2px #4f46e5; }
+  /* Primary action sits right-most. */
+  .modal__foot { display: flex; justify-content: flex-end; gap: 12px; margin-top: 24px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    dialog.modal[open], dialog.modal[open]::backdrop { animation: none; }
+  }
+</style>
+</head>
+<body>
+  <button type="button" class="btn btn--secondary" id="openBtn">Delete project</button>
+
+  <!-- role/aria-modal are implied by <dialog> + showModal(); aria-labelledby names it. -->
+  <dialog class="modal" id="dialog" aria-labelledby="dlgTitle" aria-describedby="dlgBody">
+    <div class="modal__head">
+      <h2 class="modal__title" id="dlgTitle">Delete project?</h2>
+      <button type="button" class="modal__close" id="closeBtn" aria-label="Close dialog">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
+    <p class="modal__body" id="dlgBody">
+      This permanently removes the project and all its data. This action can't be undone.
+    </p>
+    <div class="modal__foot">
+      <button type="button" class="btn btn--secondary" id="cancelBtn">Cancel</button>
+      <button type="button" class="btn btn--primary" id="confirmBtn">Delete project</button>
+    </div>
+  </dialog>
+
+  <script>
+    const dialog = document.getElementById("dialog");
+    const openBtn = document.getElementById("openBtn");
+    const closeBtn = document.getElementById("closeBtn");
+    const cancelBtn = document.getElementById("cancelBtn");
+    const confirmBtn = document.getElementById("confirmBtn");
+
+    // This dialog is destructive, so backdrop clicks must NOT dismiss it.
+    const DISMISS_ON_BACKDROP = false;
+
+    openBtn.addEventListener("click", () => {
+      dialog.showModal();          // traps focus + adds ::backdrop natively
+      confirmBtn.focus();          // move focus into the dialog
+      // Native <dialog> returns focus to the invoker (openBtn) automatically on close.
+    });
+
+    const close = () => dialog.close();
+    closeBtn.addEventListener("click", close);
+    cancelBtn.addEventListener("click", close);
+    confirmBtn.addEventListener("click", () => { /* perform delete */ close(); });
+
+    // Escape: <dialog> fires a 'cancel' event; nothing extra needed, but we keep it explicit.
+    dialog.addEventListener("cancel", (e) => { /* allow default close */ });
+
+    // Backdrop click handling (light-dismiss) — gated for destructive dialogs.
+    dialog.addEventListener("click", (e) => {
+      if (!DISMISS_ON_BACKDROP) return;
+      const rect = dialog.getBoundingClientRect();
+      const outside =
+        e.clientX < rect.left || e.clientX > rect.right ||
+        e.clientY < rect.top || e.clientY > rect.bottom;
+      if (outside) close();
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign · Toast</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem;
+    font: 400 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    color: #171717; background: #fafafa;
+  }
+  .btn {
+    height: 44px; padding: 0 16px; margin-right: 8px; border-radius: 8px;
+    font-size: 14px; font-weight: 500; border: 1px solid #d4d4d4; background: #fff; cursor: pointer;
+  }
+  .btn:focus-visible { outline: none; box-shadow: 0 0 0 2px #4f46e5; }
+
+  /* Live region present up front so additions are announced. */
+  .toast-region {
+    position: fixed; bottom: 16px; right: 16px; z-index: 50;
+    display: flex; flex-direction: column; gap: 8px;
+    width: min(24rem, calc(100vw - 2rem)); pointer-events: none;
+  }
+
+  .toast {
+    pointer-events: auto;
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 16px; border-radius: 12px; background: #fff;
+    border: 1px solid #e5e5e5; box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+    /* Enter: ease-out. Only transform/opacity animate. */
+    animation: toastIn 150ms ease-out;
+  }
+  .toast.is-leaving {
+    opacity: 0; transform: translateX(8px);
+    transition: opacity 150ms ease-in, transform 150ms ease-in;  /* exit: ease-in */
+  }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .toast__icon { flex: 0 0 auto; margin-top: 2px; }
+  .toast--success .toast__icon { color: #059669; }
+  .toast--error   .toast__icon { color: #dc2626; }
+  .toast--info    .toast__icon { color: #4f46e5; }
+
+  .toast__msg { flex: 1; font-size: 14px; color: #262626; margin: 0; }
+  .toast__close {
+    flex: 0 0 auto; width: 44px; height: 44px; margin: -8px -8px -8px 0;
+    display: grid; place-items: center; border: none; background: none;
+    border-radius: 8px; cursor: pointer; color: #737373;
+  }
+  .toast__close:hover { background: #f0f0f0; }
+  .toast__close:focus-visible { outline: none; box-shadow: 0 0 0 2px #4f46e5; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toast { animation: none; }
+    .toast.is-leaving { transition: opacity 100ms linear; transform: none; }
+  }
+</style>
+</head>
+<body>
+  <button class="btn" onclick="showToast('success','Order placed.')">Show success</button>
+  <button class="btn" onclick="showToast('error','Payment failed. Try again.')">Show error</button>
+  <button class="btn" onclick="showToast('info','New update available.')">Show info</button>
+
+  <!-- polite region present before any toast renders -->
+  <div class="toast-region" id="region" aria-live="polite" aria-relevant="additions"></div>
+
+  <template id="tpl-success">
+    <svg class="toast__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </template>
+  <template id="tpl-error">
+    <svg class="toast__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 8v5m0 3h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </template>
+  <template id="tpl-info">
+    <svg class="toast__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 16v-5m0-3h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </template>
+
+  <script>
+    const region = document.getElementById("region");
+    const MAX = 3;
+
+    function showToast(variant, message) {
+      // Errors are assertive and persist longer.
+      const isError = variant === "error";
+      const duration = isError ? 8000 : 5000;
+
+      const el = document.createElement("div");
+      el.className = "toast toast--" + variant;
+      el.setAttribute("role", isError ? "alert" : "status");
+      el.setAttribute("aria-live", isError ? "assertive" : "polite");
+
+      const icon = document.getElementById("tpl-" + variant).content.cloneNode(true);
+      const msg = document.createElement("p");
+      msg.className = "toast__msg";
+      msg.textContent = message;
+
+      const close = document.createElement("button");
+      close.className = "toast__close";
+      close.type = "button";
+      close.setAttribute("aria-label", "Dismiss notification");
+      close.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+      el.append(icon, msg, close);
+      region.append(el);
+
+      // Cap simultaneous toasts.
+      while (region.children.length > MAX) region.firstElementChild.remove();
+
+      let remaining = duration, start = Date.now(), timer = null;
+      const beginExit = () => {
+        el.classList.add("is-leaving");
+        el.addEventListener("transitionend", () => el.remove(), { once: true });
+        // Fallback if transition doesn't fire (e.g. reduced motion).
+        setTimeout(() => el.remove(), 300);
+      };
+      const resume = () => { start = Date.now(); timer = setTimeout(beginExit, remaining); };
+      const pause  = () => { clearTimeout(timer); remaining -= Date.now() - start; };
+
+      // Pause on hover and on keyboard focus within the toast.
+      el.addEventListener("mouseenter", pause);
+      el.addEventListener("mouseleave", resume);
+      el.addEventListener("focusin", pause);
+      el.addEventListener("focusout", resume);
+      close.addEventListener("click", beginExit);
+
+      resume();
+    }
+  </script>
+</body>
+</html>

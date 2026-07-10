@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign · Input</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem; max-width: 420px;
+    font: 400 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    color: #171717; background: #fafafa;
+  }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; }
+  .field__label { font-size: 14px; font-weight: 500; color: #171717; }
+  .field__hint { font-weight: 400; color: #737373; margin-left: 4px; }
+
+  .field__input {
+    height: 44px;               /* touch target */
+    padding: 0 12px;
+    font-size: 16px;            /* prevents iOS zoom-on-focus */
+    color: #171717; background: #fff;
+    border: 1px solid #d4d4d4; border-radius: 8px;
+    transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+  }
+  .field__input::placeholder { color: #a3a3a3; }
+  .field__input:focus-visible {
+    outline: none; border-color: #4f46e5;
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px #4f46e5;
+  }
+  .field__input:disabled {
+    background: #f5f5f5; color: #737373; cursor: not-allowed;
+  }
+
+  /* Error state: red border + alert message, wired via aria-invalid/aria-describedby. */
+  .field__input[aria-invalid="true"] { border-color: #ef4444; }
+  .field__input[aria-invalid="true"]:focus-visible {
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px #ef4444;
+  }
+
+  .field__message { font-size: 14px; color: #737373; }
+  .field__message--error { color: #dc2626; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .field__input { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <!-- Default with helper text -->
+  <div class="field">
+    <label class="field__label" for="email">
+      Work email <span class="field__hint">(required)</span>
+    </label>
+    <input
+      class="field__input" id="email" name="email"
+      type="email" autocomplete="email" required
+      placeholder="you@company.com"
+      aria-describedby="email-desc"
+    />
+    <p class="field__message" id="email-desc">We'll only use this to send receipts.</p>
+  </div>
+
+  <!-- Error state -->
+  <div class="field">
+    <label class="field__label" for="password">
+      Password <span class="field__hint">(required)</span>
+    </label>
+    <input
+      class="field__input" id="password" name="password"
+      type="password" autocomplete="current-password" required
+      aria-invalid="true" aria-describedby="password-desc"
+    />
+    <p class="field__message field__message--error" id="password-desc" role="alert">
+      Password must be at least 8 characters.
+    </p>
+  </div>
+
+  <!-- Disabled -->
+  <div class="field">
+    <label class="field__label" for="org">
+      Organization <span class="field__hint">(optional)</span>
+    </label>
+    <input class="field__input" id="org" name="org" type="text" value="Saglitz Ltd" disabled />
+  </div>
+</body>
+</html>

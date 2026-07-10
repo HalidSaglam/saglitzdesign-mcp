@@ -13,6 +13,7 @@ import {
   type TokenSpec, type TokenFormat,
 } from "./tokens.js";
 import { contrastReport, type ContrastPair, type TapTarget } from "./a11y.js";
+import { loadRecipes, recipeText } from "./recipes.js";
 
 // knowledge/ sits next to dist/ (repo root) both in dev (tsx) and after build
 const here = dirname(fileURLToPath(import.meta.url));
@@ -24,10 +25,12 @@ if (!knowledgeDir) {
 const docs = loadKnowledge(knowledgeDir);
 const examplesDir = join(knowledgeDir, "examples");
 const examples = loadExamples(examplesDir);
+const repoRoot = join(knowledgeDir, "..");
+const recipes = loadRecipes(join(repoRoot, "recipes"));
 
 const server = new McpServer({
   name: "saglitzdesign",
-  version: "0.8.0",
+  version: "0.9.0",
 });
 
 function docHeader(d: KnowledgeDoc): string {
@@ -515,6 +518,31 @@ server.tool(
       return text("Provide `contrast_pairs` and/or `tap_targets` to audit. Example: {\"contrast_pairs\":[{\"foreground\":\"#6B7280\",\"background\":\"#FFFFFF\",\"label\":\"muted text\"}]}");
     }
     return text(contrastReport(pairs, targets));
+  },
+);
+
+// ── Tool 13: component recipe ────────────────────────────────────────────────
+server.tool(
+  "get_component_recipe",
+  "Get production-ready, accessible reference CODE for a UI component in a chosen stack (react-tailwind, html-css, swiftui, compose) — not advice, actual copy-paste code with all states, ARIA/accessibility, keyboard support and correct motion, grounded in the SaglitzDesign specs. Use when you need to actually build a button, input, modal, toast, card, switch, tabs, empty-state, or list-row. Pair with get_component_guidance (the design rationale) and generate_design_tokens (the theme).",
+  {
+    component: z.string().describe("Component name, e.g. 'button', 'input', 'modal', 'toast', 'card', 'switch', 'tabs', 'empty-state', 'list-row'"),
+    stack: z.enum(["react-tailwind", "html-css", "swiftui", "compose"]).optional().describe("Target stack. Omit to get the spec + all available stacks."),
+  },
+  async ({ component, stack }) => {
+    if (recipes.length === 0) {
+      return text("No component recipes are installed in this build.");
+    }
+    const key = component.trim().toLowerCase().replace(/\s+/g, "-");
+    let r = recipes.find((x) => x.component === key);
+    if (!r) {
+      // fuzzy: contains
+      r = recipes.find((x) => x.component.includes(key) || key.includes(x.component));
+    }
+    if (!r) {
+      return text(`No recipe for "${component}". Available components: ${recipes.map((x) => x.component).join(", ")}.`);
+    }
+    return text(recipeText(r, stack));
   },
 );
 

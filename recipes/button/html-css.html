@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign · Button</title>
+<style>
+  :root {
+    --indigo: #4f46e5;
+    --indigo-hover: #4338ca;
+    --red: #dc2626;
+    --red-hover: #b91c1c;
+    --ring-offset: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem;
+    font: 400 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    color: #171717; background: #fafafa;
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  }
+
+  .btn {
+    position: relative;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border: 1px solid transparent; border-radius: 8px;
+    font-weight: 500; white-space: nowrap; cursor: pointer;
+    /* Only transform/opacity/color animate; ease-out on enter. */
+    transition: background-color 150ms ease-out, border-color 150ms ease-out,
+                transform 150ms ease-out, opacity 150ms ease-out;
+  }
+  .btn:active { transform: scale(0.98); transition-duration: 75ms; transition-timing-function: ease-in; }
+  .btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--ring-offset), 0 0 0 4px currentColor;
+  }
+  .btn:disabled { cursor: not-allowed; opacity: 0.5; }
+  .btn[aria-busy="true"] { cursor: progress; }
+
+  /* Sizes — md is 44px min (touch target). */
+  .btn--sm { height: 32px; padding: 0 12px; font-size: 14px; }
+  .btn--md { height: 44px; padding: 0 16px; font-size: 14px; }
+  .btn--lg { height: 52px; padding: 0 24px; font-size: 16px; }
+
+  /* Variants */
+  .btn--primary { background: var(--indigo); color: #fff; }
+  .btn--primary:hover:not(:disabled) { background: var(--indigo-hover); }
+  .btn--secondary { background: #fff; color: #171717; border-color: #d4d4d4; }
+  .btn--secondary:hover:not(:disabled) { background: #f5f5f5; }
+  .btn--ghost { background: transparent; color: #404040; }
+  .btn--ghost:hover:not(:disabled) { background: #f0f0f0; }
+  .btn--destructive { background: var(--red); color: #fff; }
+  .btn--destructive:hover:not(:disabled) { background: var(--red-hover); }
+
+  /* Loading: label preserved (fixed width) but hidden; spinner overlaid. */
+  .btn__label { display: inline-flex; align-items: center; gap: 8px; }
+  .btn[aria-busy="true"] .btn__label { visibility: hidden; }
+  .btn__spinner {
+    position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+  }
+  .btn[aria-busy="true"] .btn__spinner { display: flex; }
+  .btn__spinner svg { width: 16px; height: 16px; animation: spin 700ms linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .btn, .btn:active { transition: none; transform: none; }
+    .btn__spinner svg { animation: none; }
+  }
+</style>
+</head>
+<body>
+  <button type="button" class="btn btn--primary btn--md">Save changes</button>
+  <button type="button" class="btn btn--secondary btn--md">Cancel</button>
+  <button type="button" class="btn btn--ghost btn--md">View details</button>
+  <button type="button" class="btn btn--destructive btn--md">Delete project</button>
+  <button type="button" class="btn btn--primary btn--md" disabled>Save changes</button>
+
+  <!-- Loading example: aria-busy + preserved label for a stable width. -->
+  <button type="button" class="btn btn--primary btn--md" aria-busy="true" disabled>
+    <span class="btn__label">Save changes</span>
+    <span class="btn__spinner" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" opacity="0.25" />
+        <path fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" opacity="0.9" />
+      </svg>
+    </span>
+  </button>
+
+  <button type="button" class="btn btn--primary btn--sm">Add</button>
+  <button type="button" class="btn btn--primary btn--lg">Get started</button>
+</body>
+</html>

@@ -9,12 +9,13 @@ expert‑level guidance on **web, iOS, Android and macOS design** — plus the
 **UX, copywriting, SEO, GEO and marketing** knowledge that makes a product
 actually convert.
 
-72 curated knowledge documents · 12 tools · 7 build/review workflows · real token & a11y generators · phased roadmaps · real‑world visual examples
+72 curated knowledge documents · 13 tools · 7 build/review workflows · real token/a11y generators · production component recipes · phased roadmaps · real‑world visual examples
 
 [![npm](https://img.shields.io/npm/v/saglitzdesign-mcp?color=cb3837&logo=npm)](https://www.npmjs.com/package/saglitzdesign-mcp)
 [![skills](https://skills.sh/b/HalidSaglam/saglitzdesign-mcp)](https://skills.sh/HalidSaglam/saglitzdesign-mcp)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![MCP](https://img.shields.io/badge/Model_Context_Protocol-server-000)](https://modelcontextprotocol.io)
+[![Glama](https://glama.ai/mcp/servers/HalidSaglam/saglitzdesign-mcp/badges/score.svg)](https://glama.ai/mcp/servers/HalidSaglam/saglitzdesign-mcp)
 
 [Why](#why) · [What's inside](#whats-inside) · [Tools](#tools) · [Install](#install) · [Usage](#usage) · [Extending](#extending-the-knowledge-base) · [License](#license)
 
@@ -97,6 +98,7 @@ scores it against the critique rubric, and iterates until it passes.
 | **`seo_geo_guide`** | SEO and GEO guides, optionally narrowed to a topic. |
 | **`generate_design_tokens`** | **Real artifacts, not advice** — turns a color/spacing/type spec into CSS variables, Tailwind v4, SwiftUI, Jetpack Compose, and W3C DTCG JSON. |
 | **`audit_accessibility`** | Deterministic WCAG 2.2 checks — exact contrast ratios for color pairs + tap‑target sizes per platform, with fixes. |
+| **`get_component_recipe`** | Production‑ready, accessible reference **code** for a component (button, input, modal, toast, card, switch, tabs, empty‑state, list‑row) in react‑tailwind, html‑css, SwiftUI, or Compose — all states, ARIA, keyboard, correct motion. |
 | **`list_design_knowledge`** | Browse the full knowledge index by category / platform. |
 | **`knowledge_freshness`** | Reports each doc's age vs a per‑category staleness threshold, so the base can be kept current. |
 

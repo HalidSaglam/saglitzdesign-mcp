@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign — Card</title>
+<style>
+  :root {
+    --card-radius: 16px;        /* single radius token */
+    --ring: #2563eb;
+    --border: #e5e5e5;
+    --text: #171717;
+    --muted: #525252;
+    --surface: #ffffff;
+    --media-bg: #f5f5f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ring: #60a5fa; --border: #262626; --text: #fafafa;
+      --muted: #a3a3a3; --surface: #171717; --media-bg: #262626;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: Canvas;
+    font: 15px/1.5 system-ui, -apple-system, sans-serif; color: var(--text);
+  }
+  .grid { display: grid; gap: 24px; max-width: 760px; grid-template-columns: 1fr; }
+  @media (min-width: 640px) { .grid { grid-template-columns: 1fr 1fr; } }
+
+  /* Base card surface — border OR shadow, never both */
+  .card {
+    position: relative; display: flex; flex-direction: column; overflow: hidden;
+    background: var(--surface); border-radius: var(--card-radius);
+  }
+  .card--border { border: 1px solid var(--border); }
+  .card--shadow { box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
+  .card__media { width: 100%; aspect-ratio: 16 / 9; background: var(--media-bg); }
+  .card__media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  .card__content { display: flex; flex: 1; flex-direction: column; gap: 8px; padding: 16px; }
+  .card__title {
+    margin: 0; font-size: 1.125rem; font-weight: 600; color: var(--text);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card__body {
+    margin: 0; font-size: .875rem; color: var(--muted);
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card__footer {
+    position: relative; z-index: 2; display: flex; gap: 12px; align-items: center;
+    padding: 16px; border-top: 1px solid var(--border);
+  }
+
+  /* Footer buttons — ≥44px targets, verb-first labels, visible focus */
+  .btn {
+    display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px;
+    border: 0; border-radius: 10px; font: inherit; font-size: .875rem; font-weight: 500;
+    cursor: pointer;
+  }
+  .btn--primary { background: var(--ring); color: #fff; }
+  .btn--ghost { background: transparent; color: var(--text); }
+  .btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+  /* Clickable card: stretched link + focus-within ring on the card */
+  .card--link {
+    transition: transform .2s ease-out, box-shadow .2s ease-out;
+  }
+  .card--link:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.14); }
+  .card--link:active { transform: translateY(0); }
+  .card--link:focus-within { outline: 2px solid var(--ring); outline-offset: 2px; }
+  /* stretched link overlay — one tap target over the whole card, no nesting */
+  .card__title a { color: inherit; text-decoration: none; outline: none; }
+  .card__title a::after { content: ""; position: absolute; inset: 0; z-index: 1; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card--link { transition: none; }
+    .card--link:hover { transform: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="grid">
+    <!-- Static card with footer actions -->
+    <article class="card card--border">
+      <div class="card__media">
+        <img src="https://picsum.photos/640/360" alt="Aerial view of a coastline at sunset" loading="lazy" />
+      </div>
+      <div class="card__content">
+        <h3 class="card__title">A descriptive title that may run onto two lines and then clamp cleanly</h3>
+        <p class="card__body">Supporting copy explaining the content. Clamped to three lines so every card in a grid keeps a consistent height regardless of text length.</p>
+      </div>
+      <div class="card__footer">
+        <button type="button" class="btn btn--primary">Open project</button>
+        <button type="button" class="btn btn--ghost">Share</button>
+      </div>
+    </article>
+
+    <!-- Whole-card-clickable (stretched link) -->
+    <article class="card card--shadow card--link">
+      <div class="card__media">
+        <img src="https://picsum.photos/641/360" alt="" loading="lazy" />
+      </div>
+      <div class="card__content">
+        <h3 class="card__title">
+          <a href="/articles/design-systems">Whole card is clickable — one tap target, no nested links</a>
+        </h3>
+        <p class="card__body">The title link stretches over the card via ::after. Keyboard users Tab once; the focus ring is drawn on the card through focus-within.</p>
+      </div>
+    </article>
+  </div>
+</body>
+</html>
