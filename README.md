@@ -9,7 +9,7 @@ expert‑level guidance on **web, iOS, Android and macOS design** — plus the
 **UX, copywriting, SEO, GEO and marketing** knowledge that makes a product
 actually convert.
 
-76 curated knowledge documents · 16 tools · 7 build/review workflows · real token/color/a11y generators · production component recipes · phased roadmaps · real‑world visual examples
+77 curated knowledge documents · 17 tools · 7 build/review workflows · real token/color/a11y generators · production component recipes · phased roadmaps · real‑world visual examples
 
 [![npm](https://img.shields.io/npm/v/saglitzdesign-mcp?color=cb3837&logo=npm)](https://www.npmjs.com/package/saglitzdesign-mcp)
 [![CI](https://github.com/HalidSaglam/saglitzdesign-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/HalidSaglam/saglitzdesign-mcp/actions/workflows/ci.yml)
@@ -53,7 +53,7 @@ instead of guessing.
 | 🎨 **Design languages** | Material 3 & M3 Expressive · Apple HIG + Liquid Glass (iOS 26) · deep **iOS**, **Android** (Android 16 / M3 Expressive) and **macOS** app‑design guides · Fluent 2 · 2026 web trends · design tokens & theming (W3C DTCG) · Apple WWDC design principles (fluid interfaces) |
 | 🧩 **Components** | Buttons (hierarchy, sizing, states, labels) · forms & inputs · navigation · cards / lists / modals / sheets / empty states |
 | 🧠 **UX** | Nielsen heuristics & behavioral laws · accessibility (WCAG 2.2) · typography · color & dark mode · spacing & grids · motion · mobile UX · conversion / CRO · **data visualization** · **information architecture** · **i18n / localization (RTL)** · **AI product UX** (chat, streaming, agentic) · **onboarding & permission priming** |
-| ✨ **Craft** | Expert polish standards · typographic craft · animation craft (easing, springs, interruptibility) · UX writing & cognitive load · 0–40 critique rubric · **clean/minimal app design** · **design‑engineering** (semantic HTML, CSS architecture, tokens‑in‑code) · **ethical design** (avoiding dark patterns) |
+| ✨ **Craft** | Expert polish standards · typographic craft · animation craft (easing, springs, interruptibility) · UX writing & cognitive load · 0–40 critique rubric · **clean/minimal app design** · **design‑engineering** (semantic HTML, CSS architecture, tokens‑in‑code) · **ethical design** (avoiding dark patterns) · **iconography** (choosing & using an icon system) |
 | 📚 **Books** | Distilled classics — *design:* Norman, Krug, Refactoring UI, psychology of design, grid/typography, interaction design (Cooper/Tidwell), **emotional design (Walter/Norman)** · *marketing:* Cialdini, Positioning, StoryBrand + Ogilvy, Hooked |
 | 🗺️ **Process** | Product‑design & marketing‑website roadmaps · **design‑systems methodology** (Atomic Design, component API, governance) |
 | 📣 **Marketing** | Branding & identity · email marketing · ad creative · paywall benchmarks (RevenueCat 2026) · growth frameworks (loops/AARRR/PLG) · pricing strategy · analytics & experimentation · value proposition & JTBD · **content & distribution** (topic clusters, community, referral) · **App Store Optimization (ASO)** |
@@ -103,6 +103,7 @@ scores it against the critique rubric, and iterates until it passes.
 | **`generate_color_system`** | **One brand color → a full palette.** A 50–950 tonal scale, a cohesive neutral ramp, and light + dark semantic tokens — every text/UI pair WCAG‑verified and auto‑corrected. Feeds straight into `generate_design_tokens`. |
 | **`suggest_font_pairing`** | Curated, production font pairings for a vibe (SaaS, editorial, bold, native…) — heading + body (+ mono) with paste‑ready CSS stacks, weights, rationale, and a type scale. |
 | **`fix_contrast`** | Repairs a failing color pair: computes the **nearest** accessible color (hue/saturation preserved) that meets your WCAG target — the corrected value, not just a fail report. |
+| **`suggest_icon_library`** | Recommends the right icon system for a vibe/platform (Lucide, Phosphor, Solar, SF Symbols, Material Symbols…) — with license, install command, coverage, fit rationale, and usage rules. |
 | **`list_design_knowledge`** | Browse the full knowledge index by category / platform. |
 | **`knowledge_freshness`** | Reports each doc's age vs a per‑category staleness threshold, so the base can be kept current. |
 

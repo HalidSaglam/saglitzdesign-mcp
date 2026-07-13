@@ -1,6 +1,6 @@
 {
   "name": "saglitzdesign-mcp",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "mcpName": "io.github.HalidSaglam/saglitzdesign-mcp",
   "description": "SaglitzDesign — expert MCP server for mobile app & website design: UI, UX, buttons, design languages, SEO and GEO guidance backed by a curated knowledge base and real-world pattern research.",
   "type": "module",

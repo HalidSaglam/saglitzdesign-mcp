@@ -16,6 +16,7 @@ import { contrastReport, contrastRatio, type ContrastPair, type TapTarget } from
 import { loadRecipes, recipeText } from "./recipes.js";
 import { generateColorSystem, colorSystemReport, suggestAccessibleColor } from "./color.js";
 import { suggestFontPairing, fontPairingReport } from "./fonts.js";
+import { suggestIconLibrary, iconLibraryReport } from "./icons.js";
 import { normalizeHex } from "./tokens.js";
 
 // knowledge/ sits next to dist/ (repo root) both in dev (tsx) and after build
@@ -33,7 +34,7 @@ const recipes = loadRecipes(join(repoRoot, "recipes"));
 
 const server = new McpServer({
   name: "saglitzdesign",
-  version: "0.10.0",
+  version: "0.11.0",
 });
 
 function docHeader(d: KnowledgeDoc): string {
@@ -174,7 +175,7 @@ const REVIEW_MAP: Record<string, string[]> = {
     "buttons", "forms-inputs", "navigation", "cards-lists-modals",
     "principles-heuristics", "accessibility", "typography", "color-systems",
     "spacing-layout", "motion-microinteractions", "animation-craft", "wwdc-design-principles", "visual-craft-standards",
-    "clean-app-design", "interaction-design-classics", "ux-writing",
+    "clean-app-design", "iconography", "interaction-design-classics", "ux-writing",
     "onboarding-permission-priming", "app-store-optimization", "ethical-design",
   ],
   "macos-app": [
@@ -185,19 +186,19 @@ const REVIEW_MAP: Record<string, string[]> = {
   website: [
     "conversion-ux", "storybrand-copywriting", "value-proposition-jtbd", "buttons", "forms-inputs", "navigation",
     "principles-heuristics", "accessibility", "typography", "color-systems", "spacing-layout",
-    "motion-microinteractions", "animation-craft", "visual-craft-standards", "clean-app-design", "ux-writing",
+    "motion-microinteractions", "animation-craft", "visual-craft-standards", "clean-app-design", "iconography", "ux-writing",
     "technical-seo", "on-page-seo", "seo-for-designers", "geo-tactics-checklist", "analytics-experimentation",
     "ethical-design",
   ],
   "landing-page": [
     "conversion-ux", "storybrand-copywriting", "value-proposition-jtbd", "influence-persuasion", "buttons",
-    "typography", "color-systems", "spacing-layout", "visual-craft-standards", "clean-app-design",
+    "typography", "color-systems", "spacing-layout", "visual-craft-standards", "clean-app-design", "iconography",
     "seo-for-designers", "on-page-seo", "geo-tactics-checklist", "accessibility", "ethical-design",
   ],
   dashboard: [
     "navigation", "cards-lists-modals", "data-visualization", "design-systems-methodology",
     "principles-heuristics", "typography", "color-systems", "spacing-layout", "accessibility",
-    "buttons", "forms-inputs", "visual-craft-standards", "clean-app-design", "ux-writing", "ethical-design",
+    "buttons", "forms-inputs", "visual-craft-standards", "clean-app-design", "iconography", "ux-writing", "ethical-design",
   ],
 };
 
@@ -619,6 +620,20 @@ server.tool(
     }
     lines.push("", "_Hue & saturation preserved; only lightness moved. Re-verify with audit_accessibility._");
     return text(lines.join("\n"));
+  },
+);
+
+// ── Tool 17: suggest icon library ────────────────────────────────────────────
+server.tool(
+  "suggest_icon_library",
+  "Recommend the right icon library for a product from an intent/vibe/platform (e.g. 'minimal SaaS dashboard', 'friendly consumer app with personality', 'iOS app', 'Android Material app', 'dense admin panel'). Returns matched open-source (or platform-native) icon systems with license, install command, coverage, the reason each fits, usage rules, and universal icon best-practices. Deterministic curated guidance — icons are NOT bundled; install the chosen library in your own project. Pair with suggest_font_pairing and generate_color_system.",
+  {
+    intent: z.string().describe("Product vibe / platform / use case, e.g. 'clean developer tool', 'premium fintech app', 'iOS native app', 'Material 3 Android app', 'data-dense dashboard'"),
+    limit: z.number().int().min(1).max(6).optional().describe("How many libraries to return (default 3)"),
+  },
+  async ({ intent, limit }) => {
+    const matches = suggestIconLibrary(intent, { limit: limit ?? 3 });
+    return text(iconLibraryReport(intent, matches));
   },
 );
 
