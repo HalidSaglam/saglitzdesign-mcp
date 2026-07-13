@@ -12,8 +12,11 @@ import {
   generateTokens, validateColors, DEFAULT_SPACING, DEFAULT_RADII, DEFAULT_FONT_SIZES, DEFAULT_FONT_FAMILIES,
   type TokenSpec, type TokenFormat,
 } from "./tokens.js";
-import { contrastReport, type ContrastPair, type TapTarget } from "./a11y.js";
+import { contrastReport, contrastRatio, type ContrastPair, type TapTarget } from "./a11y.js";
 import { loadRecipes, recipeText } from "./recipes.js";
+import { generateColorSystem, colorSystemReport, suggestAccessibleColor } from "./color.js";
+import { suggestFontPairing, fontPairingReport } from "./fonts.js";
+import { normalizeHex } from "./tokens.js";
 
 // knowledge/ sits next to dist/ (repo root) both in dev (tsx) and after build
 const here = dirname(fileURLToPath(import.meta.url));
@@ -30,7 +33,7 @@ const recipes = loadRecipes(join(repoRoot, "recipes"));
 
 const server = new McpServer({
   name: "saglitzdesign",
-  version: "0.9.0",
+  version: "0.10.0",
 });
 
 function docHeader(d: KnowledgeDoc): string {
@@ -172,6 +175,7 @@ const REVIEW_MAP: Record<string, string[]> = {
     "principles-heuristics", "accessibility", "typography", "color-systems",
     "spacing-layout", "motion-microinteractions", "animation-craft", "wwdc-design-principles", "visual-craft-standards",
     "clean-app-design", "interaction-design-classics", "ux-writing",
+    "onboarding-permission-priming", "app-store-optimization", "ethical-design",
   ],
   "macos-app": [
     "macos-app-design", "apple-hig-liquid-glass", "buttons", "forms-inputs",
@@ -183,16 +187,17 @@ const REVIEW_MAP: Record<string, string[]> = {
     "principles-heuristics", "accessibility", "typography", "color-systems", "spacing-layout",
     "motion-microinteractions", "animation-craft", "visual-craft-standards", "clean-app-design", "ux-writing",
     "technical-seo", "on-page-seo", "seo-for-designers", "geo-tactics-checklist", "analytics-experimentation",
+    "ethical-design",
   ],
   "landing-page": [
     "conversion-ux", "storybrand-copywriting", "value-proposition-jtbd", "influence-persuasion", "buttons",
     "typography", "color-systems", "spacing-layout", "visual-craft-standards", "clean-app-design",
-    "seo-for-designers", "on-page-seo", "geo-tactics-checklist", "accessibility",
+    "seo-for-designers", "on-page-seo", "geo-tactics-checklist", "accessibility", "ethical-design",
   ],
   dashboard: [
     "navigation", "cards-lists-modals", "data-visualization", "design-systems-methodology",
     "principles-heuristics", "typography", "color-systems", "spacing-layout", "accessibility",
-    "buttons", "forms-inputs", "visual-craft-standards", "clean-app-design", "ux-writing",
+    "buttons", "forms-inputs", "visual-craft-standards", "clean-app-design", "ux-writing", "ethical-design",
   ],
 };
 
@@ -266,7 +271,7 @@ const ROADMAPS: Record<string, Roadmap> = {
       { title: "3. Architecture & SEO/GEO foundations", goal: "Page map by search intent; rendering, schema, llms.txt planned", docs: ["on-page-seo", "technical-seo", "geo-tactics-checklist", "navigation"] },
       { title: "4. Wireframe & visual design", goal: "Real copy in layouts; conversion patterns; clean craft pass", docs: ["conversion-ux", "hero-sections", "pricing-sections", "landing-signup", "clean-app-design", "design-engineering", ...CORE_FOUNDATION, ...CORE_CRAFT] },
       { title: "5. Build & performance", goal: "CWV budget met; semantic, extractable HTML", docs: ["seo-for-designers", "design-engineering", "accessibility", "motion-microinteractions"] },
-      { title: "6. Launch & growth loop", goal: "Instrumented funnel; growth loops; one-variable tests; GEO visibility", docs: ["marketing-website-roadmap", "growth-frameworks", "analytics-experimentation", "geo-fundamentals", "design-critique-scoring"] },
+      { title: "6. Launch & growth loop", goal: "Instrumented funnel; growth loops; one-variable tests; GEO visibility; honest conversion", docs: ["marketing-website-roadmap", "growth-frameworks", "analytics-experimentation", "geo-fundamentals", "ethical-design", "design-critique-scoring"] },
     ],
   },
   "landing-page": {
@@ -285,11 +290,11 @@ const ROADMAPS: Record<string, Roadmap> = {
     phases: [
       { title: "1. Discovery & positioning", goal: "Persona, job-to-be-done, success metric, competitor teardown", docs: ["product-design-roadmap", "positioning-messaging"] },
       { title: "2. IA & flows", goal: "≤5 tab destinations; critical flows mapped; trunk test", docs: ["navigation", "ios-app-design", "navigation-home"] },
-      { title: "3. Wireframes, copy & edge states", goal: "Real copy; empty/loading/error/offline designed", docs: ["ux-writing", "empty-states-buttons", "dont-make-me-think"] },
+      { title: "3. Wireframes, copy & edge states", goal: "Real copy; empty/loading/error/offline designed; permission priming planned", docs: ["ux-writing", "empty-states-buttons", "onboarding-permission-priming", "dont-make-me-think"] },
       { title: "4. Design system on HIG baseline", goal: "Tokens + core components; Dynamic Type; dark mode", docs: ["apple-hig-liquid-glass", "ios-app-design", ...CORE_FOUNDATION] },
       { title: "5. Hi-fi design & craft", goal: "All states, all sizes; clean & calm; motion + haptics; reduced motion", docs: ["mobile-ux", "buttons", "forms-inputs", "cards-lists-modals", "clean-app-design", "motion-microinteractions", ...CORE_CRAFT] },
-      { title: "6. Monetization & key flows", goal: "Onboarding/paywall/auth/checkout patterns; pricing & growth loops", docs: ["onboarding-paywall", "paywall-benchmarks", "pricing-strategy", "auth-patterns", "checkout-payments", "settings-lists", "hooked-retention", "growth-frameworks"] },
-      { title: "7. Validate & ship", goal: "5-user tests; a11y audit; App Store assets; activation instrumented", docs: [...CORE_VALIDATE, "analytics-experimentation", "ios-app-design"] },
+      { title: "6. Monetization & key flows", goal: "Onboarding/paywall/auth/checkout patterns; pricing & growth loops; honest, non-dark-pattern flows", docs: ["onboarding-paywall", "onboarding-permission-priming", "paywall-benchmarks", "pricing-strategy", "auth-patterns", "checkout-payments", "settings-lists", "hooked-retention", "growth-frameworks", "ethical-design"] },
+      { title: "7. Validate, list & ship", goal: "5-user tests; a11y audit; App Store listing (ASO) + assets; activation instrumented", docs: [...CORE_VALIDATE, "app-store-optimization", "analytics-experimentation", "ios-app-design"] },
     ],
   },
   "android-app": {
@@ -298,11 +303,11 @@ const ROADMAPS: Record<string, Roadmap> = {
     phases: [
       { title: "1. Discovery & positioning", goal: "Persona, job-to-be-done, success metric", docs: ["product-design-roadmap", "positioning-messaging"] },
       { title: "2. IA & flows", goal: "Nav bar destinations; critical flows; predictive back correct", docs: ["android-app-design", "navigation", "navigation-home"] },
-      { title: "3. Wireframes, copy & edge states", goal: "Real copy; all edge states", docs: ["ux-writing", "empty-states-buttons", "dont-make-me-think"] },
+      { title: "3. Wireframes, copy & edge states", goal: "Real copy; all edge states; permission priming planned", docs: ["ux-writing", "empty-states-buttons", "onboarding-permission-priming", "dont-make-me-think"] },
       { title: "4. Design system on M3 baseline", goal: "Dynamic color, shape scale, motion springs, dark theme, edge-to-edge", docs: ["material-3", "android-app-design", ...CORE_FOUNDATION] },
       { title: "5. Hi-fi design & craft", goal: "All states/sizes; clean & calm; 60fps; reduced motion", docs: ["mobile-ux", "buttons", "forms-inputs", "cards-lists-modals", "clean-app-design", "motion-microinteractions", ...CORE_CRAFT] },
-      { title: "6. Monetization & key flows", goal: "Onboarding/paywall/auth/checkout patterns; pricing & growth loops; Android conventions", docs: ["android-patterns", "onboarding-paywall", "paywall-benchmarks", "pricing-strategy", "auth-patterns", "checkout-payments", "settings-lists", "hooked-retention", "growth-frameworks"] },
-      { title: "7. Validate & ship", goal: "Usability tests; a11y (TalkBack); Play Store assets; activation instrumented", docs: [...CORE_VALIDATE, "analytics-experimentation", "android-app-design"] },
+      { title: "6. Monetization & key flows", goal: "Onboarding/paywall/auth/checkout patterns; pricing & growth loops; Android conventions; honest flows", docs: ["android-patterns", "onboarding-paywall", "onboarding-permission-priming", "paywall-benchmarks", "pricing-strategy", "auth-patterns", "checkout-payments", "settings-lists", "hooked-retention", "growth-frameworks", "ethical-design"] },
+      { title: "7. Validate, list & ship", goal: "Usability tests; a11y (TalkBack); Play Store listing (ASO) + assets; activation instrumented", docs: [...CORE_VALIDATE, "app-store-optimization", "analytics-experimentation", "android-app-design"] },
     ],
   },
   "macos-app": {
@@ -326,7 +331,7 @@ const ROADMAPS: Record<string, Roadmap> = {
       { title: "3. Wireframes, copy & edge states", goal: "Real data shapes; empty/loading/error/zero-results for every view", docs: ["ux-writing", "cards-lists-modals", "empty-states-buttons"] },
       { title: "4. Design system & data-viz", goal: "Token system + governance; density mode; tables/forms/charts standardized", docs: ["design-systems-methodology", "data-visualization", ...CORE_FOUNDATION, "forms-inputs", "buttons"] },
       { title: "5. Hi-fi & craft", goal: "Dense screens first; keyboard support; dark mode; clean & maintainable", docs: [...CORE_CRAFT, "clean-app-design", "design-engineering", "motion-microinteractions", "principles-heuristics"] },
-      { title: "6. Pricing, onboarding & retention", goal: "Value-based pricing; time-to-value <60s; activation instrumented", docs: ["pricing-strategy", "onboarding-paywall", "hooked-retention", "growth-frameworks", "conversion-ux"] },
+      { title: "6. Pricing, onboarding & retention", goal: "Value-based pricing; time-to-value <60s; activation instrumented; honest, non-manipulative flows", docs: ["pricing-strategy", "onboarding-paywall", "hooked-retention", "growth-frameworks", "conversion-ux", "ethical-design"] },
       { title: "7. Validate & iterate", goal: "Task-based tests; heuristic score; metrics + experiments", docs: [...CORE_VALIDATE, "analytics-experimentation"] },
     ],
   },
@@ -543,6 +548,77 @@ server.tool(
       return text(`No recipe for "${component}". Available components: ${recipes.map((x) => x.component).join(", ")}.`);
     }
     return text(recipeText(r, stack));
+  },
+);
+
+// ── Tool 14: generate color system ───────────────────────────────────────────
+server.tool(
+  "generate_color_system",
+  "Turn ONE brand color into a complete, accessibility-verified palette: a 50–950 tonal scale, a cohesive brand-tinted neutral ramp, and full light + dark semantic tokens (background, surface, border, text, primary/onPrimary, subtle, focus ring). Every text/UI pair is checked against WCAG 2.2 and auto-adjusted to pass. Deterministic — outputs a real palette, not advice. Feed the result into generate_design_tokens, then audit_accessibility.",
+  {
+    brand_color: z.string().describe("The brand / primary color as hex, e.g. '#4F46E5' or '#e11d48'"),
+  },
+  async ({ brand_color }) => {
+    if (!normalizeHex(brand_color)) {
+      return text(`"${brand_color}" is not a valid hex color. Use #RGB, #RRGGBB, or #RRGGBBAA (e.g. #4F46E5).`);
+    }
+    const sys = generateColorSystem(brand_color);
+    return text(colorSystemReport(brand_color, sys));
+  },
+);
+
+// ── Tool 15: suggest font pairing ────────────────────────────────────────────
+server.tool(
+  "suggest_font_pairing",
+  "Recommend production-ready font pairings for a brand/product from an intent or vibe (e.g. 'modern SaaS dashboard', 'luxury editorial', 'bold marketing landing', 'native iOS app', 'developer tool'). Returns matched heading + body (+ mono) with ready-to-paste CSS stacks, weights, source, the reason each pairing works, pairing rules, and a suggested type scale. Deterministic curated recommendations, not generic advice. Pair with generate_design_tokens to emit the fonts as tokens.",
+  {
+    intent: z.string().describe("The product/brand vibe or use case, e.g. 'trustworthy fintech dashboard', 'playful consumer app', 'minimal portfolio', 'AI developer product'"),
+    limit: z.number().int().min(1).max(6).optional().describe("How many pairings to return (default 3)"),
+  },
+  async ({ intent, limit }) => {
+    const matches = suggestFontPairing(intent, { limit: limit ?? 3 });
+    return text(fontPairingReport(intent, matches));
+  },
+);
+
+// ── Tool 16: fix contrast ────────────────────────────────────────────────────
+server.tool(
+  "fix_contrast",
+  "Repair a failing color pair: given a foreground and background hex, compute the NEAREST accessible color (hue & saturation preserved, lightness nudged) that meets the WCAG 2.2 target — not just a pass/fail report. Use when audit_accessibility flags a pair and you need the corrected value to ship. For a full pass/fail audit use audit_accessibility; to build a whole palette use generate_color_system.",
+  {
+    foreground: z.string().describe("Foreground/text hex to adjust, e.g. '#9CA3AF'"),
+    background: z.string().describe("Background hex it sits on, e.g. '#FFFFFF'"),
+    target: z.number().min(1).max(21).optional().describe("Target contrast ratio (default 4.5 = AA normal text; use 3 for large text/UI, 7 for AAA)"),
+    adjust: z.enum(["auto", "foreground", "background"]).optional().describe("Which color to move (default 'foreground' — the text)"),
+  },
+  async ({ foreground, background, target, adjust }) => {
+    const fg = normalizeHex(foreground), bg = normalizeHex(background);
+    if (!fg || !bg) return text(`Invalid hex. foreground="${foreground}", background="${background}". Use #RGB / #RRGGBB.`);
+    const goal = target ?? 4.5;
+    const current = +contrastRatio(fg, bg).toFixed(2);
+    const which = adjust ?? "foreground";
+    const lines = [
+      `# fix_contrast — target ≥ ${goal}:1`,
+      "",
+      `Current: \`${fg}\` on \`${bg}\` → **${current}:1** ${current >= goal ? "✅ already passes" : "❌ fails"}`,
+    ];
+    if (current >= goal) {
+      lines.push("", "No change needed.");
+      return text(lines.join("\n"));
+    }
+    if (which === "background") {
+      const r = suggestAccessibleColor(bg, fg, { target: goal });
+      lines.push("", `**Fixed background:** \`${r.hex}\` → **${r.ratio.toFixed(2)}:1** ${r.reached ? "✅" : "⚠️ closest achievable"} (lightness Δ ${r.lightnessDelta})`);
+    } else {
+      const r = suggestAccessibleColor(fg, bg, { target: goal });
+      lines.push("", `**Fixed foreground:** \`${r.hex}\` → **${r.ratio.toFixed(2)}:1** ${r.reached ? "✅" : "⚠️ closest achievable"} (lightness Δ ${r.lightnessDelta})`);
+      if (!r.reached) {
+        const rb = suggestAccessibleColor(bg, fg, { target: goal });
+        lines.push(`\n_Foreground alone can't reach the target from this hue. Also adjusting the background to \`${rb.hex}\` gives ${rb.ratio.toFixed(2)}:1._`);
+      }
+    }
+    lines.push("", "_Hue & saturation preserved; only lightness moved. Re-verify with audit_accessibility._");
+    return text(lines.join("\n"));
   },
 );
 

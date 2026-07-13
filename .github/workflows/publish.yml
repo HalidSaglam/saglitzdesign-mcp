@@ -1,0 +1,30 @@
+name: Publish
+
+# Publishes to npm when a version tag (e.g. v0.10.0) is pushed.
+# Requires an NPM_TOKEN repository secret (a granular/automation token —
+# these bypass interactive 2FA, which is required when the account uses a
+# passkey-only second factor).
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx vitest run
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

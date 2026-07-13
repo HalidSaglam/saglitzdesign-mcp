@@ -1,0 +1,10 @@
+# Smithery registry config — runs the published npm package over stdio.
+# https://smithery.ai/docs
+startCommand:
+  type: stdio
+  configSchema: {}
+  commandFunction: |
+    (config) => ({
+      command: "npx",
+      args: ["-y", "saglitzdesign-mcp"]
+    })

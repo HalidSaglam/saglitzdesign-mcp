@@ -124,6 +124,10 @@ export function searchKnowledge(
       const occurrences = bodyLower.split(term).length - 1;
       score += Math.min(occurrences, 10);
     }
+    // Exact-id / exact-title queries are a strong intent signal — surface that
+    // doc first even if another mentions the term more often in its body.
+    const qNorm = query.trim().toLowerCase();
+    if (doc.id === qNorm || terms.join("-") === doc.id || doc.title.toLowerCase() === qNorm) score += 20;
     if (score === 0) continue;
 
     // Best-matching section as excerpt
