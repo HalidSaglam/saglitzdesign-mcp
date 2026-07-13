@@ -1,7 +1,7 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.HalidSaglam/saglitzdesign-mcp",
-  "description": "Expert design & marketing MCP server: web/iOS/Android/macOS UI, UX, components, design languages, SEO/GEO, deterministic token/color/a11y generators, component recipes, and phased roadmaps.",
+  "description": "Expert design & marketing MCP: UI/UX, design languages, SEO/GEO, tokens, a11y, recipes.",
   "status": "active",
   "repository": {
     "url": "https://github.com/HalidSaglam/saglitzdesign-mcp",
