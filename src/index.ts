@@ -34,7 +34,7 @@ const recipes = loadRecipes(join(repoRoot, "recipes"));
 
 const server = new McpServer({
   name: "saglitzdesign",
-  version: "0.11.0",
+  version: "0.12.0",
 });
 
 function docHeader(d: KnowledgeDoc): string {
@@ -155,10 +155,10 @@ server.tool(
 // ── Tool 5: design language ──────────────────────────────────────────────────
 server.tool(
   "get_design_language",
-  "Full reference for a modern design language / platform design system: Material 3 (& Expressive), Apple HIG + Liquid Glass, deep iOS / Android / macOS app design guides, Apple's WWDC design principles (fluid interfaces, interruptibility, springs, materials), Fluent 2, 2026 web design trends, or design-token/theming architecture.",
+  "Full reference for a modern design language / platform design system: Material 3 (& Expressive), Apple HIG + Liquid Glass, deep iOS / Android / macOS app design guides, Apple Intelligence design (AI features on iOS/macOS — Writing Tools, App Intents, on-device Foundation Models), Apple's WWDC design principles (fluid interfaces, interruptibility, springs, materials), Fluent 2, 2026 web design trends, or design-token/theming architecture.",
   {
     language: z
-      .enum(["material-3", "apple-hig-liquid-glass", "ios-app-design", "android-app-design", "macos-app-design", "wwdc-design-principles", "fluent-2", "web-trends-2026", "design-tokens-theming"])
+      .enum(["material-3", "apple-hig-liquid-glass", "ios-app-design", "android-app-design", "macos-app-design", "apple-intelligence-design", "wwdc-design-principles", "fluent-2", "web-trends-2026", "design-tokens-theming"])
       .describe("Which design language / platform reference to fetch"),
   },
   async ({ language }) => {
@@ -171,7 +171,7 @@ server.tool(
 // ── Tool 6: design review checklist ─────────────────────────────────────────
 const REVIEW_MAP: Record<string, string[]> = {
   "mobile-app": [
-    "mobile-ux", "ios-app-design", "android-app-design", "android-patterns",
+    "mobile-ux", "ios-app-design", "android-app-design", "android-patterns", "apple-intelligence-design",
     "buttons", "forms-inputs", "navigation", "cards-lists-modals",
     "principles-heuristics", "accessibility", "typography", "color-systems",
     "spacing-layout", "motion-microinteractions", "animation-craft", "wwdc-design-principles", "visual-craft-standards",
@@ -179,7 +179,7 @@ const REVIEW_MAP: Record<string, string[]> = {
     "onboarding-permission-priming", "app-store-optimization", "ethical-design",
   ],
   "macos-app": [
-    "macos-app-design", "apple-hig-liquid-glass", "buttons", "forms-inputs",
+    "macos-app-design", "apple-hig-liquid-glass", "apple-intelligence-design", "buttons", "forms-inputs",
     "cards-lists-modals", "principles-heuristics", "accessibility", "typography",
     "color-systems", "spacing-layout", "wwdc-design-principles", "animation-craft", "visual-craft-standards", "ux-writing",
   ],
@@ -292,7 +292,7 @@ const ROADMAPS: Record<string, Roadmap> = {
       { title: "1. Discovery & positioning", goal: "Persona, job-to-be-done, success metric, competitor teardown", docs: ["product-design-roadmap", "positioning-messaging"] },
       { title: "2. IA & flows", goal: "≤5 tab destinations; critical flows mapped; trunk test", docs: ["navigation", "ios-app-design", "navigation-home"] },
       { title: "3. Wireframes, copy & edge states", goal: "Real copy; empty/loading/error/offline designed; permission priming planned", docs: ["ux-writing", "empty-states-buttons", "onboarding-permission-priming", "dont-make-me-think"] },
-      { title: "4. Design system on HIG baseline", goal: "Tokens + core components; Dynamic Type; dark mode", docs: ["apple-hig-liquid-glass", "ios-app-design", ...CORE_FOUNDATION] },
+      { title: "4. Design system on HIG baseline", goal: "Tokens + core components; Dynamic Type; dark mode", docs: ["apple-hig-liquid-glass", "ios-app-design", "apple-intelligence-design", ...CORE_FOUNDATION] },
       { title: "5. Hi-fi design & craft", goal: "All states, all sizes; clean & calm; motion + haptics; reduced motion", docs: ["mobile-ux", "buttons", "forms-inputs", "cards-lists-modals", "clean-app-design", "motion-microinteractions", ...CORE_CRAFT] },
       { title: "6. Monetization & key flows", goal: "Onboarding/paywall/auth/checkout patterns; pricing & growth loops; honest, non-dark-pattern flows", docs: ["onboarding-paywall", "onboarding-permission-priming", "paywall-benchmarks", "pricing-strategy", "auth-patterns", "checkout-payments", "settings-lists", "hooked-retention", "growth-frameworks", "ethical-design"] },
       { title: "7. Validate, list & ship", goal: "5-user tests; a11y audit; App Store listing (ASO) + assets; activation instrumented", docs: [...CORE_VALIDATE, "app-store-optimization", "analytics-experimentation", "ios-app-design"] },
@@ -318,7 +318,7 @@ const ROADMAPS: Record<string, Roadmap> = {
       { title: "1. Discovery & app model", goal: "Document-based vs shoebox vs utility decided; persona + metric", docs: ["product-design-roadmap", "macos-app-design"] },
       { title: "2. IA: windows, menus, shortcuts", goal: "Window anatomy, full menu bar map, shortcut table BEFORE wireframes", docs: ["macos-app-design", "navigation"] },
       { title: "3. Wireframes, copy & edge states", goal: "Real copy; empty/error/loading; resizing behavior per pane", docs: ["ux-writing", "cards-lists-modals", "dont-make-me-think"] },
-      { title: "4. Design system on macOS HIG", goal: "Tokens; density for desktop; dark mode; Liquid Glass adoption", docs: ["macos-app-design", "apple-hig-liquid-glass", ...CORE_FOUNDATION] },
+      { title: "4. Design system on macOS HIG", goal: "Tokens; density for desktop; dark mode; Liquid Glass adoption", docs: ["macos-app-design", "apple-hig-liquid-glass", "apple-intelligence-design", ...CORE_FOUNDATION] },
       { title: "5. Hi-fi design & craft", goal: "Pointer+keyboard interactions; drag & drop; undo everywhere", docs: ["buttons", "forms-inputs", "motion-microinteractions", ...CORE_CRAFT] },
       { title: "6. Validate & ship", goal: "Keyboard-only pass; VoiceOver; multi-window/multi-display QA", docs: CORE_VALIDATE },
     ],
