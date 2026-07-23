@@ -46,7 +46,7 @@ instead of guessing.
 
 ## What's inside
 
-**72 knowledge documents across 11 categories:**
+**83 knowledge documents across 11 categories:**
 
 | Category | Coverage |
 |---|---|
