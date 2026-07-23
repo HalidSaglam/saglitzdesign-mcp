@@ -17,6 +17,12 @@ import { loadRecipes, recipeText } from "./recipes.js";
 import { generateColorSystem, colorSystemReport, suggestAccessibleColor } from "./color.js";
 import { suggestFontPairing, fontPairingReport } from "./fonts.js";
 import { suggestIconLibrary, iconLibraryReport } from "./icons.js";
+import { typeScaleReport } from "./typescale.js";
+import { elevationReport } from "./elevation.js";
+import { motionReport, MOTION_IDS, type MotionStack } from "./motion.js";
+import { designLintReport } from "./lint.js";
+import { uxCopyReport } from "./uxcopy.js";
+import { createDesignSystem, type DSPlatform } from "./designsystem.js";
 import { normalizeHex } from "./tokens.js";
 
 // knowledge/ sits next to dist/ (repo root) both in dev (tsx) and after build
@@ -34,7 +40,7 @@ const recipes = loadRecipes(join(repoRoot, "recipes"));
 
 const server = new McpServer({
   name: "saglitzdesign",
-  version: "0.12.0",
+  version: "0.13.0",
 });
 
 function docHeader(d: KnowledgeDoc): string {
@@ -158,7 +164,7 @@ server.tool(
   "Full reference for a modern design language / platform design system: Material 3 (& Expressive), Apple HIG + Liquid Glass, deep iOS / Android / macOS app design guides, Apple Intelligence design (AI features on iOS/macOS — Writing Tools, App Intents, on-device Foundation Models), Apple's WWDC design principles (fluid interfaces, interruptibility, springs, materials), Fluent 2, 2026 web design trends, or design-token/theming architecture.",
   {
     language: z
-      .enum(["material-3", "apple-hig-liquid-glass", "ios-app-design", "android-app-design", "macos-app-design", "apple-intelligence-design", "wwdc-design-principles", "fluent-2", "web-trends-2026", "design-tokens-theming"])
+      .enum(["material-3", "apple-hig-liquid-glass", "ios-app-design", "android-app-design", "macos-app-design", "apple-intelligence-design", "visionos-spatial-design", "wwdc-design-principles", "fluent-2", "web-trends-2026", "design-tokens-theming"])
       .describe("Which design language / platform reference to fetch"),
   },
   async ({ language }) => {
@@ -176,7 +182,7 @@ const REVIEW_MAP: Record<string, string[]> = {
     "principles-heuristics", "accessibility", "typography", "color-systems",
     "spacing-layout", "motion-microinteractions", "animation-craft", "wwdc-design-principles", "visual-craft-standards",
     "clean-app-design", "iconography", "interaction-design-classics", "ux-writing",
-    "onboarding-permission-priming", "app-store-optimization", "ethical-design",
+    "onboarding-permission-priming", "app-store-optimization", "ethical-design", "fintech-trust",
   ],
   "macos-app": [
     "macos-app-design", "apple-hig-liquid-glass", "apple-intelligence-design", "buttons", "forms-inputs",
@@ -188,7 +194,7 @@ const REVIEW_MAP: Record<string, string[]> = {
     "principles-heuristics", "accessibility", "typography", "color-systems", "spacing-layout",
     "motion-microinteractions", "animation-craft", "visual-craft-standards", "clean-app-design", "iconography", "ux-writing",
     "technical-seo", "on-page-seo", "seo-for-designers", "geo-tactics-checklist", "analytics-experimentation",
-    "ethical-design",
+    "ethical-design", "ecommerce-checkout",
   ],
   "landing-page": [
     "conversion-ux", "storybrand-copywriting", "value-proposition-jtbd", "influence-persuasion", "buttons",
@@ -270,7 +276,7 @@ const ROADMAPS: Record<string, Roadmap> = {
       { title: "1. Positioning & strategy", goal: "One positioning statement, one conversion goal, clear value prop", docs: ["positioning-messaging", "value-proposition-jtbd", "marketing-website-roadmap"] },
       { title: "2. Message & copy", goal: "Homepage narrative + proof inventory before wireframes", docs: ["storybrand-copywriting", "influence-persuasion", "ux-writing"] },
       { title: "3. Architecture & SEO/GEO foundations", goal: "Page map by search intent; rendering, schema, llms.txt planned", docs: ["on-page-seo", "technical-seo", "geo-tactics-checklist", "navigation"] },
-      { title: "4. Wireframe & visual design", goal: "Real copy in layouts; conversion patterns; clean craft pass", docs: ["conversion-ux", "hero-sections", "pricing-sections", "landing-signup", "clean-app-design", "design-engineering", ...CORE_FOUNDATION, ...CORE_CRAFT] },
+      { title: "4. Wireframe & visual design", goal: "Real copy in layouts; conversion patterns; clean craft pass", docs: ["conversion-ux", "hero-sections", "pricing-sections", "landing-signup", "ecommerce-checkout", "clean-app-design", "design-engineering", ...CORE_FOUNDATION, ...CORE_CRAFT] },
       { title: "5. Build & performance", goal: "CWV budget met; semantic, extractable HTML", docs: ["seo-for-designers", "design-engineering", "accessibility", "motion-microinteractions"] },
       { title: "6. Launch & growth loop", goal: "Instrumented funnel; growth loops; one-variable tests; GEO visibility; honest conversion", docs: ["marketing-website-roadmap", "growth-frameworks", "analytics-experimentation", "geo-fundamentals", "ethical-design", "design-critique-scoring"] },
     ],
@@ -333,7 +339,7 @@ const ROADMAPS: Record<string, Roadmap> = {
       { title: "4. Design system & data-viz", goal: "Token system + governance; density mode; tables/forms/charts standardized", docs: ["design-systems-methodology", "data-visualization", ...CORE_FOUNDATION, "forms-inputs", "buttons"] },
       { title: "5. Hi-fi & craft", goal: "Dense screens first; keyboard support; dark mode; clean & maintainable", docs: [...CORE_CRAFT, "clean-app-design", "design-engineering", "motion-microinteractions", "principles-heuristics"] },
       { title: "6. Pricing, onboarding & retention", goal: "Value-based pricing; time-to-value <60s; activation instrumented; honest, non-manipulative flows", docs: ["pricing-strategy", "onboarding-paywall", "hooked-retention", "growth-frameworks", "conversion-ux", "ethical-design"] },
-      { title: "7. Validate & iterate", goal: "Task-based tests; heuristic score; metrics + experiments", docs: [...CORE_VALIDATE, "analytics-experimentation"] },
+      { title: "7. Validate & iterate", goal: "Task-based tests; heuristic score; clean design→dev handoff; metrics + experiments", docs: [...CORE_VALIDATE, "design-handoff", "analytics-experimentation"] },
     ],
   },
 };
@@ -634,6 +640,80 @@ server.tool(
   async ({ intent, limit }) => {
     const matches = suggestIconLibrary(intent, { limit: limit ?? 3 });
     return text(iconLibraryReport(intent, matches));
+  },
+);
+
+// ── Tool 18: generate type scale ─────────────────────────────────────────────
+server.tool(
+  "generate_type_scale",
+  "Generate a modular typographic scale from a base size and ratio: named steps (xs…6xl) with sizes, line-heights, letter-spacing, and optional fluid clamp() that scales display type down on small screens. Emits CSS custom properties and a Tailwind v4 @theme block. Deterministic real output. Pair with suggest_font_pairing and generate_design_tokens.",
+  {
+    base: z.number().min(10).max(24).optional().describe("Base body size in px (default 16)"),
+    ratio: z.number().min(1.05).max(2).optional().describe("Modular ratio (default 1.25). Common: 1.2 minor-third, 1.25 major-third, 1.333 perfect-fourth, 1.5, 1.618 golden"),
+    steps: z.number().int().min(3).max(7).optional().describe("Named steps above base (default 7 → up to 6xl)"),
+    fluid: z.boolean().optional().describe("Emit fluid clamp() for headings (default true)"),
+  },
+  async ({ base, ratio, steps, fluid }) => text(typeScaleReport({ base, ratio, steps, fluid })),
+);
+
+// ── Tool 19: generate elevation system ───────────────────────────────────────
+server.tool(
+  "generate_elevation_system",
+  "Generate a cohesive elevation / box-shadow ramp (layered ambient + direct light) with semantic level names (flat…modal), as CSS custom properties and Tailwind @theme, plus dark-mode guidance. Deterministic. Use one shadow token per level instead of hand-tuning shadows per component.",
+  {
+    levels: z.number().int().min(2).max(8).optional().describe("Number of raised levels (default 5)"),
+    hue: z.string().optional().describe("Optional shadow tint as 'H S%' e.g. '220 40%' for a cool cast (default neutral black)"),
+    strength: z.number().min(0.5).max(1.5).optional().describe("Opacity multiplier 0.5–1.5 (default 1)"),
+  },
+  async ({ levels, hue, strength }) => text(elevationReport({ levels, hue, strength })),
+);
+
+// ── Tool 20: generate motion ─────────────────────────────────────────────────
+server.tool(
+  "generate_motion",
+  "Generate a motion system: easing tokens (decelerate/accelerate/standard/spring as cubic-beziers), duration tokens, and ready-to-paste keyframe animations (fade-in, slide-up, scale-in, spring-pop, shimmer) in CSS, Framer Motion, or SwiftUI — grounded in the animation-craft rules (ease-out on enter, small distances, never scale(0), honor reduced-motion). Deterministic real code.",
+  {
+    animation: z.enum(["all", ...MOTION_IDS] as [string, ...string[]]).optional().describe("Which animation to emit (default all)"),
+    stack: z.enum(["css", "framer-motion", "swiftui", "all"]).optional().describe("Target stack (default css)"),
+  },
+  async ({ animation, stack }) => text(motionReport(animation === "all" ? undefined : animation, (stack as MotionStack) ?? "css")),
+);
+
+// ── Tool 21: design lint ─────────────────────────────────────────────────────
+server.tool(
+  "design_lint",
+  "Lint a snippet of HTML / CSS / JSX / Tailwind for design & accessibility anti-patterns: hardcoded colors instead of tokens, px font-sizes, removed focus outlines, images without alt, clickable divs, icon-only buttons without labels, positive tabindex, ad-hoc radii, !important overuse. Returns findings with line numbers, severity, and fixes. Fast static design-time check — not a replacement for a full audit. Complements design_review_checklist.",
+  {
+    code: z.string().describe("The HTML/CSS/JSX/Tailwind snippet to lint"),
+  },
+  async ({ code }) => text(designLintReport(code)),
+);
+
+// ── Tool 22: audit UX copy ───────────────────────────────────────────────────
+server.tool(
+  "audit_ux_copy",
+  "Audit UI / marketing copy objectively: readability (Flesch reading ease + grade level), average sentence length, passive voice, jargon/hype words, filler, user-focus ('you' vs 'we'), and weak CTAs. Returns metrics plus specific flagged phrases and fixes. The machine-checkable slice of UX writing — pair with get_design_doc('ux-writing') for voice/tone judgment.",
+  {
+    text: z.string().describe("The copy to audit (a headline, paragraph, button label, error message, or full page copy)"),
+  },
+  async ({ text: copy }) => text(uxCopyReport(copy)),
+);
+
+// ── Tool 23: create design system (flagship orchestrator) ────────────────────
+server.tool(
+  "create_design_system",
+  "THE one-call foundation. Turn a brand color + product vibe + platform into a complete, coherent design-system starter: accessibility-verified color (light+dark), a matched font pairing, an icon library, a modular type scale, an elevation ramp, ready-to-paste design tokens (CSS/Tailwind or SwiftUI/Compose), the components to build, and a build checklist — all generated to work together. Use this FIRST when someone says 'design/build me a website/app' to lay the foundation, then get_component_recipe for each component and get_design_roadmap for the full process.",
+  {
+    brand_color: z.string().describe("Brand / primary color as hex, e.g. '#4F46E5'"),
+    vibe: z.string().describe("Product vibe / use case, e.g. 'modern SaaS dashboard', 'premium fintech app', 'bold marketing site', 'minimal portfolio'"),
+    platform: z.enum(["web", "ios", "android", "all"]).optional().describe("Target platform (default web) — picks icon set and token output"),
+    name: z.string().optional().describe("Brand/token name (default 'Brand')"),
+  },
+  async ({ brand_color, vibe, platform, name }) => {
+    if (!normalizeHex(brand_color)) {
+      return text(`"${brand_color}" is not a valid hex color. Use #RGB, #RRGGBB, or #RRGGBBAA (e.g. #4F46E5).`);
+    }
+    return text(createDesignSystem(brand_color, vibe, (platform as DSPlatform) ?? "web", name || "Brand"));
   },
 );
 

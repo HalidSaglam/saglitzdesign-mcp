@@ -9,7 +9,7 @@ expert‑level guidance on **web, iOS, Android and macOS design** — plus the
 **UX, copywriting, SEO, GEO and marketing** knowledge that makes a product
 actually convert.
 
-78 curated knowledge documents · 17 tools · 7 build/review workflows · real token/color/a11y generators · production component recipes · phased roadmaps · real‑world visual examples
+83 curated knowledge documents · 23 tools · 7 build/review workflows · a one‑call design‑system builder · real token/color/type/elevation/motion/a11y generators · design & UX‑copy linters · production component recipes · phased roadmaps · real‑world visual examples
 
 [![npm](https://img.shields.io/npm/v/saglitzdesign-mcp?color=cb3837&logo=npm)](https://www.npmjs.com/package/saglitzdesign-mcp)
 [![CI](https://github.com/HalidSaglam/saglitzdesign-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/HalidSaglam/saglitzdesign-mcp/actions/workflows/ci.yml)
@@ -50,16 +50,16 @@ instead of guessing.
 
 | Category | Coverage |
 |---|---|
-| 🎨 **Design languages** | Material 3 & M3 Expressive · Apple HIG + Liquid Glass (iOS 26) · deep **iOS**, **Android** (Android 16 / M3 Expressive) and **macOS** app‑design guides · **Apple Intelligence design** (AI features: Writing Tools, App Intents, on‑device Foundation Models) · Fluent 2 · 2026 web trends · design tokens & theming (W3C DTCG) · Apple WWDC design principles (fluid interfaces) |
+| 🎨 **Design languages** | Material 3 & M3 Expressive · Apple HIG + Liquid Glass (iOS 26) · deep **iOS**, **Android** (Android 16 / M3 Expressive) and **macOS** app‑design guides · **Apple Intelligence design** (AI features: Writing Tools, App Intents, on‑device Foundation Models) · **visionOS / spatial design** (Vision Pro) · Fluent 2 · 2026 web trends · design tokens & theming (W3C DTCG) · Apple WWDC design principles (fluid interfaces) |
 | 🧩 **Components** | Buttons (hierarchy, sizing, states, labels) · forms & inputs · navigation · cards / lists / modals / sheets / empty states |
 | 🧠 **UX** | Nielsen heuristics & behavioral laws · accessibility (WCAG 2.2) · typography · color & dark mode · spacing & grids · motion · mobile UX · conversion / CRO · **data visualization** · **information architecture** · **i18n / localization (RTL)** · **AI product UX** (chat, streaming, agentic) · **onboarding & permission priming** |
 | ✨ **Craft** | Expert polish standards · typographic craft · animation craft (easing, springs, interruptibility) · UX writing & cognitive load · 0–40 critique rubric · **clean/minimal app design** · **design‑engineering** (semantic HTML, CSS architecture, tokens‑in‑code) · **ethical design** (avoiding dark patterns) · **iconography** (choosing & using an icon system) |
 | 📚 **Books** | Distilled classics — *design:* Norman, Krug, Refactoring UI, psychology of design, grid/typography, interaction design (Cooper/Tidwell), **emotional design (Walter/Norman)** · *marketing:* Cialdini, Positioning, StoryBrand + Ogilvy, Hooked |
-| 🗺️ **Process** | Product‑design & marketing‑website roadmaps · **design‑systems methodology** (Atomic Design, component API, governance) |
-| 📣 **Marketing** | Branding & identity · email marketing · ad creative · paywall benchmarks (RevenueCat 2026) · growth frameworks (loops/AARRR/PLG) · pricing strategy · analytics & experimentation · value proposition & JTBD · **content & distribution** (topic clusters, community, referral) · **App Store Optimization (ASO)** |
+| 🗺️ **Process** | Product‑design & marketing‑website roadmaps · **design‑systems methodology** (Atomic Design, component API, governance) · **design handoff** (Figma Dev Mode, Code Connect, design↔dev) |
+| 📣 **Marketing** | Branding & identity · email marketing · **HTML email development** (Outlook, dark mode, bulletproof) · ad creative · paywall benchmarks (RevenueCat 2026) · growth frameworks (loops/AARRR/PLG) · pricing strategy · analytics & experimentation · value proposition & JTBD · **content & distribution** (topic clusters, community, referral) · **App Store Optimization (ASO)** |
 | 🔎 **SEO** | Technical SEO (Core Web Vitals) · on‑page & E‑E‑A‑T · SEO for designers |
 | 🤖 **GEO** | Generative Engine Optimization — visibility in ChatGPT / Perplexity / AI Overviews, llms.txt, citation tactics |
-| 🖼️ **Patterns & examples** | Real‑world patterns studied from top apps & sites, plus a curated screenshot library served as images |
+| 🖼️ **Patterns & examples** | Real‑world patterns studied from top apps & sites (incl. **e‑commerce & checkout** and **fintech / trust** flows), plus a curated screenshot library served as images |
 
 ## Workflows (`/` prompts) — "build me a…"
 
@@ -89,7 +89,8 @@ scores it against the critique rubric, and iterates until it passes.
 
 | Tool | What it does |
 |---|---|
-| **`get_design_roadmap`** | **Start here.** A phased, expert process for a project type (website, landing page, iOS / Android / macOS app, SaaS web app) — each phase has a goal, exit criteria, and the exact docs to read. |
+| **`create_design_system`** | **The one‑call foundation.** Brand color + vibe + platform → a complete, coherent starter: WCAG‑verified color (light+dark), matched fonts, an icon library, a modular type scale, an elevation ramp, ready‑to‑paste tokens, the components to build, and a checklist — all generated to work together. |
+| **`get_design_roadmap`** | **Start here for process.** A phased, expert process for a project type (website, landing page, iOS / Android / macOS app, SaaS web app) — each phase has a goal, exit criteria, and the exact docs to read. |
 | **`search_design_knowledge`** | Natural‑language search across everything, returning the most relevant section of the best‑matching docs. |
 | **`get_design_doc`** | Fetch any document in full by id. |
 | **`get_component_guidance`** | Deep dive on a component or screen (button, form, paywall, hero, pricing…) — specs + real‑world patterns. |
@@ -104,6 +105,11 @@ scores it against the critique rubric, and iterates until it passes.
 | **`suggest_font_pairing`** | Curated, production font pairings for a vibe (SaaS, editorial, bold, native…) — heading + body (+ mono) with paste‑ready CSS stacks, weights, rationale, and a type scale. |
 | **`fix_contrast`** | Repairs a failing color pair: computes the **nearest** accessible color (hue/saturation preserved) that meets your WCAG target — the corrected value, not just a fail report. |
 | **`suggest_icon_library`** | Recommends the right icon system for a vibe/platform (Lucide, Phosphor, Solar, SF Symbols, Material Symbols…) — with license, install command, coverage, fit rationale, and usage rules. |
+| **`generate_type_scale`** | A modular type scale (base × ratio) → named steps with line‑heights, tracking, and fluid `clamp()`, as CSS variables + Tailwind. |
+| **`generate_elevation_system`** | A cohesive layered box‑shadow ramp (flat→modal) as CSS variables + Tailwind, with dark‑mode guidance. |
+| **`generate_motion`** | Easing + duration tokens and ready‑to‑paste keyframe animations (fade/slide/scale/spring/shimmer) in CSS, Framer Motion, or SwiftUI — reduced‑motion included. |
+| **`design_lint`** | Lints an HTML/CSS/JSX/Tailwind snippet for design & a11y anti‑patterns (hardcoded values, killed focus, missing alt/labels, clickable divs…) with line numbers and fixes. |
+| **`audit_ux_copy`** | Objective copy audit — readability (Flesch), sentence length, passive voice, jargon, filler, user‑focus, weak CTAs — with flagged phrases and fixes. |
 | **`list_design_knowledge`** | Browse the full knowledge index by category / platform. |
 | **`knowledge_freshness`** | Reports each doc's age vs a per‑category staleness threshold, so the base can be kept current. |
 
