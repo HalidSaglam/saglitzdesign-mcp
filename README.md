@@ -241,6 +241,14 @@ included in this repository or any published package. Without them,
 To rebuild the local image library (or add your own examples), see
 [`scripts/regenerate-examples.md`](scripts/regenerate-examples.md).
 
+## Find it on
+
+<a href="https://glama.ai/mcp/servers/HalidSaglam/saglitzdesign-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/HalidSaglam/saglitzdesign-mcp/badges/card.svg" alt="saglitzdesign-mcp MCP server" />
+</a>
+
+Also listed in the [official MCP Registry](https://registry.modelcontextprotocol.io) and on [npm](https://www.npmjs.com/package/saglitzdesign-mcp).
+
 ## License
 
 [MIT](LICENSE) © 2026 Saglitz Design.
