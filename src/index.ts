@@ -40,7 +40,7 @@ const recipes = loadRecipes(join(repoRoot, "recipes"));
 
 const server = new McpServer({
   name: "saglitzdesign",
-  version: "0.13.0",
+  version: "0.14.0",
 });
 
 function docHeader(d: KnowledgeDoc): string {
@@ -59,13 +59,33 @@ function text(s: string) {
 const CATEGORIES = ["design-language", "component", "ux", "seo", "geo", "pattern", "craft", "book", "process", "marketing"] as const;
 const PLATFORMS = ["mobile", "web", "macos"] as const;
 
+// Every tool here is read-only, deterministic (same input → same output), and
+// closed-world (reads only bundled local files; no network/external calls).
+// Registering with these MCP annotations + a human title makes that contract
+// explicit to clients and evaluators. All tools go through this wrapper.
+const READONLY_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+function tool(name: string, description: string, schema: Record<string, unknown>, cb: (args: any) => unknown) {
+  const title = name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return (server.registerTool as (n: string, c: unknown, cb: unknown) => unknown)(
+    name,
+    { title, description, inputSchema: schema, annotations: { title, ...READONLY_ANNOTATIONS } },
+    cb,
+  );
+}
+
 // ── Tool 1: list ─────────────────────────────────────────────────────────────
-server.tool(
+tool(
   "list_design_knowledge",
-  "List every document in the SaglitzDesign knowledge base (design languages, UI components, UX, SEO, GEO, real-world patterns). Use this first to see what expertise is available, then fetch docs with get_design_doc.",
+  "List the knowledge-base index (design languages, UI components, UX, craft, books, process, marketing, SEO, GEO, patterns). Returns every document grouped by category — each with its id, title, platform, and tags. Use this first to discover what's available and get exact ids; then read one with get_design_doc, or search by need with search_design_knowledge.",
   {
-    category: z.enum(CATEGORIES).optional().describe("Filter by category"),
-    platform: z.enum(PLATFORMS).optional().describe("Filter by platform (docs marked 'both' always included)"),
+    category: z.enum(CATEGORIES).optional().describe("Filter to one category, e.g. 'component', 'ux', 'marketing'. Omit for all."),
+    platform: z.enum(PLATFORMS).optional().describe("Filter to one platform: 'mobile', 'web', or 'macos' (docs marked 'both' are always included). Omit for all."),
   },
   async ({ category, platform }) => {
     const filtered = docs.filter(
@@ -90,9 +110,9 @@ server.tool(
 );
 
 // ── Tool 2: search ───────────────────────────────────────────────────────────
-server.tool(
+tool(
   "search_design_knowledge",
-  "Search the design knowledge base with a natural-language query. Covers web, iOS, Android and macOS design: UI components (buttons, forms, navigation…), UX principles, accessibility, typography, color, spacing, motion, conversion, copywriting, SEO, GEO (AI-search optimization), design languages (Material 3, Apple HIG/Liquid Glass, Fluent 2, iOS/macOS app design), expert craft standards, distilled classic design & marketing books (Norman, Krug, Refactoring UI, Cialdini, StoryBrand, Positioning, Hooked…), design-process roadmaps, and real-world patterns researched from top apps/sites (Mobbin). Returns the best-matching docs with the most relevant section excerpted.",
+  "Search the whole knowledge base with a natural-language query — UI components, UX, accessibility, typography, color, motion, conversion, copywriting, SEO/GEO, platform design languages, craft standards, distilled design & marketing books, roadmaps, and real-world app/site patterns. Returns the top-matching documents, each with its single most relevant section excerpted and its id. Use for open-ended 'how should I…' questions; if you already know the id use get_design_doc, to browse everything use list_design_knowledge.",
   {
     query: z.string().describe("What you need guidance on, e.g. 'primary button size mobile', 'pricing page layout', 'dark mode colors', 'llms.txt'"),
     category: z.enum(CATEGORIES).optional().describe("Restrict to one category"),
@@ -113,11 +133,11 @@ server.tool(
 );
 
 // ── Tool 3: get full doc ─────────────────────────────────────────────────────
-server.tool(
+tool(
   "get_design_doc",
-  "Fetch one knowledge-base document in full by its id (ids come from list_design_knowledge or search results).",
+  "Fetch one knowledge-base document in full by its id. Returns the whole document — title, metadata, prescriptive body, and cited sources. Ids come from list_design_knowledge or search_design_knowledge; if the id is unknown it suggests near matches.",
   {
-    id: z.string().describe("Document id, e.g. 'buttons', 'material-3', 'geo-tactics-checklist'"),
+    id: z.string().describe("Exact document id, e.g. 'buttons', 'material-3', 'accessibility', 'geo-tactics-checklist'. Get ids from list_design_knowledge or search results."),
   },
   async ({ id }) => {
     const doc = docs.find((d) => d.id === id);
@@ -130,12 +150,12 @@ server.tool(
 );
 
 // ── Tool 4: component guidance ───────────────────────────────────────────────
-server.tool(
+tool(
   "get_component_guidance",
-  "Expert guidance for designing a specific UI component or screen pattern (button, form, navigation, card, modal, hero section, pricing page, onboarding, paywall, checkout, empty state, dashboard…). Combines component specs with real-world patterns observed in top apps and websites.",
+  "Get expert guidance for designing one UI component or screen pattern (button, form, navigation, card, modal, hero, pricing page, onboarding, paywall, checkout, empty state, dashboard…). Returns the most relevant docs in full — specs, states, sizing, anti-patterns, and real-world patterns from top apps/sites. Use when designing a specific element; for copy-paste code use get_component_recipe, for annotated screenshots use get_design_examples.",
   {
-    component: z.string().describe("Component or pattern name, e.g. 'primary button', 'signup form', 'bottom tab bar', 'hero section', 'paywall'"),
-    platform: z.enum(PLATFORMS).optional().describe("Target platform — strongly recommended"),
+    component: z.string().describe("Component or pattern name, e.g. 'primary button', 'signup form', 'bottom tab bar', 'hero section', 'paywall'."),
+    platform: z.enum(PLATFORMS).optional().describe("Target platform ('mobile' | 'web' | 'macos') — strongly recommended so guidance matches the platform's conventions."),
   },
   async ({ component, platform }) => {
     const compResults = searchKnowledge(docs, component, { platform, category: "component", limit: 2 });
@@ -159,13 +179,13 @@ server.tool(
 );
 
 // ── Tool 5: design language ──────────────────────────────────────────────────
-server.tool(
+tool(
   "get_design_language",
-  "Full reference for a modern design language / platform design system: Material 3 (& Expressive), Apple HIG + Liquid Glass, deep iOS / Android / macOS app design guides, Apple Intelligence design (AI features on iOS/macOS — Writing Tools, App Intents, on-device Foundation Models), Apple's WWDC design principles (fluid interfaces, interruptibility, springs, materials), Fluent 2, 2026 web design trends, or design-token/theming architecture.",
+  "Fetch the full reference document for one modern design language or platform design system (Material 3, Apple HIG/Liquid Glass, iOS/Android/macOS, Apple Intelligence, visionOS, Fluent 2, 2026 web trends, design tokens). Returns the complete spec — rules, do/don't lists, numbers, and examples — for the chosen system. Use when you need the authoritative platform baseline before designing; for a specific component use get_component_guidance, and to plan a whole project use get_design_roadmap.",
   {
     language: z
       .enum(["material-3", "apple-hig-liquid-glass", "ios-app-design", "android-app-design", "macos-app-design", "apple-intelligence-design", "visionos-spatial-design", "wwdc-design-principles", "fluent-2", "web-trends-2026", "design-tokens-theming"])
-      .describe("Which design language / platform reference to fetch"),
+      .describe("Which reference to fetch. e.g. 'material-3' (Android/Material), 'apple-hig-liquid-glass' or 'ios-app-design' (iOS), 'macos-app-design', 'visionos-spatial-design' (Vision Pro), 'web-trends-2026', 'design-tokens-theming'."),
   },
   async ({ language }) => {
     const doc = docs.find((d) => d.id === language);
@@ -219,7 +239,7 @@ const FOCUS_MAP: Record<string, (d: KnowledgeDoc) => boolean> = {
   copywriting: (d) => ["ux-writing", "storybrand-copywriting", "positioning-messaging"].includes(d.id),
 };
 
-server.tool(
+tool(
   "design_review_checklist",
   "Generate a structured design-review checklist for a project type (mobile app, website, landing page, dashboard), assembled from the knowledge base: key rules and anti-patterns per area. Use it to audit an existing design or as acceptance criteria for a new one.",
   {
@@ -344,7 +364,7 @@ const ROADMAPS: Record<string, Roadmap> = {
   },
 };
 
-server.tool(
+tool(
   "get_design_roadmap",
   "The SaglitzDesign roadmap: a phased, expert design process for a given project type (website, landing page, iOS app, Android app, macOS app, SaaS web app). Each phase has a goal and the exact knowledge-base docs to consult. Use this FIRST when starting any design project, then fetch phase docs as you reach them.",
   {
@@ -374,12 +394,12 @@ server.tool(
 );
 
 // ── Tool 8: SEO / GEO guide ──────────────────────────────────────────────────
-server.tool(
+tool(
   "seo_geo_guide",
-  "Search-optimization expertise for websites: classic SEO (technical, on-page, design-impact) and GEO — Generative Engine Optimization for AI answer engines (ChatGPT, Perplexity, Google AI Overviews). Returns the full relevant guides.",
+  "SEO and GEO expertise for websites — classic SEO (technical, on-page, design-impact) and GEO, Generative Engine Optimization for AI answer engines (ChatGPT, Perplexity, Google AI Overviews, llms.txt, citations). Returns the full relevant guide docs, optionally narrowed to a topic. Use when planning or auditing a site's discoverability; pair with get_design_roadmap('website') for the full process.",
   {
-    scope: z.enum(["seo", "geo", "both"]).describe("Which discipline"),
-    topic: z.string().optional().describe("Optional narrower topic, e.g. 'core web vitals', 'llms.txt', 'structured data'"),
+    scope: z.enum(["seo", "geo", "both"]).describe("Which discipline: 'seo' (classic search), 'geo' (AI answer engines), or 'both'."),
+    topic: z.string().optional().describe("Optional narrower topic, e.g. 'core web vitals', 'llms.txt', 'structured data'. Omit to get the full guides."),
   },
   async ({ scope, topic }) => {
     const cats = scope === "both" ? ["seo", "geo"] : [scope];
@@ -397,7 +417,7 @@ server.tool(
 );
 
 // ── Tool 9: visual design examples ──────────────────────────────────────────
-server.tool(
+tool(
   "get_design_examples",
   "Fetch REAL screenshot examples of a design pattern from top apps and websites (curated from Mobbin). Returns the actual images plus notes on what each does well — use these as visual references when designing paywalls, onboarding, auth, navigation, checkout, settings, empty states, heroes, pricing, features, social proof, signup pages, dashboards and footers.",
   {
@@ -444,7 +464,7 @@ const STALE_DAYS: Record<string, number> = {
   component: 365, ux: 365, craft: 365, book: 730, process: 365, marketing: 240,
 };
 
-server.tool(
+tool(
   "knowledge_freshness",
   "Report how fresh each knowledge document is (age since last verification vs its category's staleness threshold). Use this to decide which docs need re-research; refresh workflow is documented in the repo's /refresh-knowledge command.",
   {
@@ -476,7 +496,7 @@ server.tool(
 );
 
 // ── Tool 11: generate design tokens ──────────────────────────────────────────
-server.tool(
+tool(
   "generate_design_tokens",
   "Turn a design-token spec (semantic colors + optional spacing/radius/type scales) into REAL, ready-to-use artifact files: CSS custom properties, Tailwind v4 @theme, SwiftUI, Jetpack Compose, and W3C DTCG JSON. Deterministic — outputs code, not advice. Use it to give a project one source of truth across web, iOS and Android. Pair with audit_accessibility to verify the palette's contrast.",
   {
@@ -505,7 +525,7 @@ server.tool(
 );
 
 // ── Tool 12: accessibility audit ─────────────────────────────────────────────
-server.tool(
+tool(
   "audit_accessibility",
   "Deterministic design-time accessibility checks: WCAG 2.2 color-contrast ratios for text/UI color pairs, and minimum tap/target sizes per platform (iOS 44pt, Android 48dp, web 24px min / 44 recommended). Returns exact ratios, pass/fail, and fixes — the machine-verifiable slice of a11y you can run before code. For keyboard/screen-reader/Dynamic Type checks, see get_design_doc('accessibility').",
   {
@@ -534,7 +554,7 @@ server.tool(
 );
 
 // ── Tool 13: component recipe ────────────────────────────────────────────────
-server.tool(
+tool(
   "get_component_recipe",
   "Get production-ready, accessible reference CODE for a UI component in a chosen stack (react-tailwind, html-css, swiftui, compose) — not advice, actual copy-paste code with all states, ARIA/accessibility, keyboard support and correct motion, grounded in the SaglitzDesign specs. Use when you need to actually build a button, input, modal, toast, card, switch, tabs, empty-state, or list-row. Pair with get_component_guidance (the design rationale) and generate_design_tokens (the theme).",
   {
@@ -559,7 +579,7 @@ server.tool(
 );
 
 // ── Tool 14: generate color system ───────────────────────────────────────────
-server.tool(
+tool(
   "generate_color_system",
   "Turn ONE brand color into a complete, accessibility-verified palette: a 50–950 tonal scale, a cohesive brand-tinted neutral ramp, and full light + dark semantic tokens (background, surface, border, text, primary/onPrimary, subtle, focus ring). Every text/UI pair is checked against WCAG 2.2 and auto-adjusted to pass. Deterministic — outputs a real palette, not advice. Feed the result into generate_design_tokens, then audit_accessibility.",
   {
@@ -575,7 +595,7 @@ server.tool(
 );
 
 // ── Tool 15: suggest font pairing ────────────────────────────────────────────
-server.tool(
+tool(
   "suggest_font_pairing",
   "Recommend production-ready font pairings for a brand/product from an intent or vibe (e.g. 'modern SaaS dashboard', 'luxury editorial', 'bold marketing landing', 'native iOS app', 'developer tool'). Returns matched heading + body (+ mono) with ready-to-paste CSS stacks, weights, source, the reason each pairing works, pairing rules, and a suggested type scale. Deterministic curated recommendations, not generic advice. Pair with generate_design_tokens to emit the fonts as tokens.",
   {
@@ -589,7 +609,7 @@ server.tool(
 );
 
 // ── Tool 16: fix contrast ────────────────────────────────────────────────────
-server.tool(
+tool(
   "fix_contrast",
   "Repair a failing color pair: given a foreground and background hex, compute the NEAREST accessible color (hue & saturation preserved, lightness nudged) that meets the WCAG 2.2 target — not just a pass/fail report. Use when audit_accessibility flags a pair and you need the corrected value to ship. For a full pass/fail audit use audit_accessibility; to build a whole palette use generate_color_system.",
   {
@@ -630,7 +650,7 @@ server.tool(
 );
 
 // ── Tool 17: suggest icon library ────────────────────────────────────────────
-server.tool(
+tool(
   "suggest_icon_library",
   "Recommend the right icon library for a product from an intent/vibe/platform (e.g. 'minimal SaaS dashboard', 'friendly consumer app with personality', 'iOS app', 'Android Material app', 'dense admin panel'). Returns matched open-source (or platform-native) icon systems with license, install command, coverage, the reason each fits, usage rules, and universal icon best-practices. Deterministic curated guidance — icons are NOT bundled; install the chosen library in your own project. Pair with suggest_font_pairing and generate_color_system.",
   {
@@ -644,7 +664,7 @@ server.tool(
 );
 
 // ── Tool 18: generate type scale ─────────────────────────────────────────────
-server.tool(
+tool(
   "generate_type_scale",
   "Generate a modular typographic scale from a base size and ratio: named steps (xs…6xl) with sizes, line-heights, letter-spacing, and optional fluid clamp() that scales display type down on small screens. Emits CSS custom properties and a Tailwind v4 @theme block. Deterministic real output. Pair with suggest_font_pairing and generate_design_tokens.",
   {
@@ -657,7 +677,7 @@ server.tool(
 );
 
 // ── Tool 19: generate elevation system ───────────────────────────────────────
-server.tool(
+tool(
   "generate_elevation_system",
   "Generate a cohesive elevation / box-shadow ramp (layered ambient + direct light) with semantic level names (flat…modal), as CSS custom properties and Tailwind @theme, plus dark-mode guidance. Deterministic. Use one shadow token per level instead of hand-tuning shadows per component.",
   {
@@ -669,7 +689,7 @@ server.tool(
 );
 
 // ── Tool 20: generate motion ─────────────────────────────────────────────────
-server.tool(
+tool(
   "generate_motion",
   "Generate a motion system: easing tokens (decelerate/accelerate/standard/spring as cubic-beziers), duration tokens, and ready-to-paste keyframe animations (fade-in, slide-up, scale-in, spring-pop, shimmer) in CSS, Framer Motion, or SwiftUI — grounded in the animation-craft rules (ease-out on enter, small distances, never scale(0), honor reduced-motion). Deterministic real code.",
   {
@@ -680,7 +700,7 @@ server.tool(
 );
 
 // ── Tool 21: design lint ─────────────────────────────────────────────────────
-server.tool(
+tool(
   "design_lint",
   "Lint a snippet of HTML / CSS / JSX / Tailwind for design & accessibility anti-patterns: hardcoded colors instead of tokens, px font-sizes, removed focus outlines, images without alt, clickable divs, icon-only buttons without labels, positive tabindex, ad-hoc radii, !important overuse. Returns findings with line numbers, severity, and fixes. Fast static design-time check — not a replacement for a full audit. Complements design_review_checklist.",
   {
@@ -690,7 +710,7 @@ server.tool(
 );
 
 // ── Tool 22: audit UX copy ───────────────────────────────────────────────────
-server.tool(
+tool(
   "audit_ux_copy",
   "Audit UI / marketing copy objectively: readability (Flesch reading ease + grade level), average sentence length, passive voice, jargon/hype words, filler, user-focus ('you' vs 'we'), and weak CTAs. Returns metrics plus specific flagged phrases and fixes. The machine-checkable slice of UX writing — pair with get_design_doc('ux-writing') for voice/tone judgment.",
   {
@@ -700,7 +720,7 @@ server.tool(
 );
 
 // ── Tool 23: create design system (flagship orchestrator) ────────────────────
-server.tool(
+tool(
   "create_design_system",
   "THE one-call foundation. Turn a brand color + product vibe + platform into a complete, coherent design-system starter: accessibility-verified color (light+dark), a matched font pairing, an icon library, a modular type scale, an elevation ramp, ready-to-paste design tokens (CSS/Tailwind or SwiftUI/Compose), the components to build, and a build checklist — all generated to work together. Use this FIRST when someone says 'design/build me a website/app' to lay the foundation, then get_component_recipe for each component and get_design_roadmap for the full process.",
   {
