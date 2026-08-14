@@ -881,7 +881,10 @@ tool(
 tool(
   "audit_security",
   "Audit a web project or snippet for security defects a frontend actually ships: missing or weak Content-Security-Policy, absent HSTS, unpinned cross-origin scripts, mixed content, credentials in localStorage, secret-named NEXT_PUBLIC_/VITE_ variables, unsandboxed third-party iframes, wildcard postMessage, raw-HTML sinks with no sanitiser, production source maps and un-ignored .env files. "
-    + `${HEADER_SOURCES_SENTENCE} — this makes no network request, so it also reports what it could not see. `
+    + `${HEADER_SOURCES_SENTENCE}. `
+    + "It reads source and does not measure anything: it makes no request to your site, tests no live endpoint, and no finding is or can be a penetration-test or vulnerability-scan result — so do not call it expecting one. "
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, file, line), a severity summary, and a machine-readable `notVisible` list of what it could not check. "
+    + "A missing or non-directory path is returned as an error result, not as an empty audit. "
     + "Pair with audit_project for design drift and audit_accessibility for WCAG.",
   {
     path: z.string().optional().describe("Directory to audit. Absolute paths are strongly preferred. Required for configuration and header rules — a snippet cannot show them."),
@@ -890,7 +893,10 @@ tool(
   },
   async ({ path, code, filename }) => {
     if (!path && !code) {
-      return text("Pass `path` for a project audit, or `code` for a single snippet. A project audit is the useful one — header and CSP rules need configuration files.");
+      return {
+        ...text("Pass `path` for a project audit, or `code` for a single snippet. A project audit is the useful one — header and CSP rules need configuration files."),
+        isError: true,
+      };
     }
     if (path) {
       const abs = isAbsolute(path) ? path : resolve(process.cwd(), path);
@@ -898,15 +904,18 @@ tool(
       try {
         stat = statSync(abs);
       } catch {
-        return text(`There is no directory at \`${abs}\`. Pass an absolute path to the folder you want audited.`);
+        return { ...text(`There is no directory at \`${abs}\`. Pass an absolute path to the folder you want audited.`), isError: true };
       }
       if (!stat.isDirectory()) {
-        return text(`\`${abs}\` is a file, not a directory. Pass its parent folder, or use \`code\` for a single snippet.`);
+        return { ...text(`\`${abs}\` is a file, not a directory. Pass its parent folder, or use \`code\` for a single snippet.`), isError: true };
       }
-      return text(securityReport({ root: abs }));
+      const { text: body, structured } = securityReport({ root: abs });
+      return { ...text(body), structuredContent: structured };
     }
-    return text(securityReport({ source: code, filename }));
+    const { text: body, structured } = securityReport({ source: code, filename });
+    return { ...text(body), structuredContent: structured };
   },
+  AUDIT_OUTPUT_SCHEMA,
 );
 
 // ── Tool 31: audit generic design ────────────────────────────────────────────

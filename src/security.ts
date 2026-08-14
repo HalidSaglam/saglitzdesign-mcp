@@ -9,7 +9,7 @@
 // output is unreliable, and the true finding in the next run gets skimmed past
 // with the rest.
 
-import { type LintFinding } from "./lint.js";
+import { type LintFinding, type AuditReport, auditStructuredFrom, renderNotVisibleSection } from "./lint.js";
 import {
   scanTags, type Tag, maskComments, bareAttrs, findAttr, hasAttr as sharedHasAttr,
 } from "./scan.js";
@@ -1353,20 +1353,26 @@ const RECOGNISED_SHAPES = [
   "SvelteKit's `hooks.server.ts` and `kit.csp.directives`, and `<meta http-equiv>`",
 ].join("; ");
 
-const NOT_VISIBLE = `## Not visible to this audit
+export const SECURITY_PREAMBLE =
+  `This audit reads local files only — it makes no request to your site. It cannot see:`;
 
-This audit reads local files only — it makes no request to your site. It cannot see:
+/**
+ * What `audit_security` structurally cannot see, one entry per bullet in the
+ * "Not visible to this audit" section it renders.
+ */
+export const SECURITY_NOT_VISIBLE: string[] = [
+  `Headers added by a CDN, WAF or reverse proxy (Cloudflare, Fastly, nginx) after your app responds.`,
+  `Headers set by runtime logic that depends on the request.`,
+  `Any value assembled from variables, which is reported as undeterminable rather than absent.`,
+  `Server-side concerns entirely: authorization, injection, and access control are out of scope for a design server.`,
+  `**Header shapes it does not recognise.** It reads ${RECOGNISED_SHAPES}. A library that builds headers without naming them in your source — \`helmet\`, a framework preset, a shared middleware package — is invisible to it, and so is any shape not in that list. If your headers are set some other way, a "missing" finding above is about this audit's reach, not about your site.`,
+  `**A truncated scan cannot prove absence.** If the scan line above says it stopped at a cap, every "missing" finding is unconfirmed and is reported as a note rather than a defect.`,
+];
 
-- Headers added by a CDN, WAF or reverse proxy (Cloudflare, Fastly, nginx) after your app responds.
-- Headers set by runtime logic that depends on the request.
-- Any value assembled from variables, which is reported as undeterminable rather than absent.
-- Server-side concerns entirely: authorization, injection, and access control are out of scope for a design server.
-- **Header shapes it does not recognise.** It reads ${RECOGNISED_SHAPES}. A library that builds headers without naming them in your source — \`helmet\`, a framework preset, a shared middleware package — is invisible to it, and so is any shape not in that list. If your headers are set some other way, a "missing" finding above is about this audit's reach, not about your site.
-- **A truncated scan cannot prove absence.** If the scan line above says it stopped at a cap, every "missing" finding is unconfirmed and is reported as a note rather than a defect.
+export const SECURITY_CLOSING =
+  `A clean result here means these files declare nothing wrong. Confirm the emitted headers on a real response before treating it as coverage.`;
 
-A clean result here means these files declare nothing wrong. Confirm the emitted headers on a real response before treating it as coverage.`;
-
-export function securityReport(input: { source?: string; filename?: string; root?: string }): string {
+export function securityReport(input: { source?: string; filename?: string; root?: string }): AuditReport {
   const lines: string[] = ["# Security audit", ""];
   let findings: LintFinding[] = [];
   let scanned = "";
@@ -1430,6 +1436,9 @@ export function securityReport(input: { source?: string; filename?: string; root
     }
   }
 
-  lines.push(NOT_VISIBLE);
-  return lines.join("\n");
+  lines.push(...renderNotVisibleSection(SECURITY_PREAMBLE, SECURITY_NOT_VISIBLE, SECURITY_CLOSING));
+  return {
+    text: lines.join("\n"),
+    structured: auditStructuredFrom({ findings, notVisible: SECURITY_NOT_VISIBLE, file: input.filename }),
+  };
 }

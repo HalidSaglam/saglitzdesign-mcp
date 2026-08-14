@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { securitySourceRules, securityConfigRules, extractHeaders, securityReport } from "../dist/security.js";
+import {
+  securitySourceRules, securityConfigRules, extractHeaders, securityReport,
+  SECURITY_NOT_VISIBLE, SECURITY_PREAMBLE, SECURITY_CLOSING,
+} from "../dist/security.js";
 
 const ids = (code: string, filename?: string) =>
   securitySourceRules(code, filename).map((f) => f.rule).sort();
@@ -658,13 +661,13 @@ describe("config rules — committed env files", () => {
 
 describe("the report", () => {
   it("always states what it could not see", () => {
-    const clean = securityReport({ source: `<main><h1>Hi</h1></main>` });
+    const clean = securityReport({ source: `<main><h1>Hi</h1></main>` }).text;
     expect(clean).toMatch(/not visible to this audit/i);
     expect(clean).toMatch(/CDN|proxy/i);
   });
 
   it("states it for a report with findings too", () => {
-    const dirty = securityReport({ source: `<script src="https://cdn.example.com/a.js"></script>` });
+    const dirty = securityReport({ source: `<script src="https://cdn.example.com/a.js"></script>` }).text;
     expect(dirty).toMatch(/not visible to this audit/i);
     expect(dirty).toContain("external-script-no-sri");
   });
@@ -712,7 +715,7 @@ function runProject(files: Record<string, string>): string {
       mkdirSync(dirname(full), { recursive: true });
       writeFileSync(full, source, "utf8");
     }
-    return securityReport({ root });
+    return securityReport({ root }).text;
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -1528,7 +1531,7 @@ describe("source rules — prose that names a sink is not a sink", () => {
 // to prove if the "before" picture is taken after the change.
 describe("the disclosure section, pinned before the split into an array", () => {
   it("renders the same disclosure section it rendered before the split", () => {
-    expect(securityReport({ source: `<div dangerouslySetInnerHTML={{__html: x}} />`, filename: "a.tsx" }))
+    expect(securityReport({ source: `<div dangerouslySetInnerHTML={{__html: x}} />`, filename: "a.tsx" }).text)
       .toMatchInlineSnapshot(`
         "# Security audit
 
@@ -1555,5 +1558,61 @@ describe("the disclosure section, pinned before the split into an array", () => 
 
         A clean result here means these files declare nothing wrong. Confirm the emitted headers on a real response before treating it as coverage."
       `);
+  });
+});
+
+describe("audit_security returns both registers", () => {
+  it("is not empty", () => {
+    expect(SECURITY_NOT_VISIBLE.length).toBeGreaterThan(0);
+  });
+
+  it("returns the notVisible list it printed, entry for entry, for a snippet with no findings", () => {
+    const r = securityReport({ source: `<main><h1>Hi</h1></main>` });
+    expect(r.structured.findings).toEqual([]);
+    expect(r.structured.summary).toEqual({ error: 0, warning: 0, info: 0 });
+    expect(r.structured.notVisible).toEqual(SECURITY_NOT_VISIBLE);
+    expect(r.text).toContain("## Not visible to this audit");
+  });
+
+  it("renders every disclosure entry as its own bullet", () => {
+    const r = securityReport({ source: `<main><h1>Hi</h1></main>` });
+    for (const entry of r.structured.notVisible) expect(r.text).toContain(`- ${entry}`);
+  });
+
+  it("derives the summary from the same findings the markdown lists", () => {
+    const r = securityReport({ source: `<script src="https://cdn.example.com/a.js"></script>` });
+    expect(r.structured.summary).toEqual({ error: 1, warning: 0, info: 0 });
+    expect(r.structured.findings.map((f) => f.rule)).toEqual(["external-script-no-sri"]);
+    for (const f of r.structured.findings) expect(r.text).toContain(`**${f.rule}**`);
+  });
+
+  it("carries every finding's line number and doc into the structured half", () => {
+    const r = securityReport({ source: `\n\n<script src="https://cdn.example.com/a.js"></script>`, filename: "a.tsx" });
+    expect(r.structured.findings[0]).toMatchObject({ rule: "external-script-no-sri", line: 3, doc: "web-security-headers" });
+  });
+
+  it("carries the snippet's own filename onto each finding via the fallback file", () => {
+    const r = securityReport({ source: `<script src="https://cdn.example.com/a.js"></script>`, filename: "a.tsx" });
+    expect(r.structured.findings[0].file).toBe("a.tsx");
+  });
+
+  it("folds each project-scanned finding's own path into its message rather than a shared top-level file", () => {
+    const root = mkdtempSync(join(tmpdir(), "saglitz-sec-struct-"));
+    try {
+      writeFileSync(join(root, "a.html"), `<script src="https://cdn.example.com/a.js"></script>`, "utf8");
+      const r = securityReport({ root });
+      const f = r.structured.findings.find((x: { rule: string }) => x.rule === "external-script-no-sri");
+      expect(f).toBeDefined();
+      expect(f!.message).toContain("a.html: ");
+      expect(f!.file).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("closes without implying that silence elsewhere is a pass", () => {
+    const r = securityReport({ source: `<main><h1>Hi</h1></main>` });
+    expect(r.text).toContain(SECURITY_PREAMBLE);
+    expect(r.text.endsWith(SECURITY_CLOSING)).toBe(true);
   });
 });

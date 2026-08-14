@@ -364,7 +364,7 @@ describe("every surface that lists audit_security's header sources lists all of 
   const readme = readFileSync(join(root, "README.md"), "utf8").replace(/‑/g, "-");
   const readmeRow = readme.split("\n").find((l) => l.includes("**`audit_security`**")) ?? "";
 
-  const notVisible = securityReport({ root: join(root, "does-not-exist-so-only-the-boilerplate-renders") });
+  const notVisible = securityReport({ root: join(root, "does-not-exist-so-only-the-boilerplate-renders") }).text;
 
   it("the README has an audit_security row to check", () => {
     expect(readmeRow).not.toBe("");

@@ -71,7 +71,7 @@ const SMOKE: Record<string, Record<string, unknown>> = {
 };
 
 /** Every tool that declares an outputSchema. */
-const STRUCTURED_TOOLS = ["audit_seo_geo", "audit_performance", "design_lint"];
+const STRUCTURED_TOOLS = ["audit_seo_geo", "audit_performance", "design_lint", "audit_security"];
 
 /**
  * Does this tool take a `path`, and so can it be handed a bad one? Declaring
@@ -368,8 +368,20 @@ describe("the structured auditors return validated structured output", () => {
       expect(notVisible.length, name).toBeGreaterThan(4);
       const body = textOf(result);
       for (const entry of notVisible) expect(body, `${name}: ${entry}`).toContain(entry);
-      // The one claim neither tool may make from source.
-      expect(notVisible.join(" ")).toMatch(/Nothing here is measured/i);
+      // The claim every structured auditor makes from source, in whichever of
+      // its own two forms applies: the page/source readers (seo/perf/lint) say
+      // in their notVisible array that they measure nothing rendered;
+      // audit_security says in its preamble (rendered into `body`, ahead of
+      // its own array) that it reads local files only and makes no request to
+      // the site it is auditing. Its disclosure list predates this suite and
+      // is pinned byte-for-byte against what it rendered before returning
+      // structured output, so it keeps its own wording here rather than
+      // adopting the other tools' phrase to pass this assertion.
+      if (name === "audit_security") {
+        expect(body).toMatch(/makes no request to your site/i);
+      } else {
+        expect(notVisible.join(" ")).toMatch(/Nothing here is measured/i);
+      }
     }, 20_000);
 
     it(`${name}'s description tells a client it reads source and does not measure`, async () => {
@@ -390,6 +402,40 @@ describe("the structured auditors return validated structured output", () => {
       }
     });
   }
+});
+
+// Declaring an outputSchema makes a "successful" text-only result a protocol
+// violation: a caller expecting structuredContent gets none, and nothing
+// tells it the audit never ran. audit_security answered these paths with
+// ordinary prose before it gained an outputSchema; now it must answer them as
+// errors instead, matching audit_seo_geo and audit_performance.
+describe("audit_security answers a bad or missing path as an error, not an empty audit", () => {
+  it("returns an error result, not an empty audit, for a path that is not a directory", async () => {
+    const result = (await client.callTool({
+      name: "audit_security",
+      arguments: { path: join(root, "package.json") },
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  it("returns an error result for a path that does not exist", async () => {
+    const result = (await client.callTool({
+      name: "audit_security",
+      arguments: { path: "/nonexistent-xyz" },
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  it("returns an error result when neither path nor code is given", async () => {
+    const result = (await client.callTool({
+      name: "audit_security",
+      arguments: {},
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
 });
 
 describe("resources", () => {
