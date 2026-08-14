@@ -371,14 +371,19 @@ describe("the structured auditors return validated structured output", () => {
       // The claim every structured auditor makes from source, in whichever of
       // its own two forms applies: the page/source readers (seo/perf/lint) say
       // in their notVisible array that they measure nothing rendered;
-      // audit_security says in its preamble (rendered into `body`, ahead of
-      // its own array) that it reads local files only and makes no request to
-      // the site it is auditing. Its disclosure list predates this suite and
+      // audit_security says it in its preamble instead, which renders inside
+      // the "## Not visible to this audit" section but is not itself a member
+      // of the notVisible array. Its disclosure list predates this suite and
       // is pinned byte-for-byte against what it rendered before returning
       // structured output, so it keeps its own wording here rather than
-      // adopting the other tools' phrase to pass this assertion.
+      // adopting the other tools' phrase to pass this assertion — but the
+      // check still has to be scoped to that section specifically, not to the
+      // whole body, or it would pass just as well if the sentence were moved
+      // somewhere else in the report entirely (e.g. into the scan-summary
+      // line), which is not the same claim landing in the same place.
       if (name === "audit_security") {
-        expect(body).toMatch(/makes no request to your site/i);
+        const notVisibleSection = body.slice(body.indexOf("## Not visible to this audit"));
+        expect(notVisibleSection).toMatch(/makes no request to your site/i);
       } else {
         expect(notVisible.join(" ")).toMatch(/Nothing here is measured/i);
       }

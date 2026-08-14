@@ -1065,12 +1065,21 @@ export interface ConfigRuleOptions {
 export function securityConfigRules(
   files: Array<{ path: string; source: string }>,
   options: ConfigRuleOptions = {},
-): LintFinding[] {
-  const out: LintFinding[] = [];
+): Array<LintFinding & { file?: string }> {
+  const out: Array<LintFinding & { file?: string }> = [];
   const push = (
     file: string, line: number, severity: LintFinding["severity"],
     rule: string, message: string, fix: string, doc = "web-security-headers",
-  ) => out.push({ line, severity, rule, message: `${file}: ${message}`, fix, doc });
+  ) =>
+    out.push({
+      line, severity, rule, message: `${file}: ${message}`, fix, doc,
+      // `"configuration"` is a pseudo-path `absent()` uses for a project-wide
+      // absence claim attributable to no single file — carrying it as `file`
+      // would misrepresent it as a real path relative to the audited
+      // directory, so those findings arrive with no `file`, matching the
+      // convention `assembleAuditReport`'s project-wide claims already use.
+      ...(file === "configuration" ? {} : { file }),
+    });
 
   const truncated = options.truncated === true;
 
@@ -1374,7 +1383,7 @@ export const SECURITY_CLOSING =
 
 export function securityReport(input: { source?: string; filename?: string; root?: string }): AuditReport {
   const lines: string[] = ["# Security audit", ""];
-  let findings: LintFinding[] = [];
+  let findings: Array<LintFinding & { file?: string }> = [];
   let scanned = "";
   let coverage = "";
 
@@ -1387,7 +1396,10 @@ export function securityReport(input: { source?: string; filename?: string; root
       // rather than appended after the line number — the bullet below shows
       // the line once, from `f.line`. Repeating it here as `path:line —`
       // would put the same number in the reader's eye twice for one finding.
-      findings.push(...securitySourceRules(f.source, f.path).map((x) => ({ ...x, message: `${f.path}: ${x.message}` })));
+      // It is also carried as its own `file` field, unfolded, for the
+      // structured half — the message stays exactly as rendered, `file` is
+      // additional, not a replacement.
+      findings.push(...securitySourceRules(f.source, f.path).map((x) => ({ ...x, file: f.path, message: `${f.path}: ${x.message}` })));
     }
     const truncated = scan.hitFileCap || scan.hitByteCap;
     findings.push(...securityConfigRules(files, { truncated }));

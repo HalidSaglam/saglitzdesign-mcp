@@ -1596,15 +1596,57 @@ describe("audit_security returns both registers", () => {
     expect(r.structured.findings[0].file).toBe("a.tsx");
   });
 
-  it("folds each project-scanned finding's own path into its message rather than a shared top-level file", () => {
+  it("carries each project-scanned finding's own path as `file`, in addition to folding it into the message", () => {
+    // `file` is additional, not a replacement: the markdown still needs the
+    // path folded into the message (securityReport builds its own report by
+    // hand rather than through assembleAuditReport's render-time `file`
+    // prefix), and a machine consumer now gets the same path as a field
+    // instead of having to parse it back out of the message text.
     const root = mkdtempSync(join(tmpdir(), "saglitz-sec-struct-"));
     try {
       writeFileSync(join(root, "a.html"), `<script src="https://cdn.example.com/a.js"></script>`, "utf8");
       const r = securityReport({ root });
       const f = r.structured.findings.find((x: { rule: string }) => x.rule === "external-script-no-sri");
       expect(f).toBeDefined();
+      expect(f!.file).toBe("a.html");
       expect(f!.message).toContain("a.html: ");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("carries a config rule's real file as `file` too, when the declaration was found in one", () => {
+    const root = mkdtempSync(join(tmpdir(), "saglitz-sec-struct-"));
+    try {
+      writeFileSync(
+        join(root, "_headers"),
+        `/*\n  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'\n`,
+        "utf8",
+      );
+      const r = securityReport({ root });
+      const f = r.structured.findings.find((x: { rule: string }) => x.rule === "csp-unsafe-inline");
+      expect(f).toBeDefined();
+      expect(f!.file).toBe("_headers");
+      expect(f!.message).toContain("_headers: ");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves a project-wide absence claim with no `file` — 'configuration' names no real path", () => {
+    // absent() attributes csp-missing etc. to the pseudo-path "configuration"
+    // because no single file is the culprit; carrying that string as `file`
+    // would misrepresent it as a real path relative to the audited directory,
+    // so it stays folded into the message only, the same convention
+    // assembleAuditReport's own project-wide claims use.
+    const root = mkdtempSync(join(tmpdir(), "saglitz-sec-struct-"));
+    try {
+      writeFileSync(join(root, "app.js"), `console.log("hi");`, "utf8");
+      const r = securityReport({ root });
+      const f = r.structured.findings.find((x: { rule: string }) => x.rule === "csp-missing");
+      expect(f).toBeDefined();
       expect(f!.file).toBeUndefined();
+      expect(f!.message).toContain("configuration: ");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
