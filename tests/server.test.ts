@@ -472,9 +472,26 @@ describe("the structured auditors return validated structured output", () => {
       // body, or it would pass just as well if the sentence were moved
       // somewhere else in the report entirely (e.g. into the scan-summary
       // line), which is not the same claim landing in the same place.
+      //
+      // For audit_security that leaves the section check reading the
+      // preamble, which is rendered prose — it says nothing at all about
+      // `notVisible`, and a run that emptied every entry of meaning would
+      // still satisfy it. (Set equality does not save it either: both sides
+      // render from the same array, so it is trivially true.) So the array
+      // is asserted on separately, against the claim security's list
+      // actually carries. It is not "nothing is measured" — security reads
+      // source like the rest, but the limit its list exists to disclose is
+      // narrower and sharper: a *missing* header here is a statement about
+      // how far this audit can see, not about the site. Both halves of that
+      // disclosure — the unrecognised-shape half and the truncated-scan half
+      // — are load-bearing, and each is what makes a "missing" finding
+      // readable as a limit rather than a verdict.
       if (name === "audit_security") {
         const notVisibleSection = body.slice(body.indexOf("## Not visible to this audit"));
         expect(notVisibleSection).toMatch(/makes no request to your site/i);
+        const joined = notVisible.join(" ");
+        expect(joined).toMatch(/a "missing" finding above is about this audit's reach, not about your site/i);
+        expect(joined).toMatch(/a truncated scan cannot prove absence/i);
       } else if (name === "audit_generic_design") {
         expect(notVisible.join(" ")).toMatch(/none of that is visible from source text/i);
       } else {
