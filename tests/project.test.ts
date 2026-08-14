@@ -334,6 +334,29 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
    */
   const reportBody = (dir: string): string =>
     projectAuditReport(dir).text.split("## Not visible to this audit")[0];
+
+  /**
+   * The report's own "What this did not look at" section — where its cap and
+   * skip notices are rendered — and nothing else.
+   *
+   * Two entries below quote their notice verbatim, which is what makes them
+   * checkable prose; it also means the quoted string is in every report the
+   * tool ever prints, cap or no cap. A `text.toContain(bullet)` assertion
+   * therefore stopped testing the renderer the moment the quote landed in the
+   * list: deleting the notice from the renderer left the whole file green.
+   * A quote and its guard cannot be the same string match, so the guards below
+   * are scoped to the section that is supposed to carry the notice, and counted
+   * against an uncapped run of the same shape.
+   */
+  const didNotLookAt = (dir: string, extensions?: string[]): string => {
+    const t = projectAuditReport(dir, extensions).text;
+    const start = t.indexOf("## What this did not look at");
+    const end = t.indexOf("## Not visible to this audit");
+    expect(start, "report has no \"What this did not look at\" section").toBeGreaterThan(-1);
+    return t.slice(start, end);
+  };
+
+  const countOf = (haystack: string, needle: string): number => haystack.split(needle).length - 1;
   const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
 
   it("has an entry for every demonstration below, and no empty list", () => {
@@ -355,12 +378,16 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
     // are found by colour-distance arithmetic over the written values.
     const dupes = fixture({ "b.css": ".a{color:#111827}\n.b{color:#111928}\n" });
     expect(auditProject(dupes).system.duplicateColors.length).toBe(1);
-    expect(notVisible).toMatch(/the colour-distance arithmetic that calls two of them indistinguishable/);
-    // The budget column is not derived from the text at all, which is why the
-    // entry says "or, in the budget column, from constants picked in advance"
-    // rather than claiming every number comes from the source.
+    expect(notVisible).toMatch(/not the colour-distance arithmetic that calls two written values indistinguishable/);
+    // Three numbers this report prints, each from a different place: a count
+    // read off the text, a budget that is a constant, and a score that is a
+    // formula over both. The entry no longer enumerates where they come from —
+    // it denies, of each, the one source that would make it a measurement.
     expect(auditProject(dupes).system.dimensions.map((d) => d.budget)).toEqual([14, 9, 4, 6, 12]);
-    expect(notVisible).toMatch(/in the budget column, from constants picked in advance/);
+    expect(auditProject(dupes).system.dimensions[0].unique).toBe(2);
+    expect(auditProject(dupes).system.score).toBe(96);
+    expect(notVisible).toMatch(/No number above is measured from a rendered page/);
+    expect(notVisible).toMatch(/not the consistency score computed from both/);
     rmSync(dupes, { recursive: true, force: true });
     rmSync(dir, { recursive: true, force: true });
   });
@@ -418,6 +445,9 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
     // The same two lines as one design_lint snippet: nothing at all.
     expect(designLint(".btn { outline: none; }\n.btn:focus { outline: 2px solid blue; }\n")).toEqual([]);
     expect(notVisible).toMatch(/One cost is not inherited but manufactured here/);
+    expect(notVisible).toMatch(/it lands on a rule graded `error`/);
+    // Not *the* highest-severity rule: img-no-alt is graded error as well.
+    expect(designLint(`<img src="/a.png" />`).map((f) => f.severity)).toEqual(["error"]);
     expect(notVisible).toMatch(/that linter's own remedy, lint the markup and the CSS together, is not available through this tool/);
     rmSync(split, { recursive: true, force: true });
     expect(notVisible).toMatch(/<div @click="go">/);
@@ -440,7 +470,16 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
     const r = projectAuditReport(dir);
     // The notice is one bullet, and it is not on the header line: that line
     // counts what was read and reads exactly like a complete scan.
-    expect(r.text).toContain(`- **Capped:** the ${MAX_FILES}-file cap was reached, so later files were not read.`);
+    const capBullet = `- **Capped:** the ${MAX_FILES}-file cap was reached, so later files were not read.`;
+    expect(didNotLookAt(dir)).toContain(capBullet);
+    // Counted, not merely present: the disclosure quotes the same bullet, so a
+    // capped run carries it twice and an uncapped run of the same shape once.
+    expect(countOf(r.text, capBullet)).toBe(2);
+    const uncapped = fixture({ "a.css": ".a{color:#ff0000}\n" });
+    expect(projectAuditReport(uncapped).structured.scan.hitFileCap).toBe(false);
+    expect(countOf(projectAuditReport(uncapped).text, capBullet)).toBe(1);
+    expect(didNotLookAt(uncapped)).not.toContain("**Capped:**");
+    rmSync(uncapped, { recursive: true, force: true });
     const header = r.text.split("\n").slice(0, 5).join("\n");
     expect(header).toContain(`${MAX_FILES} file(s), 8 KB scanned`);
     expect(header).not.toMatch(/cap|Capped|partial|truncat/i);
@@ -470,7 +509,7 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
     expect(auditProject(dir).findings.some((f) => f.rule === "img-no-alt")).toBe(false);
 
     const r = projectAuditReport(dir);
-    expect(r.text).toContain("total cap was reached, so later files were not read");
+    expect(didNotLookAt(dir)).toContain(`- **Capped:** the ${(MAX_TOTAL_BYTES / 1024).toFixed(0)} KB total cap was reached, so later files were not read.`);
     expect(r.structured.scan.hitByteCap).toBe(true);
 
     expect(notVisible).toContain("at most 3072 KB in total");
@@ -492,7 +531,7 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
     expect(auditProject(dir).system.dimensions.find((d) => d.id === "color")!.unique).toBe(1);
 
     const r = projectAuditReport(dir);
-    expect(r.text).toContain(`1 file(s) over ${(MAX_FILE_BYTES / 1024).toFixed(0)} KB were skipped: huge.css`);
+    expect(didNotLookAt(dir)).toContain(`- **Capped:** 1 file(s) over ${(MAX_FILE_BYTES / 1024).toFixed(0)} KB were skipped: huge.css.`);
     expect(r.structured.scan.skippedLarge).toEqual(["huge.css"]);
     expect(notVisible).toContain("skipped whole rather than truncated");
     expect(notVisible).toContain("The report names up to five such files");
@@ -520,7 +559,9 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
       expect(scan.files.map((f) => f.path)).toEqual(["ok.css"]);
 
       const r = projectAuditReport(dir);
-      expect(r.text).toContain("1 path(s) could not be read");
+      expect(didNotLookAt(dir)).toContain("- **Capped:** 1 path(s) could not be read.");
+      // Same trap as the cap bullet: the disclosure quotes this string too.
+      expect(countOf(r.text, "1 path(s) could not be read")).toBe(2);
       expect(reportBody(dir)).not.toContain("secret.css");  // counted, never named
       expect(r.structured.scan.unreadable).toEqual(["secret.css"]);
       expect(notVisible).toContain("`1 path(s) could not be read`");
