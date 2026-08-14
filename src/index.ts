@@ -927,6 +927,7 @@ const GENERIC_OUTPUT_SCHEMA = {
   score: z
     .object({
       total: z.number().int().describe("0-100. Counts distinct signals, never occurrences — a page with forty stock cards carries the same one signal as a page with three."),
+      rawTotal: z.number().int().optional().describe("The itemised points' true, uncapped sum. Present only when it differs from `total` — i.e. only when the 100-point display clamp actually engaged, so its presence alone says the total below is capped."),
       items: z.array(
         z.object({
           weight: z.number().int().describe("What this rule contributed. Each rule contributes at most once."),
@@ -936,6 +937,16 @@ const GENERIC_OUTPUT_SCHEMA = {
       ).describe("Every point in `total`, itemised. There is no opaque number: a reader can disagree with one line rather than with a verdict."),
     })
     .describe("The generic-design score, itemised. Not a quality judgement — it counts documented defaults that were left unchanged."),
+  scan: z
+    .object({
+      hitFileCap: z.boolean().describe("True when some source files were not read because the file cap was reached. Every absence claim above — a rule that never fired, a score of 0 — is unconfirmed while this is true, and the closing line of `notVisible` (\"the source carries none of these... defaults\") does not hold for this run."),
+      hitByteCap: z.boolean().describe("True when the scan stopped because the total-bytes cap was reached before every candidate file was read. Same caveat as hitFileCap."),
+      skippedLarge: z.array(z.string()).describe("Files over the per-file byte cap. Never read, so nothing above is claimed about them."),
+    })
+    .optional()
+    .describe(
+      "Present only in directory mode: what the scan actually reached. The markdown's \"Stopped at the file cap\" sentence has no other counterpart in structuredContent — `findings`, `summary` and `score` all look identical for a clean project and a truncated one that never opened its worst file — so a caller reading only structuredContent must check this before trusting a clean score or an absent finding.",
+    ),
 };
 
 // ── Tool 31: audit generic design ────────────────────────────────────────────

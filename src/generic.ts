@@ -923,10 +923,25 @@ const NOT_A_SHIPPED_SURFACE =
  * The structured half of `audit_generic_design`, on top of what every
  * structured auditor already carries: the score `genericScore` computes,
  * itemised the same way the markdown prints it, so a caller reading only
- * `structured.score` never sees a total its `items` don't add up to.
+ * `structured.score` never sees a total its `items` don't add up to; and, in
+ * directory mode, what the scan actually reached.
+ *
+ * `scan` exists because a capped scan is otherwise invisible here: the
+ * markdown's "Stopped at the N-file cap" sentence has no counterpart in
+ * `findings`, `summary` or `score` — a truncated project with 400 quiet files
+ * read and one defective file never opened reports `findings: []`, `score: 0`
+ * exactly like a clean one, so a caller reading only structuredContent gets a
+ * clean bill for a project that was never fully read. It is present only when
+ * a directory was audited — a snippet has no scan to report.
  */
 export interface GenericStructured extends AuditStructured {
-  score: { total: number; items: Array<{ weight: number; rule: string; evidence: string }> };
+  score: {
+    total: number;
+    /** The itemised sum before the 100-point display clamp, when the clamp actually changed the number. */
+    rawTotal?: number;
+    items: Array<{ weight: number; rule: string; evidence: string }>;
+  };
+  scan?: { hitFileCap: boolean; hitByteCap: boolean; skippedLarge: string[] };
 }
 
 /**
@@ -956,9 +971,11 @@ export function genericReport(input: { source?: string; filename?: string; root?
   // cannot carry.
   let filesByRule: Map<string, Set<string>> | null = null;
   let filesScanned = 0;
+  let scanStructured: GenericStructured["scan"];
 
   if (input.root) {
     const scan = scanProject(input.root);
+    scanStructured = { hitFileCap: scan.hitFileCap, hitByteCap: scan.hitByteCap, skippedLarge: scan.skippedLarge };
     const audited = scan.files.filter((f) => !NOT_A_SHIPPED_SURFACE.test(f.path));
     const demoSkipped = scan.files.length - audited.length;
     filesByRule = new Map();
@@ -1037,6 +1054,10 @@ export function genericReport(input: { source?: string; filename?: string; root?
   // the rule down to the Errors/Warnings/Notes section above would land on.
   const score: GenericStructured["score"] = {
     total,
+    // Only when the clamp actually did something — the same condition the
+    // markdown's reconciliation line above tests, so a caller never sees
+    // `rawTotal` disagree with whether the markdown mentioned a cap at all.
+    ...(rawTotal > total ? { rawTotal } : {}),
     items: items.map((item) => {
       const example = findings.find((f) => f.rule === item.rule);
       return {
@@ -1047,5 +1068,8 @@ export function genericReport(input: { source?: string; filename?: string; root?
     }),
   };
 
-  return { text: lines.join("\n"), structured: { ...base, score } };
+  return {
+    text: lines.join("\n"),
+    structured: { ...base, score, ...(scanStructured ? { scan: scanStructured } : {}) },
+  };
 }

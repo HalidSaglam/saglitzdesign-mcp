@@ -77,11 +77,23 @@ const STRUCTURED_TOOLS = ["audit_seo_geo", "audit_performance", "design_lint", "
  * Properties a tool's outputSchema declares beyond the three every structured
  * auditor shares (`findings`, `notVisible`, `summary`). `audit_generic_design`
  * is the one exception so far — it also returns `score`, the same itemised
- * number `genericReport`'s markdown prints. Read by the shared schema-shape
- * test below so that test can stay one assertion instead of forking into a
- * per-tool copy the day a second auditor gains its own extra field.
+ * number `genericReport`'s markdown prints, and `scan`, which is what tells a
+ * caller reading only structuredContent that a directory audit was truncated
+ * (the markdown's cap sentence otherwise has no structured counterpart). Read
+ * by the shared schema-shape test below so that test can stay one assertion
+ * instead of forking into a per-tool copy the day a second auditor gains its
+ * own extra field.
  */
-const EXTRA_SCHEMA_PROPS: Record<string, string[]> = { audit_generic_design: ["score"] };
+const EXTRA_SCHEMA_PROPS: Record<string, string[]> = { audit_generic_design: ["score", "scan"] };
+
+/**
+ * Same idea, but for `required`: `scan` is present only in directory mode
+ * (a snippet has no scan to report), so it is declared `.optional()` and
+ * correctly absent from `required` even though it is a real property. A test
+ * that reused EXTRA_SCHEMA_PROPS for both checks would demand `scan` be
+ * required and fail against the schema's own, deliberately looser, contract.
+ */
+const EXTRA_REQUIRED_PROPS: Record<string, string[]> = { audit_generic_design: ["score"] };
 
 /**
  * Does this tool take a `path`, and so can it be handed a bad one? Declaring
@@ -331,8 +343,9 @@ describe("the structured auditors return validated structured output", () => {
       expect(schema, name).toBeTruthy();
       expect(schema.type).toBe("object");
       const expectedProps = ["findings", "notVisible", "summary", ...(EXTRA_SCHEMA_PROPS[name] ?? [])].sort();
+      const expectedRequired = ["findings", "notVisible", "summary", ...(EXTRA_REQUIRED_PROPS[name] ?? [])].sort();
       expect(Object.keys(schema.properties ?? {}).sort()).toEqual(expectedProps);
-      expect((schema.required ?? []).sort()).toEqual(expectedProps);
+      expect((schema.required ?? []).sort()).toEqual(expectedRequired);
       const finding = schema.properties.findings.items;
       expect((finding.required ?? []).sort()).toEqual(["doc", "fix", "message", "rule", "severity"]);
       expect(finding.properties.severity.enum.sort()).toEqual(["error", "info", "warning"]);

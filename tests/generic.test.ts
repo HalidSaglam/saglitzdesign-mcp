@@ -922,6 +922,88 @@ describe("the structured half carries the same itemised score the markdown print
   });
 });
 
+// Unreachable with the ten real weights (they sum to 92, same reason the
+// markdown-side clamp tests need a synthetic table), but the structured half
+// is the one register that had no reconciliation for it at all: `score`
+// carried `total` and `items` with no `rawTotal`, which falsified the
+// schema's own "Every point in `total`, itemised" and let the itemised sum
+// disagree with `total` in the one place nothing said so.
+describe("the structured half reconciles the itemised sum when the display clamp engages", () => {
+  it("carries rawTotal only when the clamp actually changed the total", () => {
+    const original = { ...RULE_WEIGHTS };
+    try {
+      for (const key of Object.keys(RULE_WEIGHTS)) delete RULE_WEIGHTS[key];
+      Object.assign(RULE_WEIGHTS, { "ai-default-gradient": 70, "emoji-as-icon": 60 });
+      const r = genericReport({ source: `<div class="from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>` });
+      expect(r.text).toMatch(/The itemised points above sum to 130; the score display is capped at 100\./);
+      expect(r.structured.score.total).toBe(100);
+      expect(r.structured.score.rawTotal).toBe(130);
+      expect(r.structured.score.items.reduce((n, i) => n + i.weight, 0)).toBe(130);
+    } finally {
+      for (const key of Object.keys(RULE_WEIGHTS)) delete RULE_WEIGHTS[key];
+      Object.assign(RULE_WEIGHTS, original);
+    }
+  });
+
+  it("carries no rawTotal when the itemised points fit under 100", () => {
+    const r = genericReport({ source: `<div class="from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>` });
+    expect(r.text).not.toMatch(/capped at 100/);
+    expect(r.structured.score.rawTotal).toBeUndefined();
+    expect("rawTotal" in r.structured.score).toBe(false);
+  });
+});
+
+// The failure this closes: a truncated directory scan is invisible anywhere
+// in structuredContent. `findings`, `summary` and `score` all look identical
+// for a genuinely clean project and one whose worst file was never opened —
+// only the markdown said "Stopped at the file cap", so a caller reading only
+// the structured half got a clean bill for a project that was never fully
+// read.
+describe("the structured half discloses a truncated scan", () => {
+  it("carries hitFileCap even though findings and score look clean", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-generic-cap-"));
+    try {
+      // 405 quiet files sort ahead of "zz-hero.html" alphabetically, and
+      // MAX_FILES (400) is fewer than that, so the one file that actually
+      // carries a defect is never opened.
+      for (let i = 0; i < 405; i++) {
+        writeFileSync(join(dir, `file-${String(i).padStart(4, "0")}.html`), `<p>ok</p>`);
+      }
+      writeFileSync(join(dir, "zz-hero.html"), `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>`);
+
+      const r = genericReport({ root: dir });
+
+      // Findings and score alone look identical to a genuinely clean project...
+      expect(r.structured.findings).toEqual([]);
+      expect(r.structured.score).toEqual({ total: 0, items: [] });
+      // ...the markdown discloses the truncation...
+      expect(r.text).toMatch(/Stopped at the 400-file cap/);
+      // ...and now so does the structured half, without a caller having to
+      // string-parse the markdown for it.
+      expect(r.structured.scan).toEqual({ hitFileCap: true, hitByteCap: false, skippedLarge: [] });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("carries scan with every flag false for an uncapped directory audit", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-generic-cap-"));
+    try {
+      writeFileSync(join(dir, "page.html"), `<p>Fine</p>`);
+      const r = genericReport({ root: dir });
+      expect(r.structured.scan).toEqual({ hitFileCap: false, hitByteCap: false, skippedLarge: [] });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("carries no scan field at all in snippet mode", () => {
+    const r = genericReport({ source: `<p>Anything</p>` });
+    expect(r.structured.scan).toBeUndefined();
+    expect("scan" in r.structured).toBe(false);
+  });
+});
+
 describe("the structured half populates findings[].file for project-scanned findings", () => {
   it("carries the scanned file's path on every finding, in directory mode", () => {
     const dir = mkdtempSync(join(tmpdir(), "sd-generic-file-"));
