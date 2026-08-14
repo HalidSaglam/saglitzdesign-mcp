@@ -70,8 +70,17 @@ const SMOKE: Record<string, Record<string, unknown>> = {
   },
 };
 
-/** The only two tools that declare an outputSchema. */
-const STRUCTURED_TOOLS = ["audit_seo_geo", "audit_performance"];
+/** Every tool that declares an outputSchema. */
+const STRUCTURED_TOOLS = ["audit_seo_geo", "audit_performance", "design_lint"];
+
+/**
+ * The structured tools that take a `path` and so can be handed a bad one.
+ * Declaring an outputSchema is what makes them answer that with an error
+ * result rather than prose, and their descriptions have to say so.
+ * `design_lint` takes only a snippet, has no path to get wrong, and must not
+ * be made to claim otherwise.
+ */
+const PATH_AUDIT_TOOLS = ["audit_seo_geo", "audit_performance"];
 
 let client: Client;
 let transport: StdioClientTransport;
@@ -118,10 +127,10 @@ describe("server handshake", () => {
       expect(t.annotations?.title, t.name).toBeTruthy();
       expect(t.annotations?.readOnlyHint, t.name).toBe(true);
       expect(t.annotations?.openWorldHint, t.name).toBe(false);
-      // Exactly two tools declare an outputSchema. For every other tool the
-      // wrapper's conditional spread must keep the key absent — not
-      // present-as-undefined — so this checks the real wire representation,
-      // not the wrapper's arguments.
+      // Only the tools in STRUCTURED_TOOLS declare an outputSchema. For every
+      // other tool the wrapper's conditional spread must keep the key absent —
+      // not present-as-undefined — so this checks the real wire
+      // representation, not the wrapper's arguments.
       expect("outputSchema" in t, t.name).toBe(STRUCTURED_TOOLS.includes(t.name));
     }
   });
@@ -235,7 +244,7 @@ describe("structured output (outputSchema)", () => {
 // on the real one — that the schema reaches `tools/list`, that the payload
 // actually validates against the schema as declared, and that the summary
 // agrees with the findings it summarises.
-describe("audit_seo_geo and audit_performance return validated structured output", () => {
+describe("the structured auditors return validated structured output", () => {
   /**
    * A minimal JSON Schema check, over the subset the declared schema uses:
    * object/array/string/number/integer/boolean, `required`, `enum`. Written by
@@ -361,11 +370,12 @@ describe("audit_seo_geo and audit_performance return validated structured output
       expect(description.length, name).toBeGreaterThan(40);
       expect(description, name).toMatch(/reads (?:your )?source/i);
       expect(description, name).toMatch(/does not measure|measures nothing|no measurement/i);
-      // These two are the only tools here that answer a bad path with an
-      // error result rather than prose — a consequence of declaring an
-      // outputSchema — and a caller should learn that from the description
-      // rather than from a surprise.
-      expect(description, name).toMatch(/error result, not as an empty audit/i);
+      // The path-taking auditors answer a bad path with an error result rather
+      // than prose — a consequence of declaring an outputSchema — and a caller
+      // should learn that from the description rather than from a surprise.
+      if (PATH_AUDIT_TOOLS.includes(name)) {
+        expect(description, name).toMatch(/error result, not as an empty audit/i);
+      }
     });
   }
 });

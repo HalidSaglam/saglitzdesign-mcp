@@ -136,6 +136,46 @@ function tool(
   );
 }
 
+/**
+ * The shape every structured auditor declares and returns. One constant,
+ * because each tool describing the same structure for itself is one more thing
+ * to keep in step; and the descriptions matter — an `outputSchema` is
+ * documentation an agent reads before it ever calls the tool.
+ *
+ * It sits up here beside `tool()` rather than beside its first user because
+ * `const` is not hoisted: every registration below is a call executed at module
+ * load, so a schema declared further down the file is in its temporal dead zone
+ * when the earliest tool that passes it is registered.
+ */
+const AUDIT_OUTPUT_SCHEMA = {
+  findings: z
+    .array(
+      z.object({
+        rule: z.string().describe("Stable rule id, e.g. 'canonical-not-absolute' or 'lazy-hero'."),
+        severity: z.enum(["error", "warning", "info"]).describe("How the rule grades this finding."),
+        message: z.string().describe("The fact about the source that made the rule fire."),
+        fix: z.string().describe("What to change, specifically."),
+        doc: z.string().describe("Knowledge-base id backing the claim — read it with get_design_doc."),
+        file: z.string().optional().describe("Path relative to the audited directory, when a directory was audited."),
+        line: z.number().int().optional().describe("1-based line within that file."),
+      }),
+    )
+    .describe("Every finding, in the order the markdown report lists them."),
+  summary: z
+    .object({
+      error: z.number().int(),
+      warning: z.number().int(),
+      info: z.number().int(),
+    })
+    .describe("Counts by severity. Always agrees with `findings` — it is derived from the same list."),
+  notVisible: z
+    .array(z.string())
+    .describe(
+      "What this audit structurally could not check, one limitation per entry. Read it as a peer of `findings`: "
+      + "silence on a subject named here is this tool's reach, not a clean result. Nothing any of these tools reports is measured.",
+    ),
+};
+
 // ── Tool 1: list ─────────────────────────────────────────────────────────────
 tool(
   "list_design_knowledge",
@@ -653,11 +693,18 @@ tool(
 // ── Tool 21: design lint ─────────────────────────────────────────────────────
 tool(
   "design_lint",
-  "Lint a snippet of HTML / CSS / JSX / Tailwind for design & accessibility anti-patterns: hardcoded colors instead of tokens, px font-sizes, removed focus outlines, images without alt, clickable divs, icon-only buttons without labels, positive tabindex, ad-hoc radii, !important overuse. Returns findings with line numbers, severity, and fixes. Fast static design-time check — not a replacement for a full audit. Complements design_review_checklist.",
+  "Lint a snippet of HTML / CSS / JSX / Tailwind for design & accessibility anti-patterns: hardcoded colors instead of tokens, px font-sizes, removed focus outlines, images without alt, clickable divs, icon-only buttons without labels, positive tabindex, ad-hoc radii, !important overuse. Returns findings with line numbers, severity, and fixes. "
+    + "It reads source and does not measure anything: nothing is rendered, no contrast ratio is computed and no tap target is sized, so no finding is or can be a visual or an accessibility verdict. "
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, file, line), a severity summary, and a machine-readable `notVisible` list of what it could not check. "
+    + "Fast static design-time check — not a replacement for a full audit. Complements design_review_checklist.",
   {
     code: z.string().describe("The HTML/CSS/JSX/Tailwind snippet to lint"),
   },
-  async ({ code }) => text(designLintReport(code)),
+  async ({ code }) => {
+    const { text: body, structured } = designLintReport(code);
+    return { ...text(body), structuredContent: structured };
+  },
+  AUDIT_OUTPUT_SCHEMA,
 );
 
 // ── Tool 22: audit UX copy ───────────────────────────────────────────────────
@@ -897,19 +944,14 @@ tool(
 
 // ── Tools 32 & 33: audit SEO/GEO and performance ─────────────────────────────
 //
-// The first two tools here to return structured output. Everything else in this
-// server answers a person reading markdown; these two also answer an agent
+// The first two tools here to return structured output; `design_lint` above
+// now returns it too, and the rest of the audit surface is following. Most of
+// this server answers a person reading markdown; these also answer an agent
 // chaining `audit → fix`, which needs the findings as fields and — just as
 // much — needs `notVisible`, the machine-readable account of what was never
-// checked. A caller that reads silence as a clean bill is the failure both
+// checked. A caller that reads silence as a clean bill is the failure these
 // modules were written against, and prose alone cannot stop it.
 
-/**
- * The shape both auditors declare and return. One constant, because two tools
- * describing the same structure twice is two things to keep in step; and the
- * descriptions matter — an `outputSchema` is documentation an agent reads
- * before it ever calls the tool.
- */
 /**
  * A tool description's list of what it checks, built from the auditor's own
  * capability table rather than written beside it.
@@ -929,35 +971,6 @@ const advertised = (capabilities: Array<{ text: string }>): string => {
   return items.length > 1
     ? `${items.slice(0, -1).join("; ")}; and ${items[items.length - 1]}`
     : items.join("");
-};
-
-const AUDIT_OUTPUT_SCHEMA = {
-  findings: z
-    .array(
-      z.object({
-        rule: z.string().describe("Stable rule id, e.g. 'canonical-not-absolute' or 'lazy-hero'."),
-        severity: z.enum(["error", "warning", "info"]).describe("How the rule grades this finding."),
-        message: z.string().describe("The fact about the source that made the rule fire."),
-        fix: z.string().describe("What to change, specifically."),
-        doc: z.string().describe("Knowledge-base id backing the claim — read it with get_design_doc."),
-        file: z.string().optional().describe("Path relative to the audited directory, when a directory was audited."),
-        line: z.number().int().optional().describe("1-based line within that file."),
-      }),
-    )
-    .describe("Every finding, in the order the markdown report lists them."),
-  summary: z
-    .object({
-      error: z.number().int(),
-      warning: z.number().int(),
-      info: z.number().int(),
-    })
-    .describe("Counts by severity. Always agrees with `findings` — it is derived from the same list."),
-  notVisible: z
-    .array(z.string())
-    .describe(
-      "What this audit structurally could not check, one limitation per entry. Read it as a peer of `findings`: "
-      + "silence on a subject named here is this tool's reach, not a clean result. Nothing in either tool is measured.",
-    ),
 };
 
 tool(
