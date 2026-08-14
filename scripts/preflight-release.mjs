@@ -2,9 +2,10 @@
 //
 // Refuse to release something inconsistent.
 //
-// A version lives in four places that have no way of noticing each other: the
-// package, the registry manifest, the changelog, and the git tag that triggers
-// the whole thing. Any pair can drift. The expensive one is the tag — npm and
+// A version lives in five places that have no way of noticing each other: the
+// package, its lockfile, the registry manifest, the changelog, and the git tag
+// that triggers the whole thing. Any pair can drift. The expensive one is the
+// tag — npm and
 // the MCP Registry both refuse to republish a version, so `v0.20.0` pushed
 // against a package still saying 0.19.1 does not fail loudly, it silently
 // re-ships the old release under a new name and there is no undo.
@@ -34,6 +35,25 @@ if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version ?? "")) {
   errors.push(`package.json version "${version}" is not a plain semver`);
 }
 ok.push(`package.json — ${version}`);
+
+// package-lock.json carries the version twice at the root — the top-level
+// field and the "" package entry — and `npm version` writes both. A
+// hand-edited package.json does not, and nothing else here reads the lockfile,
+// so it drifted to 0.22.0 under a 0.23.0 package while preflight reported
+// "consistent". It ships to nobody, but it is the file `npm ci` reads, so a
+// CI run installs against a tree that disagrees with the package it is
+// building.
+const lock = JSON.parse(read("package-lock.json"));
+const lockVersions = [lock.version, lock.packages?.[""]?.version];
+const lockStale = lockVersions.filter((v) => v !== version);
+if (lockStale.length) {
+  errors.push(
+    `package-lock.json still says ${[...new Set(lockStale)].join(", ")} while the package is ${version}. ` +
+    "Run `npm install --package-lock-only` (or `npm version`, which writes both) and commit the result.",
+  );
+} else {
+  ok.push(`package-lock.json — ${lockVersions.length} version field(s) agree`);
+}
 
 // server.json carries the version twice: once for the server, once per package
 // entry. `npm version` syncs it via scripts/sync-version.mjs, but a hand-edited

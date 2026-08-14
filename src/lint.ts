@@ -333,30 +333,138 @@ export function designLint(code: string): LintFinding[] {
 
 const ICON: Record<LintFinding["severity"], string> = { error: "🔴", warning: "🟡", info: "🔵" };
 
-export function designLintReport(code: string): string {
+export const LINT_PREAMBLE =
+  "This reads one snippet with per-line regexes and a tag scanner. It resolves no import, opens no other file, renders nothing and measures nothing. It cannot see:";
+
+/**
+ * What `design_lint` structurally cannot see.
+ *
+ * Every entry was written *after* running the linter on an input built to
+ * demonstrate it, and each demonstration is kept as a test in
+ * `tests/lint.test.ts`. That order matters and is not a style preference: an
+ * earlier disclosure list on a sibling module was written from a reading of the
+ * rules, four of its sentences were false, and every one of the four was caught
+ * by running the tool rather than by re-reading it. A sentence that cannot be
+ * demonstrated does not belong here — including one that merely over-claims
+ * silence, because a caller who is told a check does not happen will go and do
+ * it by hand, and being sent to do work the tool already did is the same kind
+ * of wrong as being told a check happened when it did not.
+ *
+ * Several entries are deliberately precise about *which half* of a rule is
+ * affected, because most of these rules are silent for two quite different
+ * reasons — "looked and found nothing" and "never ran here" — and a reader
+ * acting on silence needs to know which one they have.
+ */
+export const LINT_NOT_VISIBLE: string[] = [
+  "**Nothing here is measured, and nothing is rendered.** No contrast ratio is computed, no tap target sized, no spacing rhythm checked, no focus order walked, no screen reader run. `.a { color: #777777; background: #888888; }` comes back as a single `hardcoded-color` warning and says nothing whatever about the contrast between the two, and `padding: 13px 27px` draws nothing at all. Every finding above is a fact about the *text* of the snippet.",
+  "**Anything declared in another file** — a class, a design token, a custom property, a parent component's props. `<div class=\"btn\">Go</div>` draws nothing regardless of what `.btn` does in the stylesheet. On `outline-none` that costs in both directions: `.btn { outline: none; }` handed over on its own is reported as an error even when the `:focus-visible` ring replacing it lives in a file this call never saw, and a JSX snippet whose `outline: none` sits in that stylesheet is silent. When the answer depends on both, lint the markup and the CSS in one snippet.",
+  "**`outline-none`, which has four demonstrated causes of silence, and only one of them is \"no focus ring was removed\".** Each isolated and run: (1) the snippet removes no ring — `.a { color: red; }`. (2) Something in it looks like a replacement. That check is snippet-wide and selector-blind, so one `:focus` rule setting an outline, box-shadow, border or `--ring` — or one `focus:ring-*` utility — switches the rule off for every `outline: none` in the text, unrelated selectors included: `.a:focus { outline: 2px solid blue; }` beside `.b { outline: none; }` reports nothing, and `.b` really is left with no indicator. (3) The removal is spelled a way the pattern does not carry. It matches `outline: none`, `outline: 0` and the `outline-none` utility, so `outline-style: none`, `outline-width: 0`, `outline: transparent`, `outline: 2px solid transparent`, the `outline-0` utility and `outline: 0px` (the word boundary fails between the `0` and the `p`) each remove the ring and draw nothing. (4) The deliberate pointer-focus exemption: `a:focus:not(:focus-visible) { outline: none; }` and the `not-focus-visible:outline-none` variant are the recommended way to drop a ring for the mouse while keeping it for the keyboard, and are passed over on purpose. This is one of only two `error` rules here — `img-no-alt` is the other — and a missed ring is the direction the gaps cost in.",
+  "**A tag that carries a spread.** `img-no-alt`, `clickable-div`, `icon-button-no-label` and `control-no-label` all stand down on any element with `{...props}`, because the attribute they would report as missing may be inside it. `<img {...props} src=\"a.png\">`, `<div {...rest} onClick={go}>`, `<input {...register(\"x\")} />` and `<button {...p}><Icon/></button>` each draw nothing. The alternative is a fabricated finding, so the miss is deliberate — but it means a component that forwards its props is largely unreadable to these four rules. It stands down those four rules on that element and nothing more: `outline-none` still fires on a spread element, and a line rule still reads the line it is written on.",
+  "**A value that only exists at run time — and the two rule families split on which way that costs.** The line rules read literal text, so a hex assigned to a variable and used as `style={{ color: c }}` draws no `hardcoded-color`, and `tabIndex={n}` draws no `positive-tabindex` however large `n` is at run time (`tabIndex={5}` written out does fire). `icon-button-no-label` errs the other way: it measures a button's inner text after erasing every `{…}` expression, so `<button>{label}</button>` — a properly labelled button — is reported as icon-only. Erasure is only half of that rule's misjudgement; the other half is the threshold it applies to whatever survives. With no `aria-label`, `aria-labelledby`, `title` or spread to name the button, fewer than two letters or digits fires, so `<button>3</button>`, `<button>×</button>` and `<button>好</button>` are reported as unlabelled — `×` is neither a letter nor a digit, and a single CJK character is a whole word — while `<button>Go</button>`, `<button>12</button>` and `<button>好的</button>` pass. An emoji is not a letter or a digit either, so `<button>🔍</button>` — the commonest real icon button there is — draws the warning, and so does `<button>🔍🔍</button>`; `<button>🔍 Search</button>` does not. Any one of those four names silences it whatever the text says — `<button title=\"Save\">×</button>` is quiet. Read this rule against prop-driven, symbolic and non-Latin buttons as a question, not a defect.",
+  "**Which element a tag rule is really grading — the match is on the literal name, lowercased, and on nothing else.** That cuts both ways and neither way is about what finally renders. A component **is** graded whenever its name happens to spell an element: `<Button onClick={go}><Icon/></Button>` draws `icon-button-no-label`; `<Input type=\"email\" />`, `<Select>` and `<Textarea />` draw `control-no-label`; `<Div>`, `<Span>`, `<Li>` and `<Section onClick={go}>` draw `clickable-div`; `<Image src=\"/a.png\" />` and `<IMG>` draw `img-no-alt`. Those are usually false, because the wrapper is supplying the very `alt`, `aria-label`, `id` or `role` the rule wants and this call cannot see its implementation — `<Button aria-label=\"Save\">` goes quiet only because the name is written on *this* line. Every other component name is invisible in the other direction: `<Avatar src=\"/a.png\" />`, `<IconButton />`, `<TextField />` and `<Pressable onClick={go}>` render exactly the elements these rules are about and draw nothing *from the four rules keyed to element names*. The other seven rules do not consult a tag name at all, so a wrapper is not silent overall: the line rules read the line it is written on, and `<Avatar style={{ color: \"#ff0000\" }} />` reports a hardcoded colour; and `outline-none` scans the snippet's text with no reference to any element, so `<Avatar className=\"outline-none\" />` reports a removed focus ring. The plain-HTML lists are narrow too — `clickable-div` is `div`, `span`, `li`, `section` and so passes `<a onClick>`, `<p onClick>`, `<td onClick>` and `<article onClick>`; `icon-button-no-label` is `<button>` and not `<a role=\"button\">`; `control-no-label` is `input`, `select`, `textarea`.",
+  "**A click handler written in a syntax `clickable-div` does not read.** It looks for an attribute named `onClick`, and HTML's `onclick` satisfies it too. Demonstrated misses: Vue's `<div @click=\"go\">` and `<div v-on:click=\"go\">`, Angular's `<div (click)=\"go()\">`, Alpine's `<div x-on:click=\"go\">` and `<div @click.prevent=\"go\">`, and Svelte 4's `<div on:click={go}>` — each draws nothing, and these are stacks the shared scanner reads elsewhere in this codebase, so the gap is not a scope decision. Current Svelte is *not* in that list: Svelte 5 replaced the event directive with an event attribute, `<div onclick={go}>`, which this rule does read; what it misses on Svelte is the legacy `on:` form that Svelte 5 still supports for backwards compatibility and that existing components are full of. Nor is the handler spelling the only way a clickable container escapes in one of these templates — three separate conditions do it as well, each run inside a `<template>`: the element must be `div`, `span`, `li` or `section`, so `<article onclick=\"go()\">` is silent; it must carry no `role`, so `role=\"button\"` silences it; and it must carry no spread, which Vue's `v-bind=\"attrs\"` counts as.",
+  "**A namespaced element, which is graded as its prefix.** `:` is not a tag-name character in the shared scanner, so `<svg:image href=\"…\">` is read as an element called `svg`, `<xhtml:img>` as one called `xhtml` and `<html:input>` as one called `html` — none of which is on any rule's list, so all three pass silently while their unprefixed spellings fire. What this does *not* cost is a Svelte head: no rule here looks for a `<head>` element at all, so `<svelte:head>` is merely an unrecognised tag, and an `<img>` written inside one is graded exactly as it would be anywhere else in the file.",
+  "**Commented-out code — and the two rule families disagree about it.** The line rules skip a line whose first non-space characters are `//`, `*` or `/*`; the tag rules mask nothing. So `<!-- <img src=\"a.png\"> -->` reports `img-no-alt`, `{/* <img src=\"a.png\"> */}` reports it too, and `<!-- .b { outline: none } -->` reports `outline-none`, while `// color: #ff0000;` is skipped. The line-rule guard is about where the *line* starts, so `color: #ff0000; // fix later` still fires, and inside a block comment whose continuation lines carry no leading `*` the line rules fire normally. Dead code draws live findings here — and the traffic runs the other way too, which is easier to miss: commenting out a *focus replacement* silences a real one, because `outline-none`'s replacement check reads the raw text of the snippet. `<!-- .a:focus { outline: 2px solid blue; } -->` above a live `.b { outline: none; }` reports nothing at all.",
+  "**A CSS declaration split across lines.** `hardcoded-color`, `px-font-size`, `important-overuse`, `fixed-height-text`, `positive-tabindex` and `magic-number-radius` are single-line regexes run once per line, so `font-size:` followed by `14px` on the next line, or `color:` followed by `#ff0000`, draws nothing where the same declaration on one line draws a warning. The five tag rules do not share this blind spot — they scan the whole snippet and map the offset back to a line number, so a Prettier-wrapped `<img\\n  src=…\\n/>` is graded exactly like the one-line form.",
+  "**Spellings a line rule was not written for.** `hardcoded-color` wants a `#` hex directly after `color`, `background`, `border`, `fill` or `stroke`, or a quoted six-digit hex on a line that mentions style/className/css — so `rgb(255, 0, 0)`, `hsl()`, `oklch()`, a named `red`, a `--brand: #ff0000` custom-property *definition*, and a hex inside `box-shadow` are all invisible — but not every custom property is, and the difference is not one a reader would guess: the pattern wants `color`, `background`, `border`, `fill` or `stroke` immediately before the colon, so `--brand-color: #ff0000` fires while `--brand: #ff0000` does not, on nothing but whether the token name happens to end in a word the rule watches. `px-font-size` reads only the CSS `font-size:` spelling: `style={{ fontSize: \"14px\" }}` and the `font: 14px/1.5` shorthand draw nothing. `important-overuse` reads the literal `!important`, so Tailwind's important modifier — `className=\"!text-red-500\"` — is invisible where `color: red !important` fires. That is the pattern: Tailwind's arbitrary-value syntax (`bg-[#ff0000]`, `text-[14px]`, `rounded-[6px]`, `h-[40px]`), its scale utilities (`h-10`) and its important modifier are where these things are actually written in a Tailwind file, and are exactly where these rules are blindest. Case is a spelling too, and five of the six line rules are case-sensitive on the literal text: `HEIGHT: 40px`, `COLOR: #ff0000`, `FONT-SIZE: 14px`, `BORDER-RADIUS: 6px` and `!IMPORTANT` each draw nothing where the lowercase form fires. `hardcoded-color` is case-sensitive per *branch* rather than per rule, which is worth knowing before trusting either result: bare CSS `COLOR: #ff0000` is silent, while `style={{ COLOR: \"#ff0000\" }}` fires — it reaches the second branch, which looks for a quoted six-digit hex on a line mentioning style/className/css and never reads the property name at all. The hex's own case is read by neither branch: `#FF0000` fires in both places. `positive-tabindex` is the partial exception, and only on one of its two alternatives: the HTML-attribute form carries the case-insensitive flag, so `TABINDEX=\"5\"`, `TabIndex=\"5\"` and the unquoted `TABINDEX=5` all fire, while the JSX brace form is matched case-sensitively under the single spelling `tabIndex={5}` — `TABINDEX={5}`, `TabIndex={5}` and `tabindex={5}` are silent.",
+  "**What `fixed-height-text` and `magic-number-radius` are actually reading, which is not what their names say.** `fixed-height-text` does not mean *fixed*: its pattern is a word-boundary `height:` followed by two or more digits and a literal `px`. Because `-` is a word boundary, `min-height: 40px` and `max-height: 200px` both draw the note — including the `min-height` + padding its own fix text recommends, which means the rule flags its own advice. (`line-height: 40px` escapes only by accident, because `line` is on the suppressor list below.) Because of the other half, a fixed height stated any other way is silent: `height: 9px` is one digit, and `height: 40rem`, `height: 100%`, `height: 40vh` and even `height: 40.5px` are not `px` preceded by two digits. The unit is matched literally and in lower case, so `height: 40PX` and `height: 40Px` are silent as well, and so are `height: calc(40px + 1rem)` and the logical-property spelling `block-size: 40px`. Nothing but whitespace may sit between the colon and the digits, which is why `.a { height: \"40px\"; }` and `style={{ height: \"40px\" }}` are silent too — both are a lower-case `px` behind two digits, and the quote is in the way. Shapes demonstrated to fire include `height: 40px`, `height:40px`, `height :  40px`, `min-height: 40px` and `max-height: 200px` — and, because `--` ends in a word boundary, custom-property *definitions*: `:root { --header-height: 64px; }` draws the note, as do `--height`, `--card-height` and `--nav-height`. Read all of that as a sample rather than a closed list: what the pattern reads is a narrow slice of the ways a fixed height gets written, and the slice has ragged edges in both directions. Both rules are then dropped by a word anywhere on the line. `fixed-height-text` stands down when the line contains `icon`, `avatar`, `line`, `divider` or `border` as a *substring*, which is much wider than it reads: `.timeline`, `.headline` and `.inline-flex` all contain `line`, and `.a { height: 40px; border-radius: 4px; }` contains `border`, so none of those four draws the height note that `.card { height: 40px; }` draws — the fourth is not silent overall, it still reports its radius. `magic-number-radius` is dropped when `var(` or `rounded` appears anywhere on the line, so `.rounded-card { border-radius: 8px; }` is silent. Both suppressors are whole-line, so a densely written declaration block quietly switches them off — and they are not parallel, though they read as though they were: `fixed-height-text`'s suppressor is case-insensitive, so `.a { height: 40px; BORDER: 1px solid; }` is silent, while `magic-number-radius`'s is not, so `.ROUNDED-card { border-radius: 8px; }` fires where `.rounded-card` is silent. And `magic-number-radius` reads `border-radius` in whole pixels only, which cuts both ways: `border-radius: 0px` and `border-radius: 9999px` each draw the note although a squared corner and a pill are the two least ad-hoc radii there are, while `border-radius: 50%` and `border-radius: 0.5rem` draw nothing. It reaches custom properties on the same word-boundary quirk — `:root { --border-radius: 8px; }` fires, `--radius: 8px` does not.",
+  "**Whether a label, a role or a name actually resolves.** `control-no-label` is satisfied by the mere *presence* of an `id` and never looks for the `<label for>` that would use it, so `<input id=\"email\">` with no label anywhere is silent, and so is `<label for=\"nope\">Email</label><input id=\"email\">` where the two do not match. It also has no notion of a wrapping label: `<label>Email <input type=\"email\"></label>`, which is correct, still draws the warning. `clickable-div` is satisfied by any `role` at all — `role=\"presentation\"` silences it — and never checks that the `tabIndex` and key handlers its own fix text asks for came with it. The two naming rules answer the same way: `img-no-alt` accepts `alt=\"image\"` and `alt=\"a.png\"`, and `icon-button-no-label` accepts `aria-label=\"button\"` and even `aria-label=\"\"` on an icon-only button. These four read an attribute's presence rather than its content, with one demonstrated exception in the other direction: `control-no-label` reads the *value* of `type` and exempts five of them — `hidden`, `submit`, `button`, `image` and `reset` draw nothing however unlabelled they are, while `text`, `email` and `checkbox` are graded. Otherwise it is presence that satisfies them, and these are the cases run: `alt=\"image\"`, `alt=\"a.png\"`, `aria-label=\"button\"`, `aria-label=\"\"`, an `id` with no matching `<label for>`, and `role=\"presentation\"`. So a silence from these four has at least four distinct causes — the attribute was present in one of those forms; or the element carries a spread, with no attribute at all; or its `type` is one of the five exempt values; or, for `icon-button-no-label`, the button simply has visible text, which is why `<button>Save</button>` is quiet. Their findings carry no guarantee either: the wrapping label two sentences up, `<Input type=\"email\" />` and `<button>{label}</button>` are correct markup that these rules report.",
+  "**How many defects a snippet has.** At most one finding per rule per line: `<img src=a><img src=b><img src=c>` on a single line reports one `img-no-alt`, and `.a { color: #fff; background: #000; }` reports one `hardcoded-color`. The same two images on two lines report two. The summary counts findings, not defects, and it undercounts a minified or densely written file.",
+];
+
+export const LINT_CLOSING =
+  "A clean result here is not a design review and not an accessibility audit. It means no rule in this linter matched the text of this snippet — and most of what makes an interface work has no rule here at all. Take the rest from design_review_checklist, a keyboard, and a screen reader.";
+
+export function designLintReport(code: string): AuditReport {
   const findings = designLint(code);
+  const out: string[] = [];
   if (findings.length === 0) {
-    return "# Design lint\n\n✅ No design anti-patterns detected in this snippet.\n\n_Static checks only (hardcoded values, focus/alt/labels, semantics). Still verify visually and with a keyboard + screen reader. See design_review_checklist for a full audit._";
+    out.push(
+      "# Design lint",
+      "",
+      "✅ No design anti-patterns detected in this snippet.",
+      "",
+      "_Static checks only (hardcoded values, focus/alt/labels, semantics). Still verify visually and with a keyboard + screen reader. See design_review_checklist for a full audit._",
+    );
+  } else {
+    const counts = findings.reduce((m, f) => ((m[f.severity] = (m[f.severity] ?? 0) + 1), m), {} as Record<string, number>);
+    out.push(
+      "# Design lint",
+      "",
+      `**${findings.length} finding(s)** — ${counts.error ?? 0} error · ${counts.warning ?? 0} warning · ${counts.info ?? 0} info`,
+      "",
+      "| line | sev | rule | issue |",
+      "|---|---|---|---|",
+      ...findings.map((f) => `| ${f.line} | ${ICON[f.severity]} | \`${f.rule}\` | ${f.message} |`),
+      "",
+      "## Fixes",
+      ...findings.map((f) => `- **L${f.line} \`${f.rule}\`:** ${f.fix}${f.doc ? ` → get_design_doc("${f.doc}")` : ""}`),
+      "",
+      "_Regex/tag-scanner based — high-signal but not exhaustive, and it cannot see values that arrive via props or a spread. A fast design-time pass, not a replacement for a full review or a real a11y audit (axe/keyboard/screen-reader)._",
+    );
   }
-  const counts = findings.reduce((m, f) => ((m[f.severity] = (m[f.severity] ?? 0) + 1), m), {} as Record<string, number>);
-  const out: string[] = [
-    "# Design lint",
-    "",
-    `**${findings.length} finding(s)** — ${counts.error ?? 0} error · ${counts.warning ?? 0} warning · ${counts.info ?? 0} info`,
-    "",
-    "| line | sev | rule | issue |",
-    "|---|---|---|---|",
-    ...findings.map((f) => `| ${f.line} | ${ICON[f.severity]} | \`${f.rule}\` | ${f.message} |`),
-    "",
-    "## Fixes",
-    ...findings.map((f) => `- **L${f.line} \`${f.rule}\`:** ${f.fix}${f.doc ? ` → get_design_doc("${f.doc}")` : ""}`),
-    "",
-    "_Regex/tag-scanner based — high-signal but not exhaustive, and it cannot see values that arrive via props or a spread. A fast design-time pass, not a replacement for a full review or a real a11y audit (axe/keyboard/screen-reader)._",
-  ];
-  return out.join("\n");
+  out.push("", ...renderNotVisibleSection(LINT_PREAMBLE, LINT_NOT_VISIBLE, LINT_CLOSING));
+  return { text: out.join("\n"), structured: auditStructuredFrom({ findings, notVisible: LINT_NOT_VISIBLE }) };
 }
 
 // ── audit reports ────────────────────────────────────────────────────────────
+
+/**
+ * The structured half of an audit, built from the findings array the report is
+ * built from. Kept separate from `assembleAuditReport` because an auditor may
+ * need this half without adopting that function's report layout — four of them
+ * have their own, and changing nine tools' markdown to share one renderer is a
+ * different change than giving them all one machine contract.
+ */
+export function auditStructuredFrom(input: {
+  findings: Array<LintFinding & { file?: string }>;
+  notVisible: string[];
+  file?: string;
+}): AuditStructured {
+  const { findings, notVisible } = input;
+  return {
+    findings: findings.map((f): AuditFinding => {
+      const file = f.file ?? input.file;
+      return {
+        rule: f.rule,
+        severity: f.severity,
+        message: f.message,
+        fix: f.fix,
+        doc: f.doc ?? "",
+        ...(file ? { file } : {}),
+        line: f.line,
+      };
+    }),
+    summary: {
+      error: findings.filter((f) => f.severity === "error").length,
+      warning: findings.filter((f) => f.severity === "warning").length,
+      info: findings.filter((f) => f.severity === "info").length,
+    },
+    notVisible,
+  };
+}
+
+/**
+ * The markdown rendering of the same `notVisible` array the structured half
+ * carries. One array, two renderings: a disclosure list typed separately from
+ * the field that reports it will drift, and when it does neither reader can
+ * tell which one is lying.
+ */
+export function renderNotVisibleSection(
+  preamble: string,
+  notVisible: string[],
+  closing: string,
+): string[] {
+  return [
+    "## Not visible to this audit",
+    "",
+    preamble,
+    "",
+    ...notVisible.map((entry) => `- ${entry}`),
+    "",
+    closing,
+  ];
+}
 
 /**
  * Assemble one audit into its two registers at once.
@@ -432,26 +540,9 @@ export function assembleAuditReport(input: {
     }
   }
 
-  lines.push("## Not visible to this audit", "", input.preamble, "");
-  for (const entry of notVisible) lines.push(`- ${entry}`);
-  lines.push("", input.closing);
+  lines.push(...renderNotVisibleSection(input.preamble, notVisible, input.closing));
 
-  const structured: AuditStructured = {
-    findings: findings.map((f): AuditFinding => {
-      const file = f.file ?? input.file;
-      return {
-        rule: f.rule,
-        severity: f.severity,
-        message: f.message,
-        fix: f.fix,
-        doc: f.doc ?? "",
-        ...(file ? { file } : {}),
-        line: f.line,
-      };
-    }),
-    summary,
-    notVisible,
-  };
+  const structured = auditStructuredFrom({ findings, notVisible, file: input.file });
 
   return { text: lines.join("\n"), structured };
 }

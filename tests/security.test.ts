@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
-import { securitySourceRules, securityConfigRules, extractHeaders, securityReport } from "../dist/security.js";
+import {
+  securitySourceRules, securityConfigRules, extractHeaders, securityReport,
+  SECURITY_NOT_VISIBLE, SECURITY_PREAMBLE, SECURITY_CLOSING,
+} from "../dist/security.js";
 
 const ids = (code: string, filename?: string) =>
   securitySourceRules(code, filename).map((f) => f.rule).sort();
@@ -658,13 +661,13 @@ describe("config rules — committed env files", () => {
 
 describe("the report", () => {
   it("always states what it could not see", () => {
-    const clean = securityReport({ source: `<main><h1>Hi</h1></main>` });
+    const clean = securityReport({ source: `<main><h1>Hi</h1></main>` }).text;
     expect(clean).toMatch(/not visible to this audit/i);
     expect(clean).toMatch(/CDN|proxy/i);
   });
 
   it("states it for a report with findings too", () => {
-    const dirty = securityReport({ source: `<script src="https://cdn.example.com/a.js"></script>` });
+    const dirty = securityReport({ source: `<script src="https://cdn.example.com/a.js"></script>` }).text;
     expect(dirty).toMatch(/not visible to this audit/i);
     expect(dirty).toContain("external-script-no-sri");
   });
@@ -712,7 +715,7 @@ function runProject(files: Record<string, string>): string {
       mkdirSync(dirname(full), { recursive: true });
       writeFileSync(full, source, "utf8");
     }
-    return securityReport({ root });
+    return securityReport({ root }).text;
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -1177,7 +1180,11 @@ describe("an unreadable header is reported as unread, not as nothing", () => {
     expect(hit!.severity).toBe("info");
     expect(hit!.doc).toBe("web-security-headers");
     // What was found, where, and that the real response is the authority.
-    expect(hit!.message).toContain("middleware.ts");
+    // The path is carried once, as `file` — not also folded into `message`,
+    // which would hand a caller rendering `${file}:${line} — ${message}` the
+    // same path twice. The markdown puts it back at render time.
+    expect(hit!.file).toBe("middleware.ts");
+    expect(hit!.message).not.toContain("middleware.ts");
     expect(hit!.message).toMatch(/assembled at runtime/);
     // csp-undeterminable's own wording predates the other four and says "in a
     // response"; the point asserted here is that all five send the reader to
@@ -1518,5 +1525,142 @@ describe("source rules — prose that names a sink is not a sink", () => {
 
   it("still reports a real inline handler", () => {
     expect(ids(`<button onclick="go()">x</button>`, "page.html")).toContain("inline-event-handler");
+  });
+});
+
+// Pinned before `NOT_VISIBLE` moved from a prose template literal to
+// `SECURITY_PREAMBLE` / `SECURITY_NOT_VISIBLE` / `SECURITY_CLOSING`, so that
+// the split can be checked against the exact bytes `securityReport` rendered
+// beforehand. A container change — array in, same markdown out — has nothing
+// to prove if the "before" picture is taken after the change.
+describe("the disclosure section, pinned before the split into an array", () => {
+  it("renders the same disclosure section it rendered before the split", () => {
+    expect(securityReport({ source: `<div dangerouslySetInnerHTML={{__html: x}} />`, filename: "a.tsx" }).text)
+      .toMatchInlineSnapshot(`
+        "# Security audit
+
+        Scanned one snippet. Configuration rules need a directory — pass \`path\` to check headers.
+
+        **0 error · 1 warning · 0 info**
+
+        ## Warnings
+
+        - **dangerous-html** (line 1) — dangerouslySetInnerHTML with no sanitiser imported in this file renders untrusted markup as live HTML.
+          - Fix: Sanitise the value first (DOMPurify), or render it as text.
+          - Read: \`get_design_doc("frontend-attack-surface")\`
+
+        ## Not visible to this audit
+
+        This audit reads local files only — it makes no request to your site. It cannot see:
+
+        - Headers added by a CDN, WAF or reverse proxy (Cloudflare, Fastly, nginx) after your app responds.
+        - Headers set by runtime logic that depends on the request.
+        - Any value assembled from variables, which is reported as undeterminable rather than absent.
+        - Server-side concerns entirely: authorization, injection, and access control are out of scope for a design server.
+        - **Header shapes it does not recognise.** It reads \`next.config\` \`headers()\` \`key\`/\`value\` entries; \`vercel.json\`, \`netlify.toml\`, \`_headers\`, \`staticwebapp.config.json\`; quoted object properties (\`{ "Content-Security-Policy": "…" }\`) — Nuxt \`routeRules\`, a Remix/React Router \`headers\` export, \`new Response(body, { headers })\`, \`new Headers({…})\`, \`res.set({…})\`; \`res.setHeader(…)\`, \`headers.set/append(…)\`, \`reply.header(…)\` — including from Next.js and Astro \`middleware\`; SvelteKit's \`hooks.server.ts\` and \`kit.csp.directives\`, and \`<meta http-equiv>\`. A library that builds headers without naming them in your source — \`helmet\`, a framework preset, a shared middleware package — is invisible to it, and so is any shape not in that list. If your headers are set some other way, a "missing" finding above is about this audit's reach, not about your site.
+        - **A truncated scan cannot prove absence.** If the scan line above says it stopped at a cap, every "missing" finding is unconfirmed and is reported as a note rather than a defect.
+
+        A clean result here means these files declare nothing wrong. Confirm the emitted headers on a real response before treating it as coverage."
+      `);
+  });
+});
+
+describe("audit_security returns both registers", () => {
+  it("is not empty", () => {
+    expect(SECURITY_NOT_VISIBLE.length).toBeGreaterThan(0);
+  });
+
+  it("returns the notVisible list it printed, entry for entry, for a snippet with no findings", () => {
+    const r = securityReport({ source: `<main><h1>Hi</h1></main>` });
+    expect(r.structured.findings).toEqual([]);
+    expect(r.structured.summary).toEqual({ error: 0, warning: 0, info: 0 });
+    expect(r.structured.notVisible).toEqual(SECURITY_NOT_VISIBLE);
+    expect(r.text).toContain("## Not visible to this audit");
+  });
+
+  it("renders every disclosure entry as its own bullet", () => {
+    const r = securityReport({ source: `<main><h1>Hi</h1></main>` });
+    for (const entry of r.structured.notVisible) expect(r.text).toContain(`- ${entry}`);
+  });
+
+  it("derives the summary from the same findings the markdown lists", () => {
+    const r = securityReport({ source: `<script src="https://cdn.example.com/a.js"></script>` });
+    expect(r.structured.summary).toEqual({ error: 1, warning: 0, info: 0 });
+    expect(r.structured.findings.map((f) => f.rule)).toEqual(["external-script-no-sri"]);
+    for (const f of r.structured.findings) expect(r.text).toContain(`**${f.rule}**`);
+  });
+
+  it("carries every finding's line number and doc into the structured half", () => {
+    const r = securityReport({ source: `\n\n<script src="https://cdn.example.com/a.js"></script>`, filename: "a.tsx" });
+    expect(r.structured.findings[0]).toMatchObject({ rule: "external-script-no-sri", line: 3, doc: "web-security-headers" });
+  });
+
+  it("carries the snippet's own filename onto each finding via the fallback file", () => {
+    const r = securityReport({ source: `<script src="https://cdn.example.com/a.js"></script>`, filename: "a.tsx" });
+    expect(r.structured.findings[0].file).toBe("a.tsx");
+  });
+
+  it("carries each project-scanned finding's own path as `file` only, never also inside the message", () => {
+    // `file` is a replacement, not an addition: an agent that renders
+    // `${f.file}:${f.line} — ${f.message}` must not read the path twice.
+    // The markdown loses nothing — it prefixes `file` back onto the message
+    // at render time, exactly as assembleAuditReport does — so the bullet is
+    // byte-for-byte what it was when the path lived in the message.
+    const root = mkdtempSync(join(tmpdir(), "saglitz-sec-struct-"));
+    try {
+      writeFileSync(join(root, "a.html"), `<script src="https://cdn.example.com/a.js"></script>`, "utf8");
+      const r = securityReport({ root });
+      const f = r.structured.findings.find((x: { rule: string }) => x.rule === "external-script-no-sri");
+      expect(f).toBeDefined();
+      expect(f!.file).toBe("a.html");
+      expect(f!.message).not.toContain("a.html");
+      expect(r.text).toContain(`— ${f!.file}: ${f!.message}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("carries a config rule's real file as `file` only too, when the declaration was found in one", () => {
+    const root = mkdtempSync(join(tmpdir(), "saglitz-sec-struct-"));
+    try {
+      writeFileSync(
+        join(root, "_headers"),
+        `/*\n  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'\n`,
+        "utf8",
+      );
+      const r = securityReport({ root });
+      const f = r.structured.findings.find((x: { rule: string }) => x.rule === "csp-unsafe-inline");
+      expect(f).toBeDefined();
+      expect(f!.file).toBe("_headers");
+      expect(f!.message).not.toContain("_headers");
+      expect(r.text).toContain(`— ${f!.file}: ${f!.message}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves a project-wide absence claim with no `file` — 'configuration' names no real path", () => {
+    // absent() attributes csp-missing etc. to the pseudo-path "configuration"
+    // because no single file is the culprit; carrying that string as `file`
+    // would misrepresent it as a real path relative to the audited directory,
+    // so it stays folded into the message only, the same convention
+    // assembleAuditReport's own project-wide claims use.
+    const root = mkdtempSync(join(tmpdir(), "saglitz-sec-struct-"));
+    try {
+      writeFileSync(join(root, "app.js"), `console.log("hi");`, "utf8");
+      const r = securityReport({ root });
+      const f = r.structured.findings.find((x: { rule: string }) => x.rule === "csp-missing");
+      expect(f).toBeDefined();
+      expect(f!.file).toBeUndefined();
+      expect(f!.message).toContain("configuration: ");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("closes without implying that silence elsewhere is a pass", () => {
+    const r = securityReport({ source: `<main><h1>Hi</h1></main>` });
+    expect(r.text).toContain(SECURITY_PREAMBLE);
+    expect(r.text.endsWith(SECURITY_CLOSING)).toBe(true);
   });
 });

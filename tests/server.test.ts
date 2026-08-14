@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { join } from "node:path";
-import { writeFileSync, mkdtempSync } from "node:fs";
+import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -70,8 +70,58 @@ const SMOKE: Record<string, Record<string, unknown>> = {
   },
 };
 
-/** The only two tools that declare an outputSchema. */
-const STRUCTURED_TOOLS = ["audit_seo_geo", "audit_performance"];
+/** Every tool that declares an outputSchema. */
+const STRUCTURED_TOOLS = [
+  "audit_seo_geo", "audit_performance", "design_lint", "audit_security", "audit_generic_design", "audit_project",
+];
+
+/**
+ * Properties a tool's outputSchema declares beyond the three every structured
+ * auditor shares (`findings`, `notVisible`, `summary`). Two tools have them:
+ * `audit_generic_design` also returns `score`, the same itemised number
+ * `genericReport`'s markdown prints, and `scan`; `audit_project` returns a
+ * wider `scan` of its own. `scan` is what tells a caller reading only
+ * structuredContent that a directory audit was truncated — the markdown's cap
+ * sentence otherwise has no structured counterpart. Read by the shared
+ * schema-shape test below so that test can stay one assertion instead of
+ * forking into a per-tool copy.
+ */
+const EXTRA_SCHEMA_PROPS: Record<string, string[]> = {
+  audit_generic_design: ["score", "scan"],
+  audit_project: ["scan"],
+};
+
+/**
+ * Same idea, but for `required`: `audit_generic_design`'s `scan` is present
+ * only in directory mode (a snippet has no scan to report), so it is declared
+ * `.optional()` and correctly absent from `required` even though it is a real
+ * property. A test that reused EXTRA_SCHEMA_PROPS for both checks would demand
+ * it be required and fail against the schema's own, deliberately looser,
+ * contract. `audit_project` has no snippet mode — every call scans a directory
+ * — so its `scan` is required, and that difference is the point of keeping the
+ * two tables apart.
+ */
+const EXTRA_REQUIRED_PROPS: Record<string, string[]> = {
+  audit_generic_design: ["score"],
+  audit_project: ["scan"],
+};
+
+/**
+ * Does this tool take a `path`, and so can it be handed a bad one? Declaring
+ * an outputSchema is what makes those tools answer that with an error result
+ * rather than prose, and their descriptions have to say so; `design_lint`
+ * takes only a snippet, has no path to get wrong, and must not be made to
+ * claim otherwise.
+ *
+ * Read off the advertised input schema rather than listed by hand. A hand-kept
+ * list is a silent opt-out: drop a name from it and the description assertion
+ * simply stops running instead of failing, which is the failure mode this
+ * whole suite exists to prevent. Deriving it also asserts the premise —
+ * `design_lint` is exempt because its schema has no `path`, and if one is ever
+ * added the assertion starts applying to it on its own.
+ */
+const takesPath = (tool: { inputSchema?: { properties?: Record<string, unknown> } }): boolean =>
+  "path" in (tool.inputSchema?.properties ?? {});
 
 let client: Client;
 let transport: StdioClientTransport;
@@ -99,6 +149,53 @@ function textOf(result: { content?: Array<{ type: string; text?: string }> }): s
     .join("\n");
 }
 
+/**
+ * Recover the exact `notVisible` bullets `renderNotVisibleSection` printed,
+ * so a drift test can compare the rendered markdown against
+ * `structuredContent.notVisible` as sets, in both directions.
+ *
+ * `renderNotVisibleSection` (src/lint.ts) prints:
+ *   "## Not visible to this audit", "", preamble, "",
+ *   ...notVisible.map(entry => `- ${entry}`), "", closing
+ *
+ * Naively grabbing every line starting with "- " is not enough:
+ * `GENERIC_NOT_VISIBLE` (src/generic.ts) has entries that wrap over several
+ * physical lines — the entry string itself contains its own `\n  `
+ * continuations — so a single bullet can span multiple lines, only the first
+ * of which starts with "- ". This walks the section line by line, starts a
+ * new bullet on a line beginning "- ", and folds every following line back
+ * onto it (rejoined with "\n", the same separator the entry already carries)
+ * until either the next "- " line or the blank line that ends the list —
+ * `renderNotVisibleSection` always pushes that blank line before `closing`,
+ * which is what stops this from swallowing the closing sentence too.
+ *
+ * This assumes no entry's own text begins a line with "- " (which would be
+ * read as a new bullet) and no preamble/closing line does either (which
+ * would be read as bullet noise before the list starts) — checked by hand
+ * against all six NOT_VISIBLE tables and their preambles/closings; none do.
+ */
+function notVisibleBulletsIn(markdown: string): string[] {
+  const headingIdx = markdown.indexOf("## Not visible to this audit");
+  if (headingIdx === -1) return [];
+  const lines = markdown.slice(headingIdx).split("\n");
+  const firstBullet = lines.findIndex((l) => l.startsWith("- "));
+  if (firstBullet === -1) return [];
+  const bullets: string[] = [];
+  let current: string | null = null;
+  for (let i = firstBullet; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === "") break; // the blank line renderNotVisibleSection puts before `closing`
+    if (line.startsWith("- ")) {
+      if (current !== null) bullets.push(current);
+      current = line.slice(2);
+    } else if (current !== null) {
+      current += `\n${line}`;
+    }
+  }
+  if (current !== null) bullets.push(current);
+  return bullets;
+}
+
 describe("server handshake", () => {
   it("registers every tool exactly once", () => {
     expect(toolNames.length).toBe(new Set(toolNames).size);
@@ -118,10 +215,10 @@ describe("server handshake", () => {
       expect(t.annotations?.title, t.name).toBeTruthy();
       expect(t.annotations?.readOnlyHint, t.name).toBe(true);
       expect(t.annotations?.openWorldHint, t.name).toBe(false);
-      // Exactly two tools declare an outputSchema. For every other tool the
-      // wrapper's conditional spread must keep the key absent — not
-      // present-as-undefined — so this checks the real wire representation,
-      // not the wrapper's arguments.
+      // Only the tools in STRUCTURED_TOOLS declare an outputSchema. For every
+      // other tool the wrapper's conditional spread must keep the key absent —
+      // not present-as-undefined — so this checks the real wire
+      // representation, not the wrapper's arguments.
       expect("outputSchema" in t, t.name).toBe(STRUCTURED_TOOLS.includes(t.name));
     }
   });
@@ -235,7 +332,7 @@ describe("structured output (outputSchema)", () => {
 // on the real one — that the schema reaches `tools/list`, that the payload
 // actually validates against the schema as declared, and that the summary
 // agrees with the findings it summarises.
-describe("audit_seo_geo and audit_performance return validated structured output", () => {
+describe("the structured auditors return validated structured output", () => {
   /**
    * A minimal JSON Schema check, over the subset the declared schema uses:
    * object/array/string/number/integer/boolean, `required`, `enum`. Written by
@@ -303,8 +400,10 @@ describe("audit_seo_geo and audit_performance return validated structured output
       const schema = tools.find((t) => t.name === name)?.outputSchema as any;
       expect(schema, name).toBeTruthy();
       expect(schema.type).toBe("object");
-      expect(Object.keys(schema.properties ?? {}).sort()).toEqual(["findings", "notVisible", "summary"]);
-      expect((schema.required ?? []).sort()).toEqual(["findings", "notVisible", "summary"]);
+      const expectedProps = ["findings", "notVisible", "summary", ...(EXTRA_SCHEMA_PROPS[name] ?? [])].sort();
+      const expectedRequired = ["findings", "notVisible", "summary", ...(EXTRA_REQUIRED_PROPS[name] ?? [])].sort();
+      expect(Object.keys(schema.properties ?? {}).sort()).toEqual(expectedProps);
+      expect((schema.required ?? []).sort()).toEqual(expectedRequired);
       const finding = schema.properties.findings.items;
       expect((finding.required ?? []).sort()).toEqual(["doc", "fix", "message", "rule", "severity"]);
       expect(finding.properties.severity.enum.sort()).toEqual(["error", "info", "warning"]);
@@ -342,7 +441,29 @@ describe("audit_seo_geo and audit_performance return validated structured output
       expect(structured.findings.length, `${name} should find something in its smoke case`).toBeGreaterThan(0);
     }, 20_000);
 
-    it(`${name} carries a non-empty notVisible list, every entry of which is in the prose`, async () => {
+    // A description that lists `file` among the fields it returns is making a
+    // claim a caller will plan around. design_lint listed it and emits it on
+    // nothing: it takes a snippet and neither a `filename` nor a `path`, so
+    // no finding it can produce has a path to carry. The probe below hands
+    // each tool the path input it declares — a snippet auditor called without
+    // a filename legitimately has nothing to put in `file`, which is not the
+    // same as never having anything.
+    it(`${name} emits \`file\` if, and only if, its description says it does`, async () => {
+      const { tools } = await client.listTools();
+      const tool = tools.find((t) => t.name === name)!;
+      const claimed = /findings \([^)]*\bfile\b[^)]*\)/.test(tool.description ?? "");
+      const inputs = Object.keys((tool.inputSchema as { properties?: Record<string, unknown> }).properties ?? {});
+      const args = inputs.includes("filename")
+        ? { ...SMOKE[name], filename: "probe.html" }
+        : SMOKE[name];
+      const result = (await client.callTool({ name, arguments: args })) as {
+        structuredContent?: { findings: Array<{ file?: string }> };
+      };
+      const emitted = result.structuredContent!.findings.some((f) => typeof f.file === "string");
+      expect(emitted, `${name}: description ${claimed ? "claims" : "does not claim"} \`file\``).toBe(claimed);
+    }, 20_000);
+
+    it(`${name} carries a non-empty notVisible list that exactly matches the markdown's bullets`, async () => {
       const result = (await client.callTool({ name, arguments: SMOKE[name] })) as {
         structuredContent?: { notVisible: string[] };
         content?: Array<{ type: string; text?: string }>;
@@ -350,24 +471,264 @@ describe("audit_seo_geo and audit_performance return validated structured output
       const notVisible = result.structuredContent!.notVisible;
       expect(notVisible.length, name).toBeGreaterThan(4);
       const body = textOf(result);
-      for (const entry of notVisible) expect(body, `${name}: ${entry}`).toContain(entry);
-      // The one claim neither tool may make from source.
-      expect(notVisible.join(" ")).toMatch(/Nothing here is measured/i);
+      // Set equality, both directions. `toContain` alone only proves
+      // notVisible ⊆ markdown — it would stay green if the markdown printed
+      // an extra bullet that bypassed the shared array entirely (e.g. one
+      // appended straight to a report's template), which is exactly the
+      // drift `assembleAuditReport`/`renderNotVisibleSection` exist to make
+      // impossible. Comparing the sorted rendered bullets against the sorted
+      // structured array catches drift in either direction.
+      const rendered = notVisibleBulletsIn(body);
+      expect([...rendered].sort(), name).toEqual([...notVisible].sort());
+      // The claim every structured auditor makes from source, in whichever of
+      // its own several forms applies. The page/source readers (seo/perf/lint,
+      // and audit_project, whose list opens on the same sentence) say in their
+      // notVisible array that they measure nothing rendered.
+      // audit_security says it in its preamble instead, which renders inside
+      // the "## Not visible to this audit" section but is not itself a member
+      // of the notVisible array. Both disclosure lists predate this suite and
+      // are pinned byte-for-byte against what they rendered before returning
+      // structured output, so each keeps its own wording here rather than
+      // adopting another tool's phrase to pass this assertion — but the check
+      // still has to be scoped to that section specifically, not to the whole
+      // body, or it would pass just as well if the sentence were moved
+      // somewhere else in the report entirely (e.g. into the scan-summary
+      // line), which is not the same claim landing in the same place.
+      //
+      // For audit_security that leaves the section check reading the
+      // preamble, which is rendered prose — it says nothing at all about
+      // `notVisible`, and a run that emptied every entry of meaning would
+      // still satisfy it. (Set equality does not save it either: both sides
+      // render from the same array, so it is trivially true.) So the array
+      // is asserted on separately, against the claim security's list
+      // actually carries. It is not "nothing is measured" — security reads
+      // source like the rest, but the limit its list exists to disclose is
+      // narrower and sharper: a *missing* header here is a statement about
+      // how far this audit can see, not about the site. Both halves of that
+      // disclosure — the unrecognised-shape half and the truncated-scan half
+      // — are load-bearing, and each is what makes a "missing" finding
+      // readable as a limit rather than a verdict.
+      if (name === "audit_security") {
+        const notVisibleSection = body.slice(body.indexOf("## Not visible to this audit"));
+        expect(notVisibleSection).toMatch(/makes no request to your site/i);
+        const joined = notVisible.join(" ");
+        expect(joined).toMatch(/a "missing" finding above is about this audit's reach, not about your site/i);
+        expect(joined).toMatch(/a truncated scan cannot prove absence/i);
+      } else if (name === "audit_generic_design") {
+        expect(notVisible.join(" ")).toMatch(/none of that is visible from source text/i);
+      } else {
+        expect(notVisible.join(" ")).toMatch(/Nothing here is measured/i);
+      }
     }, 20_000);
 
     it(`${name}'s description tells a client it reads source and does not measure`, async () => {
       const { tools } = await client.listTools();
-      const description = tools.find((t) => t.name === name)?.description ?? "";
+      const tool = tools.find((t) => t.name === name)!;
+      const description = tool.description ?? "";
       expect(description.length, name).toBeGreaterThan(40);
       expect(description, name).toMatch(/reads (?:your )?source/i);
       expect(description, name).toMatch(/does not measure|measures nothing|no measurement/i);
-      // These two are the only tools here that answer a bad path with an
-      // error result rather than prose — a consequence of declaring an
-      // outputSchema — and a caller should learn that from the description
-      // rather than from a surprise.
-      expect(description, name).toMatch(/error result, not as an empty audit/i);
+      // A path-taking auditor answers a bad path with an error result rather
+      // than prose — a consequence of declaring an outputSchema — and a caller
+      // should learn that from the description rather than from a surprise.
+      // A snippet-only auditor has no path to get wrong and must not say it does.
+      if (takesPath(tool)) {
+        expect(description, name).toMatch(/error result, not as an empty audit/i);
+      } else {
+        expect(description, name).not.toMatch(/error result, not as an empty audit/i);
+      }
     });
   }
+});
+
+// Declaring an outputSchema makes a "successful" text-only result a protocol
+// violation: a caller expecting structuredContent gets none, and nothing
+// tells it the audit never ran. audit_security answered these paths with
+// ordinary prose before it gained an outputSchema; now it must answer them as
+// errors instead, matching audit_seo_geo and audit_performance.
+describe("audit_security answers a bad or missing path as an error, not an empty audit", () => {
+  it("returns an error result, not an empty audit, for a path that is not a directory", async () => {
+    const result = (await client.callTool({
+      name: "audit_security",
+      arguments: { path: join(root, "package.json") },
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  it("returns an error result for a path that does not exist", async () => {
+    const result = (await client.callTool({
+      name: "audit_security",
+      arguments: { path: "/nonexistent-xyz" },
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  it("returns an error result when neither path nor code is given", async () => {
+    const result = (await client.callTool({
+      name: "audit_security",
+      arguments: {},
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
+});
+
+// Same protocol violation, same fix, for the other auditor that gained an
+// outputSchema in this pass: a bad or missing path used to come back as
+// ordinary prose, which a caller expecting structuredContent has no way to
+// tell apart from a real, empty audit.
+describe("audit_generic_design answers a bad or missing path as an error, not an empty audit", () => {
+  it("returns an error result, not an empty audit, for a path that is not a directory", async () => {
+    const result = (await client.callTool({
+      name: "audit_generic_design",
+      arguments: { path: join(root, "package.json") },
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  it("returns an error result for a path that does not exist", async () => {
+    const result = (await client.callTool({
+      name: "audit_generic_design",
+      arguments: { path: "/nonexistent-xyz" },
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  it("returns an error result when neither path nor code is given", async () => {
+    const result = (await client.callTool({
+      name: "audit_generic_design",
+      arguments: {},
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  // The genuinely successful side of the same guard: a real audit still
+  // carries structuredContent, so the isError fix above did not overreach
+  // into the tool's normal, no-error path.
+  it("still returns structuredContent for a real audit", async () => {
+    const result = (await client.callTool({
+      name: "audit_generic_design",
+      arguments: SMOKE.audit_generic_design,
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError ?? false).toBe(false);
+    expect(result.structuredContent).toBeTruthy();
+  });
+});
+
+// audit_project is the third tool to make this change, and the only one whose
+// every call takes a path — it has no snippet mode to fall back to, so a bad
+// path is the whole of its error surface. Before it declared an outputSchema
+// both of these came back as ordinary prose with isError unset, which a caller
+// expecting structuredContent cannot tell from a real audit of an empty
+// directory.
+describe("audit_project answers a bad path as an error, not an empty audit", () => {
+  it("returns an error result, not an empty audit, for a path that is not a directory", async () => {
+    const result = (await client.callTool({
+      name: "audit_project",
+      arguments: { path: join(root, "package.json") },
+    })) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(textOf(result)).toMatch(/is a file, not a directory/);
+  });
+
+  it("returns an error result for a path that does not exist", async () => {
+    const result = (await client.callTool({
+      name: "audit_project",
+      arguments: { path: "/nonexistent-xyz" },
+    })) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(textOf(result)).toMatch(/There is no directory at/);
+  });
+
+  // The genuinely successful side of the same guard, including the branch that
+  // finds nothing to audit: an empty directory is a real, successful audit and
+  // must still carry structuredContent — with a scan saying it read nothing,
+  // which is exactly what tells the caller apart from the error cases above.
+  it("still returns structuredContent for a real audit", async () => {
+    const result = (await client.callTool({
+      name: "audit_project",
+      arguments: SMOKE.audit_project,
+    })) as { isError?: boolean; structuredContent?: { scan?: { filesRead?: number } } };
+    expect(result.isError ?? false).toBe(false);
+    expect(result.structuredContent).toBeTruthy();
+    expect(result.structuredContent!.scan!.filesRead).toBeGreaterThan(0);
+  }, 20_000);
+
+  it("returns a successful, structured audit for a directory with no design source", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "saglitz-empty-project-"));
+    const result = (await client.callTool({
+      name: "audit_project",
+      arguments: { path: empty },
+    })) as {
+      isError?: boolean;
+      structuredContent?: { scan: { filesRead: number }; findings: unknown[]; notVisible: string[] };
+    };
+    expect(result.isError ?? false).toBe(false);
+    expect(result.structuredContent!.scan.filesRead).toBe(0);
+    expect(result.structuredContent!.findings).toEqual([]);
+    expect(result.structuredContent!.notVisible.length).toBeGreaterThan(4);
+    rmSync(empty, { recursive: true, force: true });
+  }, 20_000);
+});
+
+// The cross-cutting gate: every task above added its own coverage as it wired
+// up structured output for one more tool, but nothing yet asserts the six as
+// a set — that this exact list, no more and no fewer, advertises a schema,
+// and that the two invariants (structuredContent present, the two registers
+// in agreement) hold across all of them read together rather than tool by
+// tool. This is the C2-style check: two tool descriptions once advertised a
+// capability that did not exist, and the fix was an assertion over the whole
+// advertised set, not a per-tool spot check that a dropped tool could slip
+// past silently. SMOKE already carries a minimal, real argument set for
+// every registered tool, so it doubles as the sample-args table here rather
+// than duplicating one.
+describe("the six structured auditors, asserted together", () => {
+  it("advertises an outputSchema on exactly the findings-producing auditors", async () => {
+    const { tools } = await client.listTools();
+    const withSchema = tools.filter((t) => t.outputSchema).map((t) => t.name).sort();
+    expect(withSchema).toEqual([...STRUCTURED_TOOLS].sort());
+  });
+
+  it("returns structuredContent from every tool that advertises a schema", async () => {
+    for (const name of STRUCTURED_TOOLS) {
+      const r = (await client.callTool({ name, arguments: SMOKE[name] })) as {
+        structuredContent?: {
+          notVisible: string[];
+          summary: { error: number; warning: number; info: number };
+          findings: unknown[];
+        };
+      };
+      expect(r.structuredContent, name).toBeDefined();
+      expect(r.structuredContent!.notVisible.length, name).toBeGreaterThan(0);
+      const { error, warning, info } = r.structuredContent!.summary;
+      expect(error + warning + info, name).toBe(r.structuredContent!.findings.length);
+    }
+  });
+
+  it("the notVisible array and the markdown's bullets are the same set, for every tool", async () => {
+    for (const name of STRUCTURED_TOOLS) {
+      const r = (await client.callTool({ name, arguments: SMOKE[name] })) as {
+        structuredContent?: { notVisible: string[] };
+        content?: Array<{ type: string; text?: string }>;
+      };
+      const notVisible = r.structuredContent!.notVisible;
+      // Both directions, per tool: every structured entry renders as a
+      // bullet, and every rendered bullet is a structured entry. A one-way
+      // `toContain` check would stay green if a report's markdown template
+      // printed an extra "Not visible" bullet straight from a string
+      // literal, bypassing `notVisible` entirely — which is the drift this
+      // package's one-array-two-renderings rule exists to rule out.
+      const rendered = notVisibleBulletsIn(textOf(r));
+      expect([...rendered].sort(), name).toEqual([...notVisible].sort());
+    }
+  });
 });
 
 describe("resources", () => {

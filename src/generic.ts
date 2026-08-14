@@ -22,7 +22,7 @@
 // test against its own module's ubiquitous, deliberate patterns doesn't earn
 // its place; see the task report for the two rejected alternatives.
 
-import { type LintFinding, type Tag } from "./lint.js";
+import { type LintFinding, type Tag, type AuditReport, type AuditStructured, auditStructuredFrom, renderNotVisibleSection } from "./lint.js";
 import { scanTags, maskComments, elementSpan, flattenTags, findAttr, attrValueText } from "./scan.js";
 import { scanProject, MAX_FILES } from "./project.js";
 
@@ -833,52 +833,62 @@ export function genericScore(
 
 // ── report ───────────────────────────────────────────────────────────────────
 
-const GENERIC_NOT_VISIBLE = `## Not visible to this audit
+export const GENERIC_PREAMBLE =
+  `Every rule above matches a fact about the source — a class name, a phrase, a
+repeated structure. It cannot see, and does not attempt to judge:`;
 
-Every rule above matches a fact about the source — a class name, a phrase, a
-repeated structure. It cannot see, and does not attempt to judge:
-
-- **Whether a default was chosen deliberately.** A brand whose colour
+/**
+ * What `audit_generic_design` structurally cannot see, one entry per bullet
+ * in the "Not visible to this audit" section it renders — split out of a
+ * single prose template literal into `GENERIC_PREAMBLE` / `GENERIC_NOT_VISIBLE`
+ * / `GENERIC_CLOSING` so the same array can be rendered as markdown and
+ * returned as `structuredContent`, the way `design_lint` and `audit_security`
+ * already do. The text of every entry is unchanged by the split.
+ */
+export const GENERIC_NOT_VISIBLE: string[] = [
+  `**Whether a default was chosen deliberately.** A brand whose colour
   genuinely is indigo will be flagged; the finding names a fact, not a
-  mistake. Confirm the choice before treating a flag as a defect.
-- **Anything about rendered output.** Spacing rhythm, optical alignment, how
-  the page actually feels — none of that is visible from source text.
-- **Whether the writing is good.** This detects stock phrases, not weak ones;
+  mistake. Confirm the choice before treating a flag as a defect.`,
+  `**Anything about rendered output.** Spacing rhythm, optical alignment, how
+  the page actually feels — none of that is visible from source text.`,
+  `**Whether the writing is good.** This detects stock phrases, not weak ones;
   a hand-written sentence that happens to avoid the phrase list is not
   praised for it, and a good sentence that happens to use one is still
-  flagged.
-- **Copy in any language but English.** Every phrase, adverb and call-to-action
+  flagged.`,
+  `**Copy in any language but English.** Every phrase, adverb and call-to-action
   label the copy rules match is English. A generated page in Turkish, German,
   Japanese or any other language is read by the visual rules alone and scores
   strictly lower for it — the same page in two languages measured 74 and 92
   here, and the 18-point difference was the translation, not the design. Do
-  not compare scores across languages.
-- **A stock gradient assembled through a CSS custom property.**
+  not compare scores across languages.`,
+  `**A stock gradient assembled through a CSS custom property.**
   \`linear-gradient(135deg, var(--brand-a), var(--brand-b))\` is silent even when
   those properties are defined as the stock pair a few lines above; resolving
   it needs real value substitution, which this scanner does not do. Written
   literally, or as Tailwind \`from-\`/\`to-\` utilities, the same gradient is
-  found.
-- **Judgement of any kind.** Whether the result is *good design* is not this
+  found.`,
+  `**Judgement of any kind.** Whether the result is *good design* is not this
   tool's question — \`design_review_checklist\` and \`get_design_doc("design-critique-scoring")\`
-  own that, with a human looking at the render.
-- **Class names outside Tailwind's default scale.** The visual rules match
+  own that, with a human looking at the render.`,
+  `**Class names outside Tailwind's default scale.** The visual rules match
   literal utility strings from that scale, so a project written with arbitrary
   values, a custom scale, or another framework's class names is audited less
   thoroughly than the score implies. A low score on such a project reflects
-  coverage, not necessarily restraint.
-- **Story, test and fixture files, in directory mode.** Paths matching
+  coverage, not necessarily restraint.`,
+  `**Story, test and fixture files, in directory mode.** Paths matching
   \`*.stories.*\`, \`*.story.*\`, \`*.spec.*\`, \`*.test.*\`, \`__fixtures__/\` and
   \`__mocks__/\` are not read. A story file's job is to show every variant with
   placeholder labels, so scoring it reports the demonstration rather than the
   product — but it does mean a default that exists *only* in a story is not
-  reported either. The scanned line above says how many were skipped.
-- **The typeface rule off a recognised brand surface.** It evaluates only where
+  reported either. The scanned line above says how many were skipped.`,
+  `**The typeface rule off a recognised brand surface.** It evaluates only where
   the surface reads as a brand page — a marketing route, or a heading beside a
   conventional call to action — so a landing page at an unconventional path
-  with distinctive call-to-action copy is not assessed for it.
+  with distinctive call-to-action copy is not assessed for it.`,
+];
 
-A clean result here means the source carries none of these specific,
+export const GENERIC_CLOSING =
+  `A clean result here means the source carries none of these specific,
 recurring defaults — not that the design is good.`;
 
 /**
@@ -910,14 +920,62 @@ const NOT_A_SHIPPED_SURFACE =
   /(?:^|[\\/])(?:__fixtures__|__mocks__)[\\/]|\.(?:stories|story|spec|test)\.[a-z0-9]+$/i;
 
 /**
+ * The structured half of `audit_generic_design`, on top of what every
+ * structured auditor already carries: the score `genericScore` computes,
+ * itemised the same way the markdown prints it, so a caller reading only
+ * `structured.score` never sees a total its `items` don't add up to; and, in
+ * directory mode, what the scan actually reached.
+ *
+ * `scan` exists because a capped scan is otherwise invisible here: the
+ * markdown's "Stopped at the N-file cap" sentence has no counterpart in
+ * `findings`, `summary` or `score` — a truncated project with 400 quiet files
+ * read and one defective file never opened reports `findings: []`, `score: 0`
+ * exactly like a clean one, so a caller reading only structuredContent gets a
+ * clean bill for a project that was never fully read. It is present only when
+ * a directory was audited — a snippet has no scan to report.
+ *
+ * Its six fields are the six `audit_project`'s `scan` declares, and they mean
+ * the same things there. Two tools carrying a block under one name with
+ * different shapes made `scan.filesRead` come back `undefined` from one of
+ * them for no reason but what each task happened to need first; a caller that
+ * learns the block from either tool can now read it from both.
+ */
+export interface GenericStructured extends AuditStructured {
+  score: {
+    total: number;
+    /** The itemised sum before the 100-point display clamp, when the clamp actually changed the number. */
+    rawTotal?: number;
+    items: Array<{ weight: number; rule: string; evidence: string }>;
+  };
+  scan?: {
+    /**
+     * How many files were opened and read. Story, test and fixture files are
+     * opened — they count here and their bytes count towards the cap — and
+     * then dropped before auditing, so this is the markdown's "Scanned N
+     * files" plus the "Skipped N story, test or fixture file(s)" it names
+     * beside it, not the first number alone.
+     */
+    filesRead: number;
+    scannedBytes: number;
+    skippedLarge: string[];
+    hitFileCap: boolean;
+    hitByteCap: boolean;
+    unreadable: string[];
+  };
+}
+
+/**
  * Reports the generic-default findings for one snippet or a whole project,
  * mirroring `securityReport`'s shape: what was scanned, the score itemised
  * (never a bare number — see `genericScore`), findings grouped by severity
- * with `file:line`, then what this audit structurally cannot see.
+ * with `file:line`, then what this audit structurally cannot see. Returns
+ * both registers — markdown for a person, `structured` for a machine — built
+ * from the same findings and the same score, so neither can drift from what
+ * the other says.
  */
-export function genericReport(input: { source?: string; filename?: string; root?: string }): string {
+export function genericReport(input: { source?: string; filename?: string; root?: string }): AuditReport & { structured: GenericStructured } {
   const lines: string[] = ["# Generic-design audit", ""];
-  let findings: LintFinding[] = [];
+  let findings: Array<LintFinding & { file?: string }> = [];
   let scanned: string;
 
   // Directory mode only: how many of the scanned files each rule was found
@@ -933,9 +991,18 @@ export function genericReport(input: { source?: string; filename?: string; root?
   // cannot carry.
   let filesByRule: Map<string, Set<string>> | null = null;
   let filesScanned = 0;
+  let scanStructured: GenericStructured["scan"];
 
   if (input.root) {
     const scan = scanProject(input.root);
+    scanStructured = {
+      filesRead: scan.files.length,
+      scannedBytes: scan.scannedBytes,
+      skippedLarge: scan.skippedLarge,
+      hitFileCap: scan.hitFileCap,
+      hitByteCap: scan.hitByteCap,
+      unreadable: scan.unreadable,
+    };
     const audited = scan.files.filter((f) => !NOT_A_SHIPPED_SURFACE.test(f.path));
     const demoSkipped = scan.files.length - audited.length;
     filesByRule = new Map();
@@ -946,7 +1013,11 @@ export function genericReport(input: { source?: string; filename?: string; root?
         if (!filesByRule.has(finding.rule)) filesByRule.set(finding.rule, new Set());
         filesByRule.get(finding.rule)!.add(f.path);
       }
-      findings.push(...fileFindings.map((x) => ({ ...x, message: `${f.path}: ${x.message}` })));
+      // The path is carried once, as `file`. The bullet renders it back in
+      // front of the message; folding it into `message` too would hand a
+      // structured caller rendering `${f.file}:${f.line} — ${f.message}` the
+      // path twice.
+      findings.push(...fileFindings.map((x) => ({ ...x, file: f.path })));
     }
     scanned = `Scanned ${audited.length} files under \`${input.root}\`.`;
     if (demoSkipped) {
@@ -994,7 +1065,7 @@ export function genericReport(input: { source?: string; filename?: string; root?
       if (!group.items.length) continue;
       lines.push(`## ${group.title}`, "");
       for (const f of group.items) {
-        lines.push(`- **${f.rule}** (line ${f.line}) — ${f.message}`);
+        lines.push(`- **${f.rule}** (line ${f.line}) — ${f.file ? `${f.file}: ` : ""}${f.message}`);
         lines.push(`  - Fix: ${f.fix}`);
         if (f.doc) lines.push(`  - Read: \`get_design_doc("${f.doc}")\``);
       }
@@ -1002,6 +1073,39 @@ export function genericReport(input: { source?: string; filename?: string; root?
     }
   }
 
-  lines.push(GENERIC_NOT_VISIBLE);
-  return lines.join("\n");
+  lines.push(...renderNotVisibleSection(GENERIC_PREAMBLE, GENERIC_NOT_VISIBLE, GENERIC_CLOSING));
+
+  const base = auditStructuredFrom({ findings, notVisible: GENERIC_NOT_VISIBLE, file: input.filename });
+
+  // The score itemised exactly as the markdown loop above printed it —
+  // `items` is the very array that loop read from, not a second walk over
+  // `findings` that could count or weigh things differently. `evidence` names
+  // the fact that earned the rule its points and where it sits, read off one
+  // of that rule's own findings: the same message and line a reader chasing
+  // the rule down to the Errors/Warnings/Notes section above would land on.
+  const score: GenericStructured["score"] = {
+    total,
+    // Only when the clamp actually did something — the same condition the
+    // markdown's reconciliation line above tests, so a caller never sees
+    // `rawTotal` disagree with whether the markdown mentioned a cap at all.
+    ...(rawTotal > total ? { rawTotal } : {}),
+    items: items.map((item) => {
+      const example = findings.find((f) => f.rule === item.rule);
+      return {
+        weight: item.weight,
+        rule: item.rule,
+        // The path is prefixed here the same way the bullet above prefixes
+        // it, so `evidence` still reads as the exact line a reader chasing
+        // the rule down would land on — the path lives in `file` on the
+        // finding, and this is the one place it has to be spelled back out
+        // because `items` carries no `file` of its own.
+        evidence: example ? `${example.file ? `${example.file}: ` : ""}${example.message} (line ${example.line})` : "",
+      };
+    }),
+  };
+
+  return {
+    text: lines.join("\n"),
+    structured: { ...base, score, ...(scanStructured ? { scan: scanStructured } : {}) },
+  };
 }

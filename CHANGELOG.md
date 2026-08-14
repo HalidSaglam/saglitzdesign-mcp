@@ -4,6 +4,58 @@ All notable changes to SaglitzDesign MCP are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.23.0] — 2026-08-14
+
+`audit_seo_geo` and `audit_performance` were the only two tools that answered
+an agent as well as a reader — everything else in this server, including the
+other four auditors, returned markdown only. A caller chaining `audit → fix`
+had to parse prose to find out what an audit covered, and had no
+machine-readable way to tell "found nothing" apart from "checked nothing."
+This release brings the other four auditors up to the same contract.
+
+### Added
+
+- **`design_lint`, `audit_security`, `audit_generic_design` and
+  `audit_project` now declare an `outputSchema` and return
+  `structuredContent`** — findings as fields, a severity summary, and a
+  machine-readable `notVisible` array of what each audit could not check,
+  exactly as `audit_seo_geo` and `audit_performance` already did. All six
+  structured auditors now share one schema shape and one governing rule:
+  what is disclosed in prose and what is returned in `structuredContent`
+  are drawn from the same array, never written twice.
+  - Each finding carries its path once, in `file` — never also folded into
+    `message`, so an agent rendering `${f.file}:${f.line} — ${f.message}`
+    never reads the same path twice. The markdown prints the path exactly
+    where it always did. `design_lint` is the one auditor with no `file` at
+    all: it takes a snippet and neither a `filename` nor a `path`, so no
+    finding it can produce has a path to carry, and its description no
+    longer lists the field.
+  - `audit_generic_design`'s schema also carries the itemised `score` its
+    markdown already printed, plus a `scan` block — present only in
+    directory mode — flagging a file or byte cap that leaves a clean score
+    unconfirmed.
+  - `audit_project`'s schema carries a `scan` block on every call, since it
+    has no snippet mode. Both tools' `scan` declares the same six fields:
+    how many files and bytes were actually read, which were skipped for size
+    or could not be opened, and whether a cap was hit before the whole
+    project was seen.
+- **Bumped `@modelcontextprotocol/sdk` from 1.29 to 1.30**, the release the
+  first two structured auditors were built against; the other four now sit
+  on the same version.
+
+### Changed
+
+- **A missing or non-directory `path` on `design_lint`, `audit_security`,
+  `audit_generic_design` or `audit_project` now comes back as an error
+  result (`isError: true`, no `structuredContent`) instead of an ordinary
+  prose result.** This is the only behaviour a caller can observe from this
+  release: declaring an `outputSchema` makes a text-only "success" a
+  protocol violation, because a caller expecting `structuredContent` gets
+  none and nothing tells it the audit never ran. Before this release those
+  paths answered with a prose explanation and no error flag, which a caller
+  reading only `structuredContent` could not tell apart from a real, empty
+  audit. `design_lint` takes no `path` at all and is unaffected.
+
 ## [0.22.0] — 2026-08-14
 
 `seo_geo_guide` has returned this server's SEO and GEO guides since v0.9.0,

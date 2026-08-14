@@ -136,6 +136,46 @@ function tool(
   );
 }
 
+/**
+ * The shape every structured auditor declares and returns. One constant,
+ * because each tool describing the same structure for itself is one more thing
+ * to keep in step; and the descriptions matter — an `outputSchema` is
+ * documentation an agent reads before it ever calls the tool.
+ *
+ * It sits up here beside `tool()` rather than beside its first user because
+ * `const` is not hoisted: every registration below is a call executed at module
+ * load, so a schema declared further down the file is in its temporal dead zone
+ * when the earliest tool that passes it is registered.
+ */
+const AUDIT_OUTPUT_SCHEMA = {
+  findings: z
+    .array(
+      z.object({
+        rule: z.string().describe("Stable rule id, e.g. 'canonical-not-absolute' or 'lazy-hero'."),
+        severity: z.enum(["error", "warning", "info"]).describe("How the rule grades this finding."),
+        message: z.string().describe("The fact about the source that made the rule fire."),
+        fix: z.string().describe("What to change, specifically."),
+        doc: z.string().describe("Knowledge-base id backing the claim — read it with get_design_doc."),
+        file: z.string().optional().describe("Path relative to the audited directory, when a directory was audited."),
+        line: z.number().int().optional().describe("1-based line within that file."),
+      }),
+    )
+    .describe("Every finding, in the order the markdown report lists them."),
+  summary: z
+    .object({
+      error: z.number().int(),
+      warning: z.number().int(),
+      info: z.number().int(),
+    })
+    .describe("Counts by severity. Always agrees with `findings` — it is derived from the same list."),
+  notVisible: z
+    .array(z.string())
+    .describe(
+      "What this audit structurally could not check, one limitation per entry. Read it as a peer of `findings`: "
+      + "silence on a subject named here is this tool's reach, not a clean result. Nothing any of these tools reports is measured.",
+    ),
+};
+
 // ── Tool 1: list ─────────────────────────────────────────────────────────────
 tool(
   "list_design_knowledge",
@@ -653,11 +693,22 @@ tool(
 // ── Tool 21: design lint ─────────────────────────────────────────────────────
 tool(
   "design_lint",
-  "Lint a snippet of HTML / CSS / JSX / Tailwind for design & accessibility anti-patterns: hardcoded colors instead of tokens, px font-sizes, removed focus outlines, images without alt, clickable divs, icon-only buttons without labels, positive tabindex, ad-hoc radii, !important overuse. Returns findings with line numbers, severity, and fixes. Fast static design-time check — not a replacement for a full audit. Complements design_review_checklist.",
+  "Lint a snippet of HTML / CSS / JSX / Tailwind for design & accessibility anti-patterns: hardcoded colors instead of tokens, px font-sizes, removed focus outlines, images without alt, clickable divs, icon-only buttons without labels, positive tabindex, ad-hoc radii, !important overuse. Returns findings with line numbers, severity, and fixes. "
+    + "It reads source and does not measure anything: nothing is rendered, no contrast ratio is computed and no tap target is sized, so no finding is or can be a visual or an accessibility verdict. "
+    // No `file` in that list: design_lint takes a snippet and neither a
+    // `filename` nor a `path`, so no finding it can produce has a path to
+    // carry. The other five structured auditors list it and all have
+    // something to put in it.
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, line), a severity summary, and a machine-readable `notVisible` list of what it could not check. "
+    + "Fast static design-time check — not a replacement for a full audit. Complements design_review_checklist.",
   {
     code: z.string().describe("The HTML/CSS/JSX/Tailwind snippet to lint"),
   },
-  async ({ code }) => text(designLintReport(code)),
+  async ({ code }) => {
+    const { text: body, structured } = designLintReport(code);
+    return { ...text(body), structuredContent: structured };
+  },
+  AUDIT_OUTPUT_SCHEMA,
 );
 
 // ── Tool 22: audit UX copy ───────────────────────────────────────────────────
@@ -807,13 +858,38 @@ tool(
   async ({ source, format, name }) => text(importTokensReport(source, (format as TokenFormat) ?? "all", name || "Imported")),
 );
 
+// The shape `audit_project` declares on top of `AUDIT_OUTPUT_SCHEMA`: what the
+// scan actually reached. See `ProjectStructured` in project.ts, which this is
+// the wire-schema mirror of. It declares the same six fields
+// `audit_generic_design`'s `scan` does, read off the same `scanProject`
+// result. The one difference is presence, not shape: this one is always there
+// — `audit_project` has no snippet mode, so every call scanned a directory.
+const PROJECT_OUTPUT_SCHEMA = {
+  ...AUDIT_OUTPUT_SCHEMA,
+  scan: z
+    .object({
+      filesRead: z.number().int().describe("How many files were actually opened and read."),
+      scannedBytes: z.number().int().describe("Total bytes read, which is what the byte cap is measured against."),
+      skippedLarge: z.array(z.string()).describe("Files past the per-file byte cap. Never read, so nothing above is claimed about them."),
+      hitFileCap: z.boolean().describe("True when some source files were not read. Every absence claim in `findings` is unconfirmed while this is true."),
+      hitByteCap: z.boolean().describe("True when the scan stopped because the total-bytes cap was reached before every candidate file was read. Same caveat as hitFileCap."),
+      unreadable: z.array(z.string()).describe("Files and directories that could not be opened. The markdown counts these but names none, and when every candidate is unreadable it reports the project as empty — so this is the only place their paths appear."),
+    })
+    .describe("What the scan reached. Read it before trusting any absence claim: a capped scan looked at part of the project."),
+};
+
 // ── Tool 29: audit a whole project ───────────────────────────────────────────
 tool(
   "audit_project",
-  "Audit a real codebase instead of a pasted snippet: point it at a directory and it walks the design source, runs the design/accessibility lint over every file, and scores the whole thing for consistency — how many distinct colours, type sizes, radii, shadows and spacings the project actually uses, and which colours are indistinguishable duplicates. Returns findings ranked worst-file-first with file:line, plus an explicit list of what it did not look at. Cross-file drift is the thing a single-file lint cannot see, which is the point of this tool. Reads only the directory you name; makes no network call. Pair with measure_screenshot for the rendered result and audit_ux_copy for the words.",
+  "Audit a real codebase instead of a pasted snippet: point it at a directory and it walks the design source, runs the design/accessibility lint over every file, and scores the whole thing for consistency — how many distinct colours, type sizes, radii, shadows and spacings the project actually uses, and which colours are indistinguishable duplicates. Returns findings ranked worst-file-first with file:line, plus an explicit list of what it did not look at. "
+    + "It reads source and does not measure anything: it loads no page, renders nothing, takes no screenshot, and no finding is or can be a rendered-output result. "
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, file, line), a severity summary, a machine-readable `notVisible` list of what it could not check, and a `scan` block saying how many files and bytes were actually read, which files were skipped for size, which could not be opened, and whether the file or byte cap was hit — check that before trusting any absence in `findings`. "
+    + "It runs design_lint's rules and the consistency count, and nothing else: run audit_security, audit_generic_design, audit_seo_geo and audit_performance on the same directory for theirs. "
+    + "A missing or non-directory path is returned as an error result, not as an empty audit. "
+    + "Cross-file drift is the thing a single-file lint cannot see, which is the point of this tool. Reads only the directory you name; makes no network call. Pair with measure_screenshot for the rendered result and audit_ux_copy for the words.",
   {
     path: z.string().describe("Directory to audit. Absolute paths are strongly preferred — a relative path is resolved against the server's working directory, which is usually not your project folder."),
-    extensions: z.array(z.string()).optional().describe("Override which file extensions are scanned, e.g. ['.tsx','.css','.js']. Defaults to CSS/SCSS/HTML/JSX/TSX/Vue/Svelte/Astro; .js and .ts are excluded by default because most are logic, not UI."),
+    extensions: z.array(z.string()).optional().describe("Override which file extensions are scanned, e.g. ['.tsx','.css','.js']. Replaces the default list rather than adding to it, so name every extension you want read, each with a leading dot — 'js' matches nothing and the audit comes back empty, where '.js' works. Defaults to CSS/SCSS/HTML/JSX/TSX/Vue/Svelte/Astro; .js and .ts are excluded by default because most are logic, not UI."),
   },
   async ({ path, extensions }) => {
     const abs = isAbsolute(path) ? path : resolve(process.cwd(), path);
@@ -821,20 +897,28 @@ tool(
     try {
       stat = statSync(abs);
     } catch {
-      return text(`There is no directory at \`${abs}\`. Pass an absolute path to the folder you want audited.`);
+      // With an outputSchema declared, answering this as an ordinary successful
+      // result would be a protocol violation: the caller gets no
+      // structuredContent and nothing tells it the audit never ran.
+      return { ...text(`There is no directory at \`${abs}\`. Pass an absolute path to the folder you want audited.`), isError: true };
     }
     if (!stat.isDirectory()) {
-      return text(`\`${abs}\` is a file, not a directory. Use design_lint for a single file, or pass its parent folder.`);
+      return { ...text(`\`${abs}\` is a file, not a directory. Use design_lint for a single file, or pass its parent folder.`), isError: true };
     }
-    return text(projectAuditReport(abs, extensions?.length ? extensions : undefined));
+    const { text: body, structured } = projectAuditReport(abs, extensions?.length ? extensions : undefined);
+    return { ...text(body), structuredContent: structured };
   },
+  PROJECT_OUTPUT_SCHEMA,
 );
 
 // ── Tool 30: audit security ──────────────────────────────────────────────────
 tool(
   "audit_security",
   "Audit a web project or snippet for security defects a frontend actually ships: missing or weak Content-Security-Policy, absent HSTS, unpinned cross-origin scripts, mixed content, credentials in localStorage, secret-named NEXT_PUBLIC_/VITE_ variables, unsandboxed third-party iframes, wildcard postMessage, raw-HTML sinks with no sanitiser, production source maps and un-ignored .env files. "
-    + `${HEADER_SOURCES_SENTENCE} — this makes no network request, so it also reports what it could not see. `
+    + `${HEADER_SOURCES_SENTENCE}. `
+    + "It reads source and does not measure anything: it makes no request to your site, tests no live endpoint, and no finding is or can be a penetration-test or vulnerability-scan result — so do not call it expecting one. "
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, file, line), a severity summary, and a machine-readable `notVisible` list of what it could not check. "
+    + "A missing or non-directory path is returned as an error result, not as an empty audit. "
     + "Pair with audit_project for design drift and audit_accessibility for WCAG.",
   {
     path: z.string().optional().describe("Directory to audit. Absolute paths are strongly preferred. Required for configuration and header rules — a snippet cannot show them."),
@@ -843,7 +927,10 @@ tool(
   },
   async ({ path, code, filename }) => {
     if (!path && !code) {
-      return text("Pass `path` for a project audit, or `code` for a single snippet. A project audit is the useful one — header and CSP rules need configuration files.");
+      return {
+        ...text("Pass `path` for a project audit, or `code` for a single snippet. A project audit is the useful one — header and CSP rules need configuration files."),
+        isError: true,
+      };
     }
     if (path) {
       const abs = isAbsolute(path) ? path : resolve(process.cwd(), path);
@@ -851,24 +938,69 @@ tool(
       try {
         stat = statSync(abs);
       } catch {
-        return text(`There is no directory at \`${abs}\`. Pass an absolute path to the folder you want audited.`);
+        return { ...text(`There is no directory at \`${abs}\`. Pass an absolute path to the folder you want audited.`), isError: true };
       }
       if (!stat.isDirectory()) {
-        return text(`\`${abs}\` is a file, not a directory. Pass its parent folder, or use \`code\` for a single snippet.`);
+        return { ...text(`\`${abs}\` is a file, not a directory. Pass its parent folder, or use \`code\` for a single snippet.`), isError: true };
       }
-      return text(securityReport({ root: abs }));
+      const { text: body, structured } = securityReport({ root: abs });
+      return { ...text(body), structuredContent: structured };
     }
-    return text(securityReport({ source: code, filename }));
+    const { text: body, structured } = securityReport({ source: code, filename });
+    return { ...text(body), structuredContent: structured };
   },
+  AUDIT_OUTPUT_SCHEMA,
 );
+
+// The shape `audit_generic_design` declares on top of every other structured
+// auditor's `AUDIT_OUTPUT_SCHEMA` — the score `genericScore` computes,
+// itemised exactly the way `genericReport`'s markdown prints it. See
+// `GenericStructured` in generic.ts, which this is the wire-schema mirror of.
+const GENERIC_OUTPUT_SCHEMA = {
+  ...AUDIT_OUTPUT_SCHEMA,
+  score: z
+    .object({
+      total: z.number().int().describe("0-100. Counts distinct signals, never occurrences — a page with forty stock cards carries the same one signal as a page with three."),
+      rawTotal: z.number().int().optional().describe("The itemised points' true, uncapped sum. Present only when it differs from `total` — i.e. only when the 100-point display clamp actually engaged, so its presence alone says the total below is capped."),
+      items: z.array(
+        z.object({
+          weight: z.number().int().describe("What this rule contributed. Each rule contributes at most once."),
+          rule: z.string().describe("The rule that contributed it."),
+          evidence: z.string().describe("What was found, and where."),
+        }),
+      ).describe("Every point in `total`, itemised. There is no opaque number: a reader can disagree with one line rather than with a verdict."),
+    })
+    .describe("The generic-design score, itemised. Not a quality judgement — it counts documented defaults that were left unchanged."),
+  // The same six fields `audit_project`'s `scan` declares, meaning the same
+  // things and read off the same `scanProject` result. The two differ only in
+  // presence — `audit_generic_design` has a snippet mode, which has no scan to
+  // report — and never in shape, so a caller that learned the block from one
+  // tool can read it from the other.
+  scan: z
+    .object({
+      filesRead: z.number().int().describe("How many files were actually opened and read. Story, test and fixture files are opened — they count here, and their bytes count towards the cap — and are then dropped before auditing, so this is the markdown's \"Scanned N files\" plus the \"Skipped N story, test or fixture file(s)\" beside it, not the first number alone."),
+      scannedBytes: z.number().int().describe("Total bytes read, which is what the byte cap is measured against."),
+      skippedLarge: z.array(z.string()).describe("Files over the per-file byte cap. Never read, so nothing above is claimed about them."),
+      hitFileCap: z.boolean().describe("True when some source files were not read because the file cap was reached. Every absence claim above — a rule that never fired, a score of 0 — is unconfirmed while this is true, and the closing line of `notVisible` (\"the source carries none of these... defaults\") does not hold for this run."),
+      hitByteCap: z.boolean().describe("True when the scan stopped because the total-bytes cap was reached before every candidate file was read. Same caveat as hitFileCap."),
+      unreadable: z.array(z.string()).describe("Files and directories that could not be opened. The markdown does not mention them at all, so this is the only place they appear — a directory this process may not list reads exactly like one holding nothing to report."),
+    })
+    .optional()
+    .describe(
+      "Present only in directory mode: what the scan actually reached. The markdown's \"Stopped at the file cap\" sentence has no other counterpart in structuredContent — `findings`, `summary` and `score` all look identical for a clean project and a truncated one that never opened its worst file — so a caller reading only structuredContent must check this before trusting a clean score or an absent finding.",
+    ),
+};
 
 // ── Tool 31: audit generic design ────────────────────────────────────────────
 tool(
   "audit_generic_design",
   "Audits a web project or snippet for the specific defaults generated interfaces reach for: the stock Tailwind indigo/violet/purple gradient (as classes, hex, or OKLCH), Inter/Roboto/Open Sans/DM Sans/Plus Jakarta Sans as the only declared typeface on a brand surface, emoji standing in for icons, the rounded-2xl + shadow-lg + border card recipe repeated across a page, gradient-filled heading text, an eyebrow label over every heading, the backdrop-blur + white/10 glassmorphism recipe, stock hype-opener copy ('unlock the power of', 'say goodbye to', …), stacked filler adverbs ('seamlessly', 'effortlessly', …), and a page whose every call to action is drawn from the stock set ('Get Started', 'Learn More'). "
     + "Every finding is a fact about the source text — a class name, a phrase, a repeated structure — never a judgement about whether the result is good design; it reports facts, not taste, so pair it with design_review_checklist or get_design_doc(\"design-critique-scoring\") for actual critique. "
-    + "Returns a 0-100 score built from distinct signals — each rule counts once no matter how many times it fires, so a long page never scores higher purely for its length — with every point itemised to the rule and file:line that earned it, plus what this audit structurally cannot see. "
-    + "In directory mode it does not read story, test or fixture files (*.stories.*, *.story.*, *.spec.*, *.test.*, __fixtures__/, __mocks__/), whose job is to demonstrate a component rather than ship a surface; it reports how many it skipped. The copy rules match English only, so a page in another language is scored by the visual rules alone. Makes no network request.",
+    + "It reads source and does not measure anything: it makes no network request, renders nothing, and no finding is or can be a rendered-output or aesthetic judgement. "
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, file, line), a severity summary, a machine-readable `notVisible` list of what it could not check, and a 0-100 score itemised to the same rule, weight and evidence the markdown prints — each rule counts once no matter how many times it fires, so a long page never scores higher purely for its length. "
+    + "In directory mode it does not read story, test or fixture files (*.stories.*, *.story.*, *.spec.*, *.test.*, __fixtures__/, __mocks__/), whose job is to demonstrate a component rather than ship a surface; it reports how many it skipped. The copy rules match English only, so a page in another language is scored by the visual rules alone. "
+    + "A missing or non-directory path is returned as an error result, not as an empty audit. "
+    + "Pair with audit_project for design drift and design_review_checklist for critique.",
   {
     path: z.string().optional().describe("Directory to audit. Absolute paths are strongly preferred."),
     code: z.string().optional().describe("A single snippet to audit instead of a directory."),
@@ -876,7 +1008,10 @@ tool(
   },
   async ({ path, code, filename }) => {
     if (!path && !code) {
-      return text("Pass `path` for a project audit, or `code` for a single snippet.");
+      return {
+        ...text("Pass `path` for a project audit, or `code` for a single snippet."),
+        isError: true,
+      };
     }
     if (path) {
       const abs = isAbsolute(path) ? path : resolve(process.cwd(), path);
@@ -884,32 +1019,30 @@ tool(
       try {
         stat = statSync(abs);
       } catch {
-        return text(`There is no directory at \`${abs}\`. Pass an absolute path to the folder you want audited.`);
+        return { ...text(`There is no directory at \`${abs}\`. Pass an absolute path to the folder you want audited.`), isError: true };
       }
       if (!stat.isDirectory()) {
-        return text(`\`${abs}\` is a file, not a directory. Pass its parent folder, or use \`code\` for a single snippet.`);
+        return { ...text(`\`${abs}\` is a file, not a directory. Pass its parent folder, or use \`code\` for a single snippet.`), isError: true };
       }
-      return text(genericReport({ root: abs }));
+      const { text: body, structured } = genericReport({ root: abs });
+      return { ...text(body), structuredContent: structured };
     }
-    return text(genericReport({ source: code, filename }));
+    const { text: body, structured } = genericReport({ source: code, filename });
+    return { ...text(body), structuredContent: structured };
   },
+  GENERIC_OUTPUT_SCHEMA,
 );
 
 // ── Tools 32 & 33: audit SEO/GEO and performance ─────────────────────────────
 //
-// The first two tools here to return structured output. Everything else in this
-// server answers a person reading markdown; these two also answer an agent
+// The first two tools here to return structured output; `design_lint` above
+// now returns it too, and the rest of the audit surface is following. Most of
+// this server answers a person reading markdown; these also answer an agent
 // chaining `audit → fix`, which needs the findings as fields and — just as
 // much — needs `notVisible`, the machine-readable account of what was never
-// checked. A caller that reads silence as a clean bill is the failure both
+// checked. A caller that reads silence as a clean bill is the failure these
 // modules were written against, and prose alone cannot stop it.
 
-/**
- * The shape both auditors declare and return. One constant, because two tools
- * describing the same structure twice is two things to keep in step; and the
- * descriptions matter — an `outputSchema` is documentation an agent reads
- * before it ever calls the tool.
- */
 /**
  * A tool description's list of what it checks, built from the auditor's own
  * capability table rather than written beside it.
@@ -929,35 +1062,6 @@ const advertised = (capabilities: Array<{ text: string }>): string => {
   return items.length > 1
     ? `${items.slice(0, -1).join("; ")}; and ${items[items.length - 1]}`
     : items.join("");
-};
-
-const AUDIT_OUTPUT_SCHEMA = {
-  findings: z
-    .array(
-      z.object({
-        rule: z.string().describe("Stable rule id, e.g. 'canonical-not-absolute' or 'lazy-hero'."),
-        severity: z.enum(["error", "warning", "info"]).describe("How the rule grades this finding."),
-        message: z.string().describe("The fact about the source that made the rule fire."),
-        fix: z.string().describe("What to change, specifically."),
-        doc: z.string().describe("Knowledge-base id backing the claim — read it with get_design_doc."),
-        file: z.string().optional().describe("Path relative to the audited directory, when a directory was audited."),
-        line: z.number().int().optional().describe("1-based line within that file."),
-      }),
-    )
-    .describe("Every finding, in the order the markdown report lists them."),
-  summary: z
-    .object({
-      error: z.number().int(),
-      warning: z.number().int(),
-      info: z.number().int(),
-    })
-    .describe("Counts by severity. Always agrees with `findings` — it is derived from the same list."),
-  notVisible: z
-    .array(z.string())
-    .describe(
-      "What this audit structurally could not check, one limitation per entry. Read it as a peer of `findings`: "
-      + "silence on a subject named here is this tool's reach, not a clean result. Nothing in either tool is measured.",
-    ),
 };
 
 tool(

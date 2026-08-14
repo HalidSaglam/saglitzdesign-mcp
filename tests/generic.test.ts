@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { genericVisualRules, genericCopyRules, genericScore, genericReport, isBrandSurface, RULE_WEIGHTS } from "../dist/generic.js";
 import { loadKnowledge, findDoc } from "../dist/knowledge.js";
 import { seoRules } from "../dist/seo.js";
+import { projectAuditReport } from "../dist/project.js";
 
 const ids = (code: string, filename?: string) =>
   genericVisualRules(code, filename).map((f) => f.rule).sort();
@@ -745,14 +746,14 @@ describe("the score", () => {
 
 describe("the report", () => {
   it("always states what it could not see", () => {
-    expect(genericReport({ source: `<p>Anything</p>` })).toMatch(/not visible to this audit/i);
+    expect(genericReport({ source: `<p>Anything</p>` }).text).toMatch(/not visible to this audit/i);
   });
 
   // Three limits the report has to state because a reader cannot infer any of
   // them from a clean score. Each is paired below with the input that
   // demonstrates it, so the disclosure and the behaviour cannot drift apart.
   describe("states the limits it cannot fix", () => {
-    const notVisible = genericReport({ source: `<p>Anything</p>` });
+    const notVisible = genericReport({ source: `<p>Anything</p>` }).text;
 
     it("says the copy rules read English only, and they do", () => {
       expect(notVisible).toMatch(/Copy in any language but English/);
@@ -783,7 +784,7 @@ describe("the report", () => {
   });
 
   it("prints the score itemised, not as a bare number", () => {
-    const out = genericReport({ source: `<div class="from-indigo-500 to-purple-600">` });
+    const out = genericReport({ source: `<div class="from-indigo-500 to-purple-600">` }).text;
     expect(out).toMatch(/ai-default-gradient/);
     expect(out).toMatch(/\d+\s*\/\s*100/);
   });
@@ -800,7 +801,7 @@ describe("the report", () => {
       // Inside the try, so a throw while swapping the table still restores it.
       for (const key of Object.keys(RULE_WEIGHTS)) delete RULE_WEIGHTS[key];
       Object.assign(RULE_WEIGHTS, { "ai-default-gradient": 70, "emoji-as-icon": 60 });
-      const out = genericReport({ source: `<div class="from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>` });
+      const out = genericReport({ source: `<div class="from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>` }).text;
       expect(out).toMatch(/\*\*Score: 100 \/ 100\*\*/);
       // The note appears, and names the real uncapped sum rather than a
       // rounded or rescaled stand-in.
@@ -815,8 +816,262 @@ describe("the report", () => {
   });
 
   it("says nothing about a cap when the itemised points fit under 100", () => {
-    const out = genericReport({ source: `<div class="from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>` });
+    const out = genericReport({ source: `<div class="from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>` }).text;
     expect(out).not.toMatch(/capped at 100/);
+  });
+});
+
+// Pinned before `GENERIC_NOT_VISIBLE` moved from a prose template literal to
+// `GENERIC_PREAMBLE` / `GENERIC_NOT_VISIBLE` / `GENERIC_CLOSING`, so the split
+// can be checked against the exact bytes `genericReport` rendered beforehand.
+// A container change — array in, same markdown out — has nothing to prove if
+// the "before" picture is taken after the change.
+describe("the disclosure section, pinned before the split into an array", () => {
+  it("renders the same disclosure section it rendered before the split", () => {
+    expect(genericReport({ source: `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`, filename: "Hero.tsx" }).text)
+      .toMatchInlineSnapshot(`
+        "# Generic-design audit
+
+        Scanned one snippet.
+
+        **Score: 20 / 100** — the count of distinct AI-default signals found; each rule counts once no matter how many times it repeats.
+
+        - **ai-default-gradient** +20
+
+        ## Warnings
+
+        - **ai-default-gradient** (line 1) — Gradient built from Tailwind's stock indigo/violet/purple region (indigo-500 → purple-600).
+          - Fix: Pick stops from your own palette, or drop the gradient — see ai-default-aesthetic for why this pair recurs.
+          - Read: \`get_design_doc("ai-default-aesthetic")\`
+
+        ## Not visible to this audit
+
+        Every rule above matches a fact about the source — a class name, a phrase, a
+        repeated structure. It cannot see, and does not attempt to judge:
+
+        - **Whether a default was chosen deliberately.** A brand whose colour
+          genuinely is indigo will be flagged; the finding names a fact, not a
+          mistake. Confirm the choice before treating a flag as a defect.
+        - **Anything about rendered output.** Spacing rhythm, optical alignment, how
+          the page actually feels — none of that is visible from source text.
+        - **Whether the writing is good.** This detects stock phrases, not weak ones;
+          a hand-written sentence that happens to avoid the phrase list is not
+          praised for it, and a good sentence that happens to use one is still
+          flagged.
+        - **Copy in any language but English.** Every phrase, adverb and call-to-action
+          label the copy rules match is English. A generated page in Turkish, German,
+          Japanese or any other language is read by the visual rules alone and scores
+          strictly lower for it — the same page in two languages measured 74 and 92
+          here, and the 18-point difference was the translation, not the design. Do
+          not compare scores across languages.
+        - **A stock gradient assembled through a CSS custom property.**
+          \`linear-gradient(135deg, var(--brand-a), var(--brand-b))\` is silent even when
+          those properties are defined as the stock pair a few lines above; resolving
+          it needs real value substitution, which this scanner does not do. Written
+          literally, or as Tailwind \`from-\`/\`to-\` utilities, the same gradient is
+          found.
+        - **Judgement of any kind.** Whether the result is *good design* is not this
+          tool's question — \`design_review_checklist\` and \`get_design_doc("design-critique-scoring")\`
+          own that, with a human looking at the render.
+        - **Class names outside Tailwind's default scale.** The visual rules match
+          literal utility strings from that scale, so a project written with arbitrary
+          values, a custom scale, or another framework's class names is audited less
+          thoroughly than the score implies. A low score on such a project reflects
+          coverage, not necessarily restraint.
+        - **Story, test and fixture files, in directory mode.** Paths matching
+          \`*.stories.*\`, \`*.story.*\`, \`*.spec.*\`, \`*.test.*\`, \`__fixtures__/\` and
+          \`__mocks__/\` are not read. A story file's job is to show every variant with
+          placeholder labels, so scoring it reports the demonstration rather than the
+          product — but it does mean a default that exists *only* in a story is not
+          reported either. The scanned line above says how many were skipped.
+        - **The typeface rule off a recognised brand surface.** It evaluates only where
+          the surface reads as a brand page — a marketing route, or a heading beside a
+          conventional call to action — so a landing page at an unconventional path
+          with distinctive call-to-action copy is not assessed for it.
+
+        A clean result here means the source carries none of these specific,
+        recurring defaults — not that the design is good."
+      `);
+  });
+});
+
+describe("the structured half carries the same itemised score the markdown prints", () => {
+  it("carries the same itemised score the markdown prints", () => {
+    const r = genericReport({ source: `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`, filename: "Hero.tsx" });
+    expect(r.structured.score.total).toBeGreaterThan(0);
+    for (const item of r.structured.score.items) {
+      expect(r.text).toContain(item.rule);
+      expect(r.text).toContain(String(item.weight));
+    }
+    expect(r.structured.score.items.reduce((n, i) => n + i.weight, 0)).toBe(r.structured.score.total);
+  });
+
+  it("scores a page carrying no signal at 0, with no score items", () => {
+    const r = genericReport({ source: `<article><h1>A quiet page</h1></article>`, filename: "page.tsx" });
+    expect(r.structured.score).toEqual({ total: 0, items: [] });
+  });
+
+  it("gives each score item evidence naming what was found", () => {
+    const r = genericReport({ source: `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`, filename: "Hero.tsx" });
+    const item = r.structured.score.items.find((i) => i.rule === "ai-default-gradient");
+    expect(item?.evidence).toBeTruthy();
+    // The evidence is the same finding message and line the reader sees in
+    // the Warnings section, not a fresh description invented for this field.
+    const finding = r.structured.findings.find((f) => f.rule === "ai-default-gradient");
+    expect(item?.evidence).toContain(finding?.message);
+    expect(item?.evidence).toContain(String(finding?.line));
+  });
+});
+
+// Unreachable with the ten real weights (they sum to 92, same reason the
+// markdown-side clamp tests need a synthetic table), but the structured half
+// is the one register that had no reconciliation for it at all: `score`
+// carried `total` and `items` with no `rawTotal`, which falsified the
+// schema's own "Every point in `total`, itemised" and let the itemised sum
+// disagree with `total` in the one place nothing said so.
+describe("the structured half reconciles the itemised sum when the display clamp engages", () => {
+  it("carries rawTotal only when the clamp actually changed the total", () => {
+    const original = { ...RULE_WEIGHTS };
+    try {
+      for (const key of Object.keys(RULE_WEIGHTS)) delete RULE_WEIGHTS[key];
+      Object.assign(RULE_WEIGHTS, { "ai-default-gradient": 70, "emoji-as-icon": 60 });
+      const r = genericReport({ source: `<div class="from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>` });
+      expect(r.text).toMatch(/The itemised points above sum to 130; the score display is capped at 100\./);
+      expect(r.structured.score.total).toBe(100);
+      expect(r.structured.score.rawTotal).toBe(130);
+      expect(r.structured.score.items.reduce((n, i) => n + i.weight, 0)).toBe(130);
+    } finally {
+      for (const key of Object.keys(RULE_WEIGHTS)) delete RULE_WEIGHTS[key];
+      Object.assign(RULE_WEIGHTS, original);
+    }
+  });
+
+  it("carries no rawTotal when the itemised points fit under 100", () => {
+    const r = genericReport({ source: `<div class="from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>` });
+    expect(r.text).not.toMatch(/capped at 100/);
+    expect(r.structured.score.rawTotal).toBeUndefined();
+    expect("rawTotal" in r.structured.score).toBe(false);
+  });
+});
+
+// The failure this closes: a truncated directory scan is invisible anywhere
+// in structuredContent. `findings`, `summary` and `score` all look identical
+// for a genuinely clean project and one whose worst file was never opened —
+// only the markdown said "Stopped at the file cap", so a caller reading only
+// the structured half got a clean bill for a project that was never fully
+// read.
+describe("the structured half discloses a truncated scan", () => {
+  it("carries hitFileCap even though findings and score look clean", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-generic-cap-"));
+    try {
+      // 405 quiet files sort ahead of "zz-hero.html" alphabetically, and
+      // MAX_FILES (400) is fewer than that, so the one file that actually
+      // carries a defect is never opened.
+      for (let i = 0; i < 405; i++) {
+        writeFileSync(join(dir, `file-${String(i).padStart(4, "0")}.html`), `<p>ok</p>`);
+      }
+      writeFileSync(join(dir, "zz-hero.html"), `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>`);
+
+      const r = genericReport({ root: dir });
+
+      // Findings and score alone look identical to a genuinely clean project...
+      expect(r.structured.findings).toEqual([]);
+      expect(r.structured.score).toEqual({ total: 0, items: [] });
+      // ...the markdown discloses the truncation...
+      expect(r.text).toMatch(/Stopped at the 400-file cap/);
+      // ...and now so does the structured half, without a caller having to
+      // string-parse the markdown for it.
+      expect(r.structured.scan).toEqual({
+        filesRead: 400, scannedBytes: 3600, skippedLarge: [],
+        hitFileCap: true, hitByteCap: false, unreadable: [],
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("carries scan with every flag false for an uncapped directory audit", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-generic-cap-"));
+    try {
+      writeFileSync(join(dir, "page.html"), `<p>Fine</p>`);
+      const r = genericReport({ root: dir });
+      expect(r.structured.scan).toEqual({
+        filesRead: 1, scannedBytes: 11, skippedLarge: [],
+        hitFileCap: false, hitByteCap: false, unreadable: [],
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // One `scan` under one name, one shape. Before this the block declared three
+  // fields here and six on audit_project, so `scan.filesRead` came back
+  // `undefined` from one of the two tools that has a `scan` — a difference
+  // justified by nothing but which fields each task happened to need first.
+  it("declares the same field set audit_project's scan does", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-generic-scanshape-"));
+    try {
+      writeFileSync(join(dir, "page.html"), `<p>Fine</p>`);
+      const generic = genericReport({ root: dir });
+      const project = projectAuditReport(dir);
+      expect(Object.keys(generic.structured.scan!).sort()).toEqual(Object.keys(project.structured.scan).sort());
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // `filesRead` counts what was opened, which is not what the markdown's
+  // "Scanned N files" counts: a story file is read (its bytes spend the cap)
+  // and then dropped before auditing.
+  it("counts a demo file in filesRead even though the audit dropped it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-generic-scanshape-"));
+    try {
+      writeFileSync(join(dir, "page.html"), `<p>Fine</p>`);
+      writeFileSync(join(dir, "Button.stories.tsx"), `<p>Fine</p>`);
+      const r = genericReport({ root: dir });
+      expect(r.text).toContain("Scanned 1 files");
+      expect(r.text).toContain("Skipped 1 story, test or fixture file(s)");
+      expect(r.structured.scan!.filesRead).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("carries no scan field at all in snippet mode", () => {
+    const r = genericReport({ source: `<p>Anything</p>` });
+    expect(r.structured.scan).toBeUndefined();
+    expect("scan" in r.structured).toBe(false);
+  });
+});
+
+describe("the structured half populates findings[].file for project-scanned findings", () => {
+  it("carries the scanned file's path on every finding, in directory mode", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-generic-file-"));
+    try {
+      writeFileSync(join(dir, "hero.tsx"), `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`);
+      const r = genericReport({ root: dir });
+      expect(r.structured.findings.length).toBeGreaterThan(0);
+      for (const f of r.structured.findings) {
+        expect(f.file).toBe("hero.tsx");
+        // The path lives in `file` and nowhere else on the finding. An agent
+        // rendering `${f.file}:${f.line} — ${f.message}` must not read it
+        // twice. The markdown prefixes it back at render time, so the bullet
+        // is byte-for-byte what it was when the path lived in the message.
+        expect(f.message).not.toContain("hero.tsx");
+        expect(r.text).toContain(`— ${f.file}: ${f.message}`);
+      }
+      // `items[].evidence` has no `file` of its own, so it spells the path
+      // back out — it must stay the exact line the bullet above prints.
+      for (const item of r.structured.score.items) expect(item.evidence).toMatch(/^hero\.tsx: /);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("carries the snippet's filename on every finding, in snippet mode", () => {
+    const r = genericReport({ source: `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`, filename: "Hero.tsx" });
+    expect(r.structured.findings.length).toBeGreaterThan(0);
+    for (const f of r.structured.findings) expect(f.file).toBe("Hero.tsx");
   });
 });
 
@@ -836,8 +1091,8 @@ describe("the report — directory-mode breadth", () => {
       writeFileSync(join(twoFiles, "b.html"), gradientCard);
       writeFileSync(join(oneFile, "a.html"), gradientCard.repeat(2));
 
-      const twoFilesReport = genericReport({ root: twoFiles });
-      const oneFileReport = genericReport({ root: oneFile });
+      const twoFilesReport = genericReport({ root: twoFiles }).text;
+      const oneFileReport = genericReport({ root: oneFile }).text;
 
       // Same signals, so the same score either way...
       const scoreOf = (report: string) => report.match(/\*\*Score: (\d+) \/ 100\*\*/)?.[1];
@@ -884,7 +1139,7 @@ describe("the report — directory-mode breadth", () => {
     ])("scores a bespoke project zero despite %s", (name) => {
       const dir = withStory(name);
       try {
-        const out = genericReport({ root: dir });
+        const out = genericReport({ root: dir }).text;
         expect(out).toMatch(/\*\*Score: 0 \/ 100\*\*/);
         expect(out).toMatch(/Skipped 1 story, test or fixture file/);
       } finally {
@@ -898,7 +1153,7 @@ describe("the report — directory-mode breadth", () => {
         writeFileSync(join(dir, "page.html"), realPage);
         mkdirSync(join(dir, "__fixtures__"));
         writeFileSync(join(dir, "__fixtures__", "generic.html"), storyFile);
-        expect(genericReport({ root: dir })).toMatch(/\*\*Score: 0 \/ 100\*\*/);
+        expect(genericReport({ root: dir }).text).toMatch(/\*\*Score: 0 \/ 100\*\*/);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -911,7 +1166,7 @@ describe("the report — directory-mode breadth", () => {
       try {
         writeFileSync(join(dir, "page.html"), realPage);
         writeFileSync(join(dir, "hero.tsx"), storyFile);
-        expect(genericReport({ root: dir })).not.toMatch(/\*\*Score: 0 \/ 100\*\*/);
+        expect(genericReport({ root: dir }).text).not.toMatch(/\*\*Score: 0 \/ 100\*\*/);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -920,7 +1175,7 @@ describe("the report — directory-mode breadth", () => {
     it("says in the report what it did not read", () => {
       const dir = withStory("Button.stories.tsx");
       try {
-        expect(genericReport({ root: dir })).toMatch(/\*\*Story, test and fixture files, in directory mode\.\*\*/);
+        expect(genericReport({ root: dir }).text).toMatch(/\*\*Story, test and fixture files, in directory mode\.\*\*/);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -928,7 +1183,7 @@ describe("the report — directory-mode breadth", () => {
   });
 
   it("says nothing about file breadth in snippet mode", () => {
-    expect(genericReport({ source: gradientCard })).not.toMatch(/found in \d+ of \d+ files/);
+    expect(genericReport({ source: gradientCard }).text).not.toMatch(/found in \d+ of \d+ files/);
   });
 });
 

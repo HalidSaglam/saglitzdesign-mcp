@@ -9,7 +9,7 @@
 // output is unreliable, and the true finding in the next run gets skimmed past
 // with the rest.
 
-import { type LintFinding } from "./lint.js";
+import { type LintFinding, type AuditReport, auditStructuredFrom, renderNotVisibleSection } from "./lint.js";
 import {
   scanTags, type Tag, maskComments, bareAttrs, findAttr, hasAttr as sharedHasAttr,
 } from "./scan.js";
@@ -1065,12 +1065,26 @@ export interface ConfigRuleOptions {
 export function securityConfigRules(
   files: Array<{ path: string; source: string }>,
   options: ConfigRuleOptions = {},
-): LintFinding[] {
-  const out: LintFinding[] = [];
+): Array<LintFinding & { file?: string }> {
+  const out: Array<LintFinding & { file?: string }> = [];
   const push = (
     file: string, line: number, severity: LintFinding["severity"],
     rule: string, message: string, fix: string, doc = "web-security-headers",
-  ) => out.push({ line, severity, rule, message: `${file}: ${message}`, fix, doc });
+  ) =>
+    out.push({
+      line, severity, rule, fix, doc,
+      // `"configuration"` is a pseudo-path `absent()` uses for a project-wide
+      // absence claim attributable to no single file — carrying it as `file`
+      // would misrepresent it as a real path relative to the audited
+      // directory, so those findings arrive with no `file`, matching the
+      // convention `assembleAuditReport`'s project-wide claims already use.
+      // A finding that *does* name a real file carries the path once, in
+      // `file`; the renderer puts it back in front of the message, so the
+      // markdown is unchanged and `message` is never the path plus the
+      // sentence. `"configuration"` has no `file` to render from, so it —
+      // and only it — keeps the prefix folded into the message.
+      ...(file === "configuration" ? { message: `${file}: ${message}` } : { message, file }),
+    });
 
   const truncated = options.truncated === true;
 
@@ -1353,22 +1367,28 @@ const RECOGNISED_SHAPES = [
   "SvelteKit's `hooks.server.ts` and `kit.csp.directives`, and `<meta http-equiv>`",
 ].join("; ");
 
-const NOT_VISIBLE = `## Not visible to this audit
+export const SECURITY_PREAMBLE =
+  `This audit reads local files only — it makes no request to your site. It cannot see:`;
 
-This audit reads local files only — it makes no request to your site. It cannot see:
+/**
+ * What `audit_security` structurally cannot see, one entry per bullet in the
+ * "Not visible to this audit" section it renders.
+ */
+export const SECURITY_NOT_VISIBLE: string[] = [
+  `Headers added by a CDN, WAF or reverse proxy (Cloudflare, Fastly, nginx) after your app responds.`,
+  `Headers set by runtime logic that depends on the request.`,
+  `Any value assembled from variables, which is reported as undeterminable rather than absent.`,
+  `Server-side concerns entirely: authorization, injection, and access control are out of scope for a design server.`,
+  `**Header shapes it does not recognise.** It reads ${RECOGNISED_SHAPES}. A library that builds headers without naming them in your source — \`helmet\`, a framework preset, a shared middleware package — is invisible to it, and so is any shape not in that list. If your headers are set some other way, a "missing" finding above is about this audit's reach, not about your site.`,
+  `**A truncated scan cannot prove absence.** If the scan line above says it stopped at a cap, every "missing" finding is unconfirmed and is reported as a note rather than a defect.`,
+];
 
-- Headers added by a CDN, WAF or reverse proxy (Cloudflare, Fastly, nginx) after your app responds.
-- Headers set by runtime logic that depends on the request.
-- Any value assembled from variables, which is reported as undeterminable rather than absent.
-- Server-side concerns entirely: authorization, injection, and access control are out of scope for a design server.
-- **Header shapes it does not recognise.** It reads ${RECOGNISED_SHAPES}. A library that builds headers without naming them in your source — \`helmet\`, a framework preset, a shared middleware package — is invisible to it, and so is any shape not in that list. If your headers are set some other way, a "missing" finding above is about this audit's reach, not about your site.
-- **A truncated scan cannot prove absence.** If the scan line above says it stopped at a cap, every "missing" finding is unconfirmed and is reported as a note rather than a defect.
+export const SECURITY_CLOSING =
+  `A clean result here means these files declare nothing wrong. Confirm the emitted headers on a real response before treating it as coverage.`;
 
-A clean result here means these files declare nothing wrong. Confirm the emitted headers on a real response before treating it as coverage.`;
-
-export function securityReport(input: { source?: string; filename?: string; root?: string }): string {
+export function securityReport(input: { source?: string; filename?: string; root?: string }): AuditReport {
   const lines: string[] = ["# Security audit", ""];
-  let findings: LintFinding[] = [];
+  let findings: Array<LintFinding & { file?: string }> = [];
   let scanned = "";
   let coverage = "";
 
@@ -1376,12 +1396,14 @@ export function securityReport(input: { source?: string; filename?: string; root
     const scan = scanProject(input.root, SECURITY_EXTENSIONS, SECURITY_FILENAMES);
     const files = scan.files.map((f) => ({ path: f.path, source: f.source }));
     for (const f of files) {
-      // The file is folded into the message (colon-separated, matching the
-      // convention securityConfigRules already uses for its own findings)
-      // rather than appended after the line number — the bullet below shows
-      // the line once, from `f.line`. Repeating it here as `path:line —`
-      // would put the same number in the reader's eye twice for one finding.
-      findings.push(...securitySourceRules(f.source, f.path).map((x) => ({ ...x, message: `${f.path}: ${x.message}` })));
+      // The path is carried once, as `file`. The bullet below renders it back
+      // in front of the message (colon-separated) rather than appending it
+      // after the line number — the bullet shows the line once, from
+      // `f.line`, and repeating it here as `path:line —` would put the same
+      // number in the reader's eye twice for one finding. Folding it into
+      // `message` as well would hand a structured caller rendering
+      // `${f.file}:${f.line} — ${f.message}` the path twice.
+      findings.push(...securitySourceRules(f.source, f.path).map((x) => ({ ...x, file: f.path })));
     }
     const truncated = scan.hitFileCap || scan.hitByteCap;
     findings.push(...securityConfigRules(files, { truncated }));
@@ -1422,7 +1444,7 @@ export function securityReport(input: { source?: string; filename?: string; root
       if (!group.items.length) continue;
       lines.push(`## ${group.title}`, "");
       for (const f of group.items) {
-        lines.push(`- **${f.rule}** (line ${f.line}) — ${f.message}`);
+        lines.push(`- **${f.rule}** (line ${f.line}) — ${f.file ? `${f.file}: ` : ""}${f.message}`);
         lines.push(`  - Fix: ${f.fix}`);
         if (f.doc) lines.push(`  - Read: \`get_design_doc("${f.doc}")\``);
       }
@@ -1430,6 +1452,9 @@ export function securityReport(input: { source?: string; filename?: string; root
     }
   }
 
-  lines.push(NOT_VISIBLE);
-  return lines.join("\n");
+  lines.push(...renderNotVisibleSection(SECURITY_PREAMBLE, SECURITY_NOT_VISIBLE, SECURITY_CLOSING));
+  return {
+    text: lines.join("\n"),
+    structured: auditStructuredFrom({ findings, notVisible: SECURITY_NOT_VISIBLE, file: input.filename }),
+  };
 }
