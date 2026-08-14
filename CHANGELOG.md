@@ -23,14 +23,22 @@ This release brings the other four auditors up to the same contract.
   structured auditors now share one schema shape and one governing rule:
   what is disclosed in prose and what is returned in `structuredContent`
   are drawn from the same array, never written twice.
+  - Each finding carries its path once, in `file` — never also folded into
+    `message`, so an agent rendering `${f.file}:${f.line} — ${f.message}`
+    never reads the same path twice. The markdown prints the path exactly
+    where it always did. `design_lint` is the one auditor with no `file` at
+    all: it takes a snippet and neither a `filename` nor a `path`, so no
+    finding it can produce has a path to carry, and its description no
+    longer lists the field.
   - `audit_generic_design`'s schema also carries the itemised `score` its
     markdown already printed, plus a `scan` block — present only in
     directory mode — flagging a file or byte cap that leaves a clean score
     unconfirmed.
   - `audit_project`'s schema carries a `scan` block on every call, since it
-    has no snippet mode: how many files and bytes were actually read, which
-    were skipped for size or could not be opened, and whether a cap was hit
-    before the whole project was seen.
+    has no snippet mode. Both tools' `scan` declares the same six fields:
+    how many files and bytes were actually read, which were skipped for size
+    or could not be opened, and whether a cap was hit before the whole
+    project was seen.
 - **Bumped `@modelcontextprotocol/sdk` from 1.29 to 1.30**, the release the
   first two structured auditors were built against; the other four now sit
   on the same version.
