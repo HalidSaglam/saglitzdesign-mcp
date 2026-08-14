@@ -7,11 +7,12 @@
 ## Why
 
 `audit_seo_geo` and `audit_performance` shipped in v0.22.0 with `outputSchema`
-and `structuredContent`. The other seven auditors return markdown and nothing
+and `structuredContent`. The other audit tools return markdown and nothing
 else, so an agent chaining *audit → fix* has to parse prose to learn what broke.
 
-Worse, the nine tools now make two different promises. Two of them tell a caller
-what they could not check; seven leave that to be inferred from silence — and
+Worse, the audit surface now makes two different promises. Two tools tell a
+caller what they could not check; the rest leave that to be inferred from
+silence — and
 silence is exactly what a caller misreads as a clean bill.
 
 This package closes both gaps for the audit surface. The generators, the
@@ -33,13 +34,13 @@ section and the structured field carry the same entries, for every auditor.
 
 **No rule changes behaviour. No existing markdown changes.**
 
-This is an addition, and it must be provable as one. Nine auditors' human-facing
-text is pinned byte-for-byte against its current output, with one deliberate
-exception: the five auditors that today disclose nothing gain a "Not visible to
-this audit" section. That is new text, it is the point of the package, and it is
-the only text that moves.
+This is an addition, and it must be provable as one. Every touched tool's
+human-facing text is pinned byte-for-byte against its current output, with one
+deliberate exception: `design_lint` and `audit_project`, which today disclose
+nothing, gain a "Not visible to this audit" section. That is new text, it is the
+point of the package, and it is the only text that moves.
 
-The temptation to route all seven through `assembleAuditReport` and give the
+The temptation to route all four through `assembleAuditReport` and give the
 audit surface one uniform report layout is deliberately declined. It is a
 defensible change and it is not this one: doing it here would make every
 regression ambiguous, because a layout difference and a data difference would
@@ -48,16 +49,40 @@ renderer.
 
 ## Scope
 
-**In:** `design_lint`, `audit_accessibility`, `audit_ux_copy`,
-`audit_design_system`, `audit_project`, `audit_security`,
-`audit_generic_design` — seven tools — plus the SDK 1.29 → 1.30 bump.
+**In:** `design_lint`, `audit_security`, `audit_generic_design` and
+`audit_project` — the four tools that actually produce findings — plus the SDK
+1.29 → 1.30 bump.
+
+**Corrected during design.** This spec originally named seven tools. Reading the
+code before writing the plan showed that three of them produce no findings at
+all, whatever their names suggest:
+
+| Tool | What it actually returns |
+|---|---|
+| `audit_design_system` | dimensions, duplicate-colour clusters, a token/literal ratio, a score |
+| `audit_accessibility` | `CheckResult[]` — required vs. actual, pass/fail, for pairs the caller supplied |
+| `audit_ux_copy` | `CopyMetrics` — Flesch score, grade level, passive/jargon/filler hits |
+
+These measure; they do not discover. `audit_accessibility` does not scan a page
+and find problems — it tests the colour pairs it was handed against a threshold.
+Forcing them into `{findings, summary, notVisible}` would either invent findings
+that no rule produces or change three tools' behaviour, which the section below
+forbids. What an agent wants from `audit_accessibility` is not a finding; it is
+the number **4.53**.
+
+They move to package D2 and are grouped with the other measurers
+(`fix_contrast`, `measure_screenshot`, `import_design_tokens`), where a numeric
+schema is the right answer rather than a distortion. Left recorded here because
+a spec that quietly drops its own wrong premises teaches nothing — the same
+correction the generic-design spec had to make.
 
 **Out:**
 
-- **The thirteen generators and measurers** (`generate_*`, `suggest_*`,
+- **The sixteen generators and measurers** (`generate_*`, `suggest_*`,
   `fix_contrast`, `measure_screenshot`, `import_design_tokens`,
-  `create_design_system`, `compare_design_languages`). Each needs its own schema
-  and its own design thinking; they are package D2.
+  `create_design_system`, `compare_design_languages`, plus the three moved
+  above). Each needs its own schema and its own design thinking; they are
+  package D2.
 - **The eleven knowledge readers.** Wrapping a markdown document in a JSON field
   buys nothing. A metadata envelope (`id`, `category`, `updated`, `sources`)
   would buy something, and belongs with D2.
@@ -80,15 +105,15 @@ the two v0.22.0 tools:
 }
 ```
 
-All nine auditors guarantee exactly this, so a caller can handle any of them
-without knowing which it called. Three tools carry more than findings, and they
-**add** fields rather than replacing the base:
+All six findings-producing auditors — the four here plus `audit_seo_geo` and
+`audit_performance` from v0.22.0 — guarantee exactly this, so a caller can handle
+any of them without knowing which it called. Two carry more than findings, and
+they **add** fields rather than replacing the base:
 
 | Tool | Additional field |
 |---|---|
 | `audit_generic_design` | `score: { total: number; items: Array<{ weight, rule, evidence }> }` |
-| `audit_design_system` | `dimensions: Array<{ name, score, findings: string[] }>` |
-| `audit_project` | `scan: { filesRead, filesSkipped, truncated }` |
+| `audit_project` | `scan: { filesRead, filesSkipped, hitFileCap, hitByteCap, unreadable }` |
 
 `audit_project` aggregates other auditors. Its `findings` stay a **flat** list,
 each entry carrying the rule id that already identifies its origin — not a
@@ -106,7 +131,7 @@ exist, a source that could not be parsed — as an ordinary successful result.
 After this change that is a protocol violation. Those paths must return
 `isError: true` and no `structuredContent`.
 
-Each of the seven tools gets its error path tested explicitly. This is the
+Each of the four tools gets its error path tested explicitly. This is the
 likeliest way for this package to break something that currently works, so it is
 called out as its own concern rather than folded into general testing.
 
@@ -117,13 +142,12 @@ Two tools have the content and the wrong container: `audit_security` and
 Splitting them into arrays is mechanical, and the resulting markdown must match
 the current text.
 
-Five tools disclose nothing at all: `design_lint`, `audit_accessibility`,
-`audit_ux_copy`, `audit_design_system`, `audit_project`. Their disclosures are
-written from scratch.
+Two tools disclose nothing at all: `design_lint` and `audit_project`. Their
+disclosures are written from scratch.
 
 **An empty `notVisible` is not an option.** It reads as "nothing was invisible",
 which is false for every one of these tools. A tool that cannot produce a
-truthful list does not get the field — but all seven can.
+truthful list does not get the field — but all four can.
 
 **The single acceptance criterion, carried over from v0.22.0:** every sentence is
 verified by constructing the case it describes and running the tool. Package C
@@ -152,7 +176,7 @@ Per tool:
 
 Across tools:
 
-6. Every one of the nine auditors asserted to advertise an `outputSchema`, and no
+6. Every one of the six findings-producing auditors asserted to advertise an `outputSchema`, and no
    non-auditor to advertise one — the analogue of the C2 check that stopped a
    tool description claiming capabilities it did not have.
 7. Every `notVisible` sentence demonstrated by a test that builds the case and
