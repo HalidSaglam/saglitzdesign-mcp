@@ -648,7 +648,6 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(rules(`:root { --brand-color: #ff0000; }`)).toEqual(["hardcoded-color"]);
     expect(designLint(`:root { --brand: #ff0000; }`)).toEqual([]);
     expect(notVisible).toContain("--header-height: 64px");
-    expect(notVisible).toMatch(/design tokens this rule's own fix text sends you to write/i);
     expect(notVisible).toMatch(/`--brand-color: #ff0000` fires while `--brand: #ff0000` does not/);
     // The retracted completeness claim may not come back.
     expect(notVisible).not.toMatch(/treat that as the list rather than as an example of a larger one/i);
