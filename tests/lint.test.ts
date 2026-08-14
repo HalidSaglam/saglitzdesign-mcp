@@ -216,7 +216,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
   const notVisible = LINT_NOT_VISIBLE.join("\n");
 
   it("has an entry for every demonstration below, and no empty list", () => {
-    expect(LINT_NOT_VISIBLE.length).toBe(13);
+    expect(LINT_NOT_VISIBLE.length).toBe(14);
     for (const entry of LINT_NOT_VISIBLE) expect(entry.startsWith("**")).toBe(true);
   });
 
@@ -246,6 +246,25 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(notVisible).toMatch(/snippet-wide and selector-blind/i);
   });
 
+  it("3b. outline-none reads three spellings and misses every other way to kill a ring", () => {
+    // What it does match.
+    expect(rules(`.a { outline: none; }`)).toEqual(["outline-none"]);
+    expect(rules(`.a { outline: 0; }`)).toEqual(["outline-none"]);
+    expect(rules(`<div className="outline-none">x</div>`)).toEqual(["outline-none"]);
+    // Every one of these removes the focus ring just as completely, and is silent.
+    for (const css of [
+      `.a { outline-style: none; }`,
+      `.a { outline-width: 0; }`,
+      `.a { outline: transparent; }`,
+      `.a { outline: 2px solid transparent; }`,
+      // `\b` fails between the `0` and the `p`, so the `0` spelling with a unit escapes.
+      `.a { outline: 0px; }`,
+      `<div className="outline-0">x</div>`,
+    ]) expect(designLint(css), css).toEqual([]);
+    expect(notVisible).toMatch(/outline-style: none/);
+    expect(notVisible).toMatch(/only `error` rule/i);
+  });
+
   it("4. a tag that carries a spread", () => {
     expect(designLint(`<img {...props} src="a.png">`)).toEqual([]);
     expect(designLint(`<div {...rest} onClick={go}>x</div>`)).toEqual([]);
@@ -269,17 +288,68 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(notVisible).toMatch(/errs the other way/i);
   });
 
-  it("6. an element whose tag name is not on a rule's list", () => {
+  it("5b. icon-button-no-label's threshold: under two letters or digits fires", () => {
+    // A digit, a symbol and a single CJK character are all "unlabelled".
+    expect(rules(`<button>3</button>`)).toEqual(["icon-button-no-label"]);
+    expect(rules(`<button>×</button>`)).toEqual(["icon-button-no-label"]);
+    expect(rules(`<button>好</button>`)).toEqual(["icon-button-no-label"]);
+    expect(rules(`<button>了</button>`)).toEqual(["icon-button-no-label"]);
+    // Two of anything alphanumeric passes, in any script.
+    expect(designLint(`<button>Go</button>`)).toEqual([]);
+    expect(designLint(`<button>12</button>`)).toEqual([]);
+    expect(designLint(`<button>好的</button>`)).toEqual([]);
+    expect(notVisible).toMatch(/Fewer than two letters or digits/i);
+    expect(notVisible).toMatch(/a whole word/i);
+  });
+
+  it("6. a tag rule matches the literal name, lowercased — so components spelling an element ARE graded", () => {
+    // A component whose name spells an element is graded as that element,
+    // even though the wrapper almost certainly supplies the missing attribute.
+    expect(rules(`<Button onClick={go}><Icon/></Button>`)).toEqual(["icon-button-no-label"]);
+    expect(rules(`<Input type="email" />`)).toEqual(["control-no-label"]);
+    expect(rules(`<Select><option>a</option></Select>`)).toEqual(["control-no-label"]);
+    expect(rules(`<Textarea />`)).toEqual(["control-no-label"]);
+    expect(rules(`<Div onClick={go}>x</Div>`)).toEqual(["clickable-div"]);
+    expect(rules(`<Span onClick={go}>x</Span>`)).toEqual(["clickable-div"]);
+    expect(rules(`<Li onClick={go}>x</Li>`)).toEqual(["clickable-div"]);
+    expect(rules(`<Section onClick={go}>x</Section>`)).toEqual(["clickable-div"]);
     expect(rules(`<Image src="/a.png" />`)).toEqual(["img-no-alt"]);
-    expect(designLint(`<Avatar src="/a.png" />`)).toEqual([]);
-    expect(designLint(`<a onClick={go}>x</a>`)).toEqual([]);
-    expect(designLint(`<p onClick={go}>x</p>`)).toEqual([]);
-    expect(designLint(`<td onClick={go}>x</td>`)).toEqual([]);
-    expect(designLint(`<article onClick={go}>x</article>`)).toEqual([]);
-    expect(designLint(`<a role="button" href="/x"><Icon /></a>`)).toEqual([]);
-    expect(designLint(`<IconButton icon="save" />`)).toEqual([]);
-    expect(designLint(`<TextField placeholder="Email" />`)).toEqual([]);
-    expect(notVisible).toMatch(/not on a rule's list/i);
+    expect(rules(`<IMG src="a.png">`)).toEqual(["img-no-alt"]);
+    // It goes quiet only when the name is on this very line.
+    expect(designLint(`<Button aria-label="Save"><Icon/></Button>`)).toEqual([]);
+    // And in the other direction: a name that spells nothing is unreachable.
+    for (const src of [
+      `<Avatar src="/a.png" />`,
+      `<IconButton icon="save" />`,
+      `<TextField placeholder="Email" />`,
+      `<Pressable onClick={go}>x</Pressable>`,
+    ]) expect(designLint(src), src).toEqual([]);
+    // The plain-HTML lists are narrow too.
+    for (const src of [
+      `<a onClick={go}>x</a>`,
+      `<p onClick={go}>x</p>`,
+      `<td onClick={go}>x</td>`,
+      `<article onClick={go}>x</article>`,
+      `<a role="button" href="/x"><Icon /></a>`,
+    ]) expect(designLint(src), src).toEqual([]);
+    expect(notVisible).toMatch(/the literal name, lowercased/i);
+    expect(notVisible).toMatch(/cuts both ways/i);
+  });
+
+  it("6b. clickable-div only recognises React's and HTML's onClick spelling", () => {
+    expect(rules(`<div onClick={go}>x</div>`)).toEqual(["clickable-div"]);
+    expect(rules(`<div onclick="go()">x</div>`)).toEqual(["clickable-div"]);
+    // Four advertised stacks, every clickable div silent.
+    for (const src of [
+      `<div @click="go">x</div>`,
+      `<div v-on:click="go">x</div>`,
+      `<div on:click={go}>x</div>`,
+      `<div (click)="go()">x</div>`,
+      `<div x-on:click="go">x</div>`,
+      `<div @click.prevent="go">x</div>`,
+    ]) expect(designLint(src), src).toEqual([]);
+    expect(notVisible).toMatch(/any syntax but React's or HTML's/i);
+    expect(notVisible).toContain("on:click");
   });
 
   it("7. a namespaced element is graded as its prefix — and <svelte:head> costs nothing here", () => {
@@ -339,8 +409,24 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(designLint(`<div className="bg-[#ff0000]">x</div>`)).toEqual([]);
     expect(designLint(`<div className="text-[14px]">x</div>`)).toEqual([]);
     expect(designLint(`<div className="rounded-[6px]">x</div>`)).toEqual([]);
+    // important-overuse is blind to Tailwind's important modifier too.
+    expect(designLint(`<div className="!text-red-500">x</div>`)).toEqual([]);
+    expect(rules(`.a { color: red !important; }`)).toEqual(["important-overuse"]);
     expect(notVisible).toMatch(/Spellings a line rule was not written for/i);
     expect(notVisible).toMatch(/arbitrary-value syntax/i);
+    expect(notVisible).toMatch(/important modifier/i);
+  });
+
+  it("11a. fixed-height-text does not mean fixed — min-height and max-height fire", () => {
+    // The pattern is a word-boundary `height:`, and `-` is a word boundary.
+    expect(rules(`.a { min-height: 40px; }`)).toEqual(["fixed-height-text"]);
+    expect(rules(`.a { max-height: 200px; }`)).toEqual(["fixed-height-text"]);
+    // Which means the rule flags the `min-height` its own fix text recommends.
+    expect(designLint(`.a { min-height: 40px; }`)[0].fix).toContain("min-height");
+    // line-height escapes only because `line` is on the suppressor list.
+    expect(designLint(`.a { line-height: 40px; }`)).toEqual([]);
+    expect(notVisible).toMatch(/does not mean \*fixed\*/i);
+    expect(notVisible).toMatch(/flags its own advice/i);
   });
 
   it("11. the two info rules stand down for a word anywhere on the line", () => {
@@ -356,7 +442,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(rules(`.card { border-radius: 8px; }`)).toEqual(["magic-number-radius"]);
     expect(designLint(`.rounded-card { border-radius: 8px; }`)).toEqual([]);
     expect(designLint(`.a { border-radius: 8px; color: var(--c); }`)).toEqual([]);
-    expect(notVisible).toMatch(/stand down for/i);
+    expect(notVisible).toMatch(/stands down when the line contains/i);
     expect(notVisible).toMatch(/substring/i);
   });
 
@@ -368,8 +454,14 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(rules(`<label>Email <input type="email"></label>`)).toEqual(["control-no-label"]);
     // Any role satisfies clickable-div, plausible or not, key handlers or not.
     expect(designLint(`<div role="presentation" onClick={go}>x</div>`)).toEqual([]);
+    // The two naming rules read presence, never content.
+    expect(designLint(`<img src="a.png" alt="image">`)).toEqual([]);
+    expect(designLint(`<img src="a.png" alt="a.png">`)).toEqual([]);
+    expect(designLint(`<button aria-label="button"><Icon/></button>`)).toEqual([]);
+    expect(designLint(`<button aria-label=""><Icon/></button>`)).toEqual([]);
     expect(notVisible).toMatch(/actually resolves/i);
     expect(notVisible).toMatch(/wrapping label/i);
+    expect(notVisible).toMatch(/All four grade the presence of an attribute and never its content/i);
   });
 
   it("13. the count is findings, not defects — one per rule per line", () => {

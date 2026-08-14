@@ -74,13 +74,21 @@ const SMOKE: Record<string, Record<string, unknown>> = {
 const STRUCTURED_TOOLS = ["audit_seo_geo", "audit_performance", "design_lint"];
 
 /**
- * The structured tools that take a `path` and so can be handed a bad one.
- * Declaring an outputSchema is what makes them answer that with an error
- * result rather than prose, and their descriptions have to say so.
- * `design_lint` takes only a snippet, has no path to get wrong, and must not
- * be made to claim otherwise.
+ * Does this tool take a `path`, and so can it be handed a bad one? Declaring
+ * an outputSchema is what makes those tools answer that with an error result
+ * rather than prose, and their descriptions have to say so; `design_lint`
+ * takes only a snippet, has no path to get wrong, and must not be made to
+ * claim otherwise.
+ *
+ * Read off the advertised input schema rather than listed by hand. A hand-kept
+ * list is a silent opt-out: drop a name from it and the description assertion
+ * simply stops running instead of failing, which is the failure mode this
+ * whole suite exists to prevent. Deriving it also asserts the premise —
+ * `design_lint` is exempt because its schema has no `path`, and if one is ever
+ * added the assertion starts applying to it on its own.
  */
-const PATH_AUDIT_TOOLS = ["audit_seo_geo", "audit_performance"];
+const takesPath = (tool: { inputSchema?: { properties?: Record<string, unknown> } }): boolean =>
+  "path" in (tool.inputSchema?.properties ?? {});
 
 let client: Client;
 let transport: StdioClientTransport;
@@ -366,15 +374,19 @@ describe("the structured auditors return validated structured output", () => {
 
     it(`${name}'s description tells a client it reads source and does not measure`, async () => {
       const { tools } = await client.listTools();
-      const description = tools.find((t) => t.name === name)?.description ?? "";
+      const tool = tools.find((t) => t.name === name)!;
+      const description = tool.description ?? "";
       expect(description.length, name).toBeGreaterThan(40);
       expect(description, name).toMatch(/reads (?:your )?source/i);
       expect(description, name).toMatch(/does not measure|measures nothing|no measurement/i);
-      // The path-taking auditors answer a bad path with an error result rather
+      // A path-taking auditor answers a bad path with an error result rather
       // than prose — a consequence of declaring an outputSchema — and a caller
       // should learn that from the description rather than from a surprise.
-      if (PATH_AUDIT_TOOLS.includes(name)) {
+      // A snippet-only auditor has no path to get wrong and must not say it does.
+      if (takesPath(tool)) {
         expect(description, name).toMatch(/error result, not as an empty audit/i);
+      } else {
+        expect(description, name).not.toMatch(/error result, not as an empty audit/i);
       }
     });
   }
