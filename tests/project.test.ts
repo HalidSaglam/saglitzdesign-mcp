@@ -7,6 +7,8 @@ import {
   MAX_FILE_BYTES, MAX_FILES, MAX_TOTAL_BYTES,
   PROJECT_NOT_VISIBLE, PROJECT_PREAMBLE, PROJECT_CLOSING,
 } from "../dist/project.js";
+import { designLint } from "../dist/lint.js";
+import { contrastRatio } from "../dist/a11y.js";
 import { securityReport } from "../dist/security.js";
 import { genericReport } from "../dist/generic.js";
 import { seoReport } from "../dist/seo.js";
@@ -354,6 +356,11 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
     const dupes = fixture({ "b.css": ".a{color:#111827}\n.b{color:#111928}\n" });
     expect(auditProject(dupes).system.duplicateColors.length).toBe(1);
     expect(notVisible).toMatch(/the colour-distance arithmetic that calls two of them indistinguishable/);
+    // The budget column is not derived from the text at all, which is why the
+    // entry says "or, in the budget column, from constants picked in advance"
+    // rather than claiming every number comes from the source.
+    expect(auditProject(dupes).system.dimensions.map((d) => d.budget)).toEqual([14, 9, 4, 6, 12]);
+    expect(notVisible).toMatch(/in the budget column, from constants picked in advance/);
     rmSync(dupes, { recursive: true, force: true });
     rmSync(dir, { recursive: true, force: true });
   });
@@ -377,6 +384,11 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
     expect(ruleIds(perfReport({ source: page, filename: "index.html" }).structured)).toContain("lazy-hero");
 
     expect(notVisible).toMatch(/the consistency table is `audit_design_system` over the same files, and contributes no findings/);
+    // The fifth auditor it does not run is the one that answers entry 1's
+    // "no contrast ratio is computed" — from pairs, not from any file.
+    expect(contrastRatio("#6B7280", "#FFFFFF")).toBeCloseTo(4.83, 2);
+    expect(notVisible).toMatch(/neither is `audit_accessibility`/);
+    expect(notVisible).toContain("`#6B7280` on `#FFFFFF` came back 4.83:1");
     expect(notVisible).toMatch(/The rules owned by `audit_security`, `audit_generic_design`, `audit_seo_geo` and `audit_performance` are not run here at all/);
     for (const rule of ["external-script-no-sri", "csp-missing", "ai-default-gradient", "emoji-as-icon", "multiple-h1", "lazy-hero"]) {
       expect(notVisible, rule).toContain(rule);
@@ -393,6 +405,21 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
     expect(a.findings.map((f) => `${f.file}:${f.rule}`)).toEqual(["App.jsx:clickable-div"]);
     expect(notVisible).toMatch(/Everything `design_lint` cannot see/);
     expect(notVisible).toMatch(/It carries its own disclosure list, which this one does not repeat/);
+
+    // Not inherited — manufactured by the per-file split, in the tool whose
+    // whole claim is that it reads across files. The evidence that would
+    // silence the rule is in the project and is never handed to the linter.
+    const split = fixture({
+      "a.css": ".btn { outline: none; }\n",
+      "b.css": ".btn:focus { outline: 2px solid blue; }\n",
+    });
+    expect(auditProject(split).findings.map((f) => `${f.file}:L${f.line}:${f.rule}:${f.severity}`))
+      .toEqual(["a.css:L1:outline-none:error"]);
+    // The same two lines as one design_lint snippet: nothing at all.
+    expect(designLint(".btn { outline: none; }\n.btn:focus { outline: 2px solid blue; }\n")).toEqual([]);
+    expect(notVisible).toMatch(/One cost is not inherited but manufactured here/);
+    expect(notVisible).toMatch(/that linter's own remedy, lint the markup and the CSS together, is not available through this tool/);
+    rmSync(split, { recursive: true, force: true });
     expect(notVisible).toMatch(/<div @click="go">/);
     rmSync(dir, { recursive: true, force: true });
   });
@@ -411,7 +438,14 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
     expect(auditProject(dir).findings.some((f) => f.rule === "img-no-alt")).toBe(false);
 
     const r = projectAuditReport(dir);
-    expect(r.text).toContain(`the ${MAX_FILES}-file cap was reached, so later files were not read`);
+    // The notice is one bullet, and it is not on the header line: that line
+    // counts what was read and reads exactly like a complete scan.
+    expect(r.text).toContain(`- **Capped:** the ${MAX_FILES}-file cap was reached, so later files were not read.`);
+    const header = r.text.split("\n").slice(0, 5).join("\n");
+    expect(header).toContain(`${MAX_FILES} file(s), 8 KB scanned`);
+    expect(header).not.toMatch(/cap|Capped|partial|truncat/i);
+    expect(notVisible).toContain("reads exactly like a complete scan");
+    expect(notVisible).toContain(`- **Capped:** the ${MAX_FILES}-file cap was reached, so later files were not read.`);
     expect(r.structured.scan.hitFileCap).toBe(true);
     expect(r.structured.scan.filesRead).toBe(MAX_FILES);
 
@@ -463,6 +497,18 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
     expect(notVisible).toContain("skipped whole rather than truncated");
     expect(notVisible).toContain("The report names up to five such files");
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  // The two demonstrations below need a permissions failure, which only a
+  // non-root process can stage — there is no portable substitute (a dangling
+  // symlink never becomes a candidate, so it cannot populate `unreadable`).
+  // The sentence's wording is pinned here instead, unskipped, so a root runner
+  // cannot take the entry's only assertion away with the demonstration.
+  it("6-pin. keeps the wording of the unreadable-path entry, root or not", () => {
+    expect(notVisible).toMatch(/A path this process could not open/);
+    expect(notVisible).toContain("1 path(s) could not be read");
+    expect(notVisible).toMatch(/`scan.unreadable` carries the paths/);
+    expect(notVisible).toMatch(/a permissions problem reads exactly like an empty project/);
   });
 
   it.skipIf(asRoot)("6. records a path it could not open, and names it only in the structured scan", () => {
@@ -546,8 +592,15 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
     // The .css that was audited a moment ago is now unread: the list replaced.
     expect(withJs.system.dimensions.find((d) => d.id === "color")!.unique).toBe(0);
 
+    // And the extension must carry its dot: without one nothing matches, and
+    // the report is indistinguishable from a genuinely empty project.
+    const noDot = projectAuditReport(dir, ["js"]);
+    expect(noDot.text).toMatch(/Found no design source/);
+    expect(noDot.structured.scan.filesRead).toBe(0);
+
     expect(notVisible).toMatch(/\*replaces\* that list rather than adding to it/);
     expect(notVisible).toMatch(/the colour count fell from 1 to 0/);
+    expect(notVisible).toMatch(/each with its leading dot/);
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -612,8 +665,20 @@ describe("what audit_project cannot see — one demonstration per disclosure ent
     // The per-file rule reads the same notations, and fires on none of these.
     for (const dir of [oklch, hsl, named]) expect(auditProject(dir).findings, dir).toEqual([]);
 
+    // The rule is narrower than the count, and this is the direction that
+    // costs: the twenty rgb() colours the palette counted drew no finding.
+    expect(auditProject(rgb).findings).toEqual([]);
+    const hexes = fixture({
+      "a.css": Array.from({ length: 20 }, (_, i) => `.c${i}{color:#${String(i).padStart(2, "0")}00ff}`).join("\n") + "\n",
+    });
+    expect(colors(hexes)).toBe(20);
+    expect(auditProject(hexes).findings.map((f) => f.rule)).toEqual(Array(20).fill("hardcoded-color"));
+    rmSync(hexes, { recursive: true, force: true });
+
     expect(notVisible).toMatch(/A colour written as something other than a hex or `rgb\(\)`\/`rgba\(\)`/);
     expect(notVisible).toMatch(/twenty `rgb\(\)` colours counted as twenty/);
+    expect(notVisible).toMatch(/The per-file `hardcoded-color` rule is narrower still/);
+    expect(notVisible).toMatch(/the second is not a check that passed/);
     for (const dir of [oklch, hsl, rgb, named]) rmSync(dir, { recursive: true, force: true });
   });
 

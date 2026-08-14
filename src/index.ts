@@ -886,7 +886,7 @@ tool(
     + "Cross-file drift is the thing a single-file lint cannot see, which is the point of this tool. Reads only the directory you name; makes no network call. Pair with measure_screenshot for the rendered result and audit_ux_copy for the words.",
   {
     path: z.string().describe("Directory to audit. Absolute paths are strongly preferred — a relative path is resolved against the server's working directory, which is usually not your project folder."),
-    extensions: z.array(z.string()).optional().describe("Override which file extensions are scanned, e.g. ['.tsx','.css','.js']. Replaces the default list rather than adding to it, so name every extension you want read. Defaults to CSS/SCSS/HTML/JSX/TSX/Vue/Svelte/Astro; .js and .ts are excluded by default because most are logic, not UI."),
+    extensions: z.array(z.string()).optional().describe("Override which file extensions are scanned, e.g. ['.tsx','.css','.js']. Replaces the default list rather than adding to it, so name every extension you want read, each with a leading dot — 'js' matches nothing and the audit comes back empty, where '.js' works. Defaults to CSS/SCSS/HTML/JSX/TSX/Vue/Svelte/Astro; .js and .ts are excluded by default because most are logic, not UI."),
   },
   async ({ path, extensions }) => {
     const abs = isAbsolute(path) ? path : resolve(process.cwd(), path);
