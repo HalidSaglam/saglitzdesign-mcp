@@ -820,6 +820,80 @@ describe("the report", () => {
   });
 });
 
+// Pinned before `GENERIC_NOT_VISIBLE` moved from a prose template literal to
+// `GENERIC_PREAMBLE` / `GENERIC_NOT_VISIBLE` / `GENERIC_CLOSING`, so the split
+// can be checked against the exact bytes `genericReport` rendered beforehand.
+// A container change — array in, same markdown out — has nothing to prove if
+// the "before" picture is taken after the change.
+describe("the disclosure section, pinned before the split into an array", () => {
+  it("renders the same disclosure section it rendered before the split", () => {
+    expect(genericReport({ source: `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`, filename: "Hero.tsx" }))
+      .toMatchInlineSnapshot(`
+        "# Generic-design audit
+
+        Scanned one snippet.
+
+        **Score: 20 / 100** — the count of distinct AI-default signals found; each rule counts once no matter how many times it repeats.
+
+        - **ai-default-gradient** +20
+
+        ## Warnings
+
+        - **ai-default-gradient** (line 1) — Gradient built from Tailwind's stock indigo/violet/purple region (indigo-500 → purple-600).
+          - Fix: Pick stops from your own palette, or drop the gradient — see ai-default-aesthetic for why this pair recurs.
+          - Read: \`get_design_doc("ai-default-aesthetic")\`
+
+        ## Not visible to this audit
+
+        Every rule above matches a fact about the source — a class name, a phrase, a
+        repeated structure. It cannot see, and does not attempt to judge:
+
+        - **Whether a default was chosen deliberately.** A brand whose colour
+          genuinely is indigo will be flagged; the finding names a fact, not a
+          mistake. Confirm the choice before treating a flag as a defect.
+        - **Anything about rendered output.** Spacing rhythm, optical alignment, how
+          the page actually feels — none of that is visible from source text.
+        - **Whether the writing is good.** This detects stock phrases, not weak ones;
+          a hand-written sentence that happens to avoid the phrase list is not
+          praised for it, and a good sentence that happens to use one is still
+          flagged.
+        - **Copy in any language but English.** Every phrase, adverb and call-to-action
+          label the copy rules match is English. A generated page in Turkish, German,
+          Japanese or any other language is read by the visual rules alone and scores
+          strictly lower for it — the same page in two languages measured 74 and 92
+          here, and the 18-point difference was the translation, not the design. Do
+          not compare scores across languages.
+        - **A stock gradient assembled through a CSS custom property.**
+          \`linear-gradient(135deg, var(--brand-a), var(--brand-b))\` is silent even when
+          those properties are defined as the stock pair a few lines above; resolving
+          it needs real value substitution, which this scanner does not do. Written
+          literally, or as Tailwind \`from-\`/\`to-\` utilities, the same gradient is
+          found.
+        - **Judgement of any kind.** Whether the result is *good design* is not this
+          tool's question — \`design_review_checklist\` and \`get_design_doc("design-critique-scoring")\`
+          own that, with a human looking at the render.
+        - **Class names outside Tailwind's default scale.** The visual rules match
+          literal utility strings from that scale, so a project written with arbitrary
+          values, a custom scale, or another framework's class names is audited less
+          thoroughly than the score implies. A low score on such a project reflects
+          coverage, not necessarily restraint.
+        - **Story, test and fixture files, in directory mode.** Paths matching
+          \`*.stories.*\`, \`*.story.*\`, \`*.spec.*\`, \`*.test.*\`, \`__fixtures__/\` and
+          \`__mocks__/\` are not read. A story file's job is to show every variant with
+          placeholder labels, so scoring it reports the demonstration rather than the
+          product — but it does mean a default that exists *only* in a story is not
+          reported either. The scanned line above says how many were skipped.
+        - **The typeface rule off a recognised brand surface.** It evaluates only where
+          the surface reads as a brand page — a marketing route, or a heading beside a
+          conventional call to action — so a landing page at an unconventional path
+          with distinctive call-to-action copy is not assessed for it.
+
+        A clean result here means the source carries none of these specific,
+        recurring defaults — not that the design is good."
+      `);
+  });
+});
+
 describe("the report — directory-mode breadth", () => {
   // Reproduces the exact gap a project-wide score can't carry on its own:
   // two files each carrying one instance of the same signals score
