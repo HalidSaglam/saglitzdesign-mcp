@@ -149,6 +149,53 @@ function textOf(result: { content?: Array<{ type: string; text?: string }> }): s
     .join("\n");
 }
 
+/**
+ * Recover the exact `notVisible` bullets `renderNotVisibleSection` printed,
+ * so a drift test can compare the rendered markdown against
+ * `structuredContent.notVisible` as sets, in both directions.
+ *
+ * `renderNotVisibleSection` (src/lint.ts) prints:
+ *   "## Not visible to this audit", "", preamble, "",
+ *   ...notVisible.map(entry => `- ${entry}`), "", closing
+ *
+ * Naively grabbing every line starting with "- " is not enough:
+ * `GENERIC_NOT_VISIBLE` (src/generic.ts) has entries that wrap over several
+ * physical lines — the entry string itself contains its own `\n  `
+ * continuations — so a single bullet can span multiple lines, only the first
+ * of which starts with "- ". This walks the section line by line, starts a
+ * new bullet on a line beginning "- ", and folds every following line back
+ * onto it (rejoined with "\n", the same separator the entry already carries)
+ * until either the next "- " line or the blank line that ends the list —
+ * `renderNotVisibleSection` always pushes that blank line before `closing`,
+ * which is what stops this from swallowing the closing sentence too.
+ *
+ * This assumes no entry's own text begins a line with "- " (which would be
+ * read as a new bullet) and no preamble/closing line does either (which
+ * would be read as bullet noise before the list starts) — checked by hand
+ * against all six NOT_VISIBLE tables and their preambles/closings; none do.
+ */
+function notVisibleBulletsIn(markdown: string): string[] {
+  const headingIdx = markdown.indexOf("## Not visible to this audit");
+  if (headingIdx === -1) return [];
+  const lines = markdown.slice(headingIdx).split("\n");
+  const firstBullet = lines.findIndex((l) => l.startsWith("- "));
+  if (firstBullet === -1) return [];
+  const bullets: string[] = [];
+  let current: string | null = null;
+  for (let i = firstBullet; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === "") break; // the blank line renderNotVisibleSection puts before `closing`
+    if (line.startsWith("- ")) {
+      if (current !== null) bullets.push(current);
+      current = line.slice(2);
+    } else if (current !== null) {
+      current += `\n${line}`;
+    }
+  }
+  if (current !== null) bullets.push(current);
+  return bullets;
+}
+
 describe("server handshake", () => {
   it("registers every tool exactly once", () => {
     expect(toolNames.length).toBe(new Set(toolNames).size);
@@ -394,7 +441,7 @@ describe("the structured auditors return validated structured output", () => {
       expect(structured.findings.length, `${name} should find something in its smoke case`).toBeGreaterThan(0);
     }, 20_000);
 
-    it(`${name} carries a non-empty notVisible list, every entry of which is in the prose`, async () => {
+    it(`${name} carries a non-empty notVisible list that exactly matches the markdown's bullets`, async () => {
       const result = (await client.callTool({ name, arguments: SMOKE[name] })) as {
         structuredContent?: { notVisible: string[] };
         content?: Array<{ type: string; text?: string }>;
@@ -402,7 +449,15 @@ describe("the structured auditors return validated structured output", () => {
       const notVisible = result.structuredContent!.notVisible;
       expect(notVisible.length, name).toBeGreaterThan(4);
       const body = textOf(result);
-      for (const entry of notVisible) expect(body, `${name}: ${entry}`).toContain(entry);
+      // Set equality, both directions. `toContain` alone only proves
+      // notVisible ⊆ markdown — it would stay green if the markdown printed
+      // an extra bullet that bypassed the shared array entirely (e.g. one
+      // appended straight to a report's template), which is exactly the
+      // drift `assembleAuditReport`/`renderNotVisibleSection` exist to make
+      // impossible. Comparing the sorted rendered bullets against the sorted
+      // structured array catches drift in either direction.
+      const rendered = notVisibleBulletsIn(body);
+      expect([...rendered].sort(), name).toEqual([...notVisible].sort());
       // The claim every structured auditor makes from source, in whichever of
       // its own several forms applies. The page/source readers (seo/perf/lint,
       // and audit_project, whose list opens on the same sentence) say in their
@@ -618,15 +673,21 @@ describe("the six structured auditors, asserted together", () => {
     }
   });
 
-  it("prints every notVisible entry in the markdown it returns", async () => {
+  it("the notVisible array and the markdown's bullets are the same set, for every tool", async () => {
     for (const name of STRUCTURED_TOOLS) {
       const r = (await client.callTool({ name, arguments: SMOKE[name] })) as {
         structuredContent?: { notVisible: string[] };
         content?: Array<{ type: string; text?: string }>;
       };
-      for (const entry of r.structuredContent!.notVisible) {
-        expect(textOf(r), `${name}: ${entry.slice(0, 40)}`).toContain(entry);
-      }
+      const notVisible = r.structuredContent!.notVisible;
+      // Both directions, per tool: every structured entry renders as a
+      // bullet, and every rendered bullet is a structured entry. A one-way
+      // `toContain` check would stay green if a report's markdown template
+      // printed an extra "Not visible" bullet straight from a string
+      // literal, bypassing `notVisible` entirely — which is the drift this
+      // package's one-array-two-renderings rule exists to rule out.
+      const rendered = notVisibleBulletsIn(textOf(r));
+      expect([...rendered].sort(), name).toEqual([...notVisible].sort());
     }
   });
 });
