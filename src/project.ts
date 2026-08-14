@@ -9,7 +9,10 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, extname } from "node:path";
-import { designLint, type LintFinding } from "./lint.js";
+import {
+  designLint, type LintFinding, type AuditReport, type AuditStructured,
+  auditStructuredFrom, renderNotVisibleSection,
+} from "./lint.js";
 import { auditDesignSystem, type DesignSystemAudit } from "./dsaudit.js";
 
 /** Directories that are never anyone's source. */
@@ -191,20 +194,109 @@ export function auditProject(root: string, extensions?: string[]): ProjectAudit 
 const ICON = { error: "🔴", warning: "🟡", info: "🔵" } as const;
 const kb = (n: number) => `${(n / 1024).toFixed(0)} KB`;
 
-export function projectAuditReport(root: string, extensions?: string[]): string {
+export const PROJECT_PREAMBLE =
+  "This walks the directory you named, reads the files it can open, and runs static rules over their text. It resolves no import, evaluates no configuration, renders nothing and measures nothing. It cannot see:";
+
+/**
+ * What `audit_project` structurally cannot see.
+ *
+ * Every entry was written *after* running the tool on a directory built to
+ * demonstrate it, and each demonstration is kept as a test in
+ * `tests/project.test.ts`. That order is the whole method, not a preference:
+ * the sibling list in `lint.ts` was rewritten five times because sentences read
+ * off the rules were false, and every one of the false ones was caught by
+ * running the tool rather than by re-reading it. A cap sentence in particular
+ * must come from a run — the constant says 400 files, the *behaviour* is that
+ * the walk stops at the first file that would cross the line and reads nothing
+ * after it, which is a much larger claim and is not visible in the constant.
+ *
+ * The standing rule these follow: write narrowing claims ("it reads only X"),
+ * never completeness claims ("these are the shapes that fire", "any X is
+ * reported"). A narrowing claim that turns out to be wrong under-promises; a
+ * completeness claim that is wrong invites a reader to trust a gap that is not
+ * there. A closed enumeration is a completeness claim wearing a list's clothes,
+ * so the enumerations here are explicitly samples of what was run.
+ */
+export const PROJECT_NOT_VISIBLE: string[] = [
+  "**Nothing here is measured, and nothing is rendered.** No contrast ratio is computed, no tap target sized, no page loaded, no screenshot taken, no browser involved. A stylesheet declaring `.a { color: #777777; background: #888888; padding: 13px 27px; }` came back as one `hardcoded-color` warning, which says nothing whatever about how those two colours read against each other, and nothing about the spacing either. Every number above is derived from the text that was read — counts of the values written there, and the colour-distance arithmetic that calls two of them indistinguishable — never from a rendered page.",
+  `**What the other auditors on this server would have found.** The findings above are \`design_lint\`'s rules run over each scanned file; the consistency table is \`audit_design_system\` over the same files, and contributes no findings. The rules owned by \`audit_security\`, \`audit_generic_design\`, \`audit_seo_geo\` and \`audit_performance\` are not run here at all. One \`index.html\` — an unpinned cross-origin \`<script>\`, no CSP, the stock indigo→purple gradient, an emoji as a heading icon, two \`<h1>\`s and a \`loading="lazy"\` hero — produced **no findings** from this tool, while on that same file \`audit_security\` reported \`external-script-no-sri\` and \`csp-missing\`, \`audit_generic_design\` reported \`ai-default-gradient\` and \`emoji-as-icon\`, \`audit_seo_geo\` reported \`multiple-h1\`, and \`audit_performance\` reported \`lazy-hero\`. Point each of them at the same directory.`,
+  "**Everything `design_lint` cannot see.** Each file's findings are that linter's, so its blind spots are this tool's blind spots. It carries its own disclosure list, which this one does not repeat — run `design_lint` on any snippet to read it. Demonstrated here: a Vue handler, `<div @click=\"go\">`, drew nothing in a scanned `.vue` file, where the JSX spelling `<div onClick={go}>` in the same project drew `clickable-div`.",
+  `**Whatever the scan stopped short of.** It reads at most ${MAX_FILES} files and at most ${kb(MAX_TOTAL_BYTES)} in total, and it stops at the *first* file that would cross either line — everything the walk had not yet reached is then left unread, not sampled. A project of ${MAX_FILES + 5} stylesheets under \`a/\` plus one component under \`z/\` was read to ${MAX_FILES} files, and the \`<img>\` with no \`alt\` in that component was not reported; eight 450 KB stylesheets exhausted the byte budget after six (2700 KB read), and the same defect in a small file after them was not reported either. Which files are dropped is decided by the order the walk reached them — each directory's entries in name order, depth first — and not by importance. The header line above says when a cap was reached; \`scan.hitFileCap\` and \`scan.hitByteCap\` say the same thing to a machine, and while either is true no absence in \`findings\` covers the part that was never opened.`,
+  `**A file over ${kb(MAX_FILE_BYTES)}, which is skipped whole rather than truncated.** It is never opened, so nothing above is claimed about anything inside it, and the scan carries on with the rest. A stylesheet just over ${kb(MAX_FILE_BYTES)} whose first line was \`.a{color:#ff0000}\` produced no \`hardcoded-color\` and contributed nothing to the colour count, while a small file beside it was read normally. The report names up to five such files; \`scan.skippedLarge\` carries all of them.`,
+  "**A path this process could not open.** A directory it may not list and a file it may not read are both recorded and stepped over, and the audit continues without them. The markdown counts them (`1 path(s) could not be read`) but names none — `scan.unreadable` carries the paths. Worse in one specific case, and worth knowing before reading an empty result: when *every* candidate file is unreadable the report falls into its \"Found no design source\" branch, whose fixed text mentions neither the count nor the paths, so a permissions problem reads exactly like an empty project. `scan.unreadable` is populated there too; check it.",
+  "**Anything reached through a symbolic link.** The walk descends into real directories and reads real files, and a directory entry that is a symlink is neither, so it is stepped over — silently: a skipped link is counted in neither `scan.unreadable` nor `scan.skippedLarge`, and nothing in the report mentions it. A linked `Linked.tsx` and a linked `pkg/` holding `Deep.tsx`, each with an `<img>` missing its `alt`, both drew nothing, while the real file beside them was audited normally. A monorepo whose packages are linked into the tree you audit is invisible for this reason; point the tool at the directory the files really live in — the path you pass is followed whether or not it is itself a link, so auditing through a link at the top works, and it is the links inside the walk that are stepped over.",
+  `**A file whose extension is not on the scanned list.** That list defaults to ${UI_EXTENSIONS.join(", ")}; \`.js\` and \`.ts\` are not on it, so a component in \`Card.js\` and a theme in \`tailwind.config.ts\` are never opened, and the colours a Tailwind config names are absent from the consistency count. The \`extensions\` argument *replaces* that list rather than adding to it: passing \`[".js"]\` found the \`.js\` component and, in the same run, stopped reading the \`.css\` file that had been audited before — its two findings disappeared and the colour count fell from 1 to 0. Pass every extension you want scanned in one call.`,
+  "**Directories the walk never enters — a fixed list, plus every directory whose name begins with a dot.** `node_modules`, `dist`, `build`, `.next` and the rest are skipped by name, and `.storybook/preview.css` was skipped for its leading dot. A dot *file* is not skipped: `.eslintrc.css` was scanned. Nothing consults `.gitignore`, and the cost runs both ways — a committed build artifact in a directory that is not on the list, `public/bundle.css`, was read as though it were hand-written source, and its values counted towards the consistency numbers.",
+  "**Styling expressed as utility classes, which the consistency count does not read.** That count reads CSS declarations and literal values written in the text — `border-radius:`, `font-size:` and spacing declarations, hexes and `rgb()` among them. Tailwind's named scale utilities are none of those: a page written entirely as `bg-indigo-500 rounded-lg text-sm p-4 shadow-lg` and two more variants of it counted 0 colours, 0 type sizes, 0 radii, 0 shadows and 0 spacing values, and scored **100/100** with no findings at all. Arbitrary values are read — `rounded-[9px]` and `text-[13px]` each counted — and a hex counts wherever it is written in a scanned file, `bg-[#6366f1]` included. On a utility-first project read a high consistency score as coverage, not as restraint.",
+  "**A colour written as something other than a hex or `rgb()`/`rgba()`.** Those are the notations the palette count and the near-duplicate check read; a colour written another way may not be counted at all. Demonstrated: twenty distinct `oklch()` colours in one stylesheet counted as 0 colours and scored 100/100, twenty `hsl()` colours did the same, and `color: red` counted as none — while twenty `rgb()` colours counted as twenty. The per-file `hardcoded-color` finding follows the same line and fired on none of them.",
+  "**A component whose styles are written in a form the consistency pass does not collect.** That pass concatenates the style files plus any scanned file whose text contains `style` or `class=`/`className=`. An emotion component written as ``css`color:#ff0000;border-radius:7px` `` matches none of those, so its colour and its radius were absent from the dimensions table — while its own findings, `hardcoded-color` and `magic-number-radius`, were reported as usual. `styled.div` does match, on the bare substring `style` inside it, and so does any `className=` — a substring is all it takes, so the same values in a file that merely writes `import styles from \"./a.module.css\"` were counted, while an otherwise identical file writing `import x from` was not. The dimension counts are about the files that pass that filter, not about the whole project.",
+  "**A file that is not UTF-8 text.** Every scanned file is decoded as UTF-8 and the result is handed to the rules whatever it looks like, so a stylesheet saved as UTF-16 came back with no findings and contributed nothing to the counts, while the UTF-8 file beside it was audited normally. It counts as read — it appears in neither `scan.unreadable` nor `scan.skippedLarge`, and its bytes count towards the byte cap — so this one is invisible in every register.",
+  "**Some of what the consistency pass computes never reaches this report.** Demonstrated on four: off-grid spacing values, token adoption, the font-family count and magic z-index values. A stylesheet with `padding: 13px 27px`, one `var(--x)` against two literals, three font families and `z-index: 9999` produced all four internally, and none of them appears in the text above or in `findings`. Run `audit_design_system` on the same source to see them.",
+  "**How bad a file actually is.** \"Worst file first\" sorts on counts — errors, then warnings, then notes — so a file with one missing `alt` outranks a file with ten ad-hoc radii, and neither position is a measurement of what is at stake. The markdown also shows a slice: at most 20 files, at most 12 findings within each, the remainder counted in a line rather than listed — a 26-file run printed 20 sections, `…and 3 more in this file` and `6 further file(s) have findings`. `structuredContent.findings` carries every one of them (40 in that run), so read the structured list when you need them all.",
+];
+
+export const PROJECT_CLOSING =
+  "An empty findings list here means no `design_lint` rule matched the text of the files that were read — not that the project is sound, and not that it was all read. `scan` says how much of it was.";
+
+/**
+ * The structured half of `audit_project`, on top of what every structured
+ * auditor carries: what the scan actually reached.
+ *
+ * `scan` is not decoration. The markdown's "**Capped:** the 400-file cap was
+ * reached" line has no counterpart in `findings` or `summary` — a project whose
+ * worst file sat one past the cap reports exactly what a clean project reports —
+ * so a caller reading only `structuredContent` must be able to tell a clean
+ * result from a truncated one. Every field is copied from the `ScanResult` the
+ * audit already produced; nothing here is recomputed, so the two registers
+ * cannot disagree about how much was read.
+ */
+export interface ProjectStructured extends AuditStructured {
+  scan: {
+    filesRead: number;
+    scannedBytes: number;
+    skippedLarge: string[];
+    hitFileCap: boolean;
+    hitByteCap: boolean;
+    unreadable: string[];
+  };
+}
+
+export function projectAuditReport(
+  root: string,
+  extensions?: string[],
+): AuditReport & { structured: ProjectStructured } {
   const a = auditProject(root, extensions);
   const { scan } = a;
 
+  const structured: ProjectStructured = {
+    ...auditStructuredFrom({ findings: a.findings, notVisible: PROJECT_NOT_VISIBLE }),
+    scan: {
+      filesRead: scan.files.length,
+      scannedBytes: scan.scannedBytes,
+      skippedLarge: scan.skippedLarge,
+      hitFileCap: scan.hitFileCap,
+      hitByteCap: scan.hitByteCap,
+      unreadable: scan.unreadable,
+    },
+  };
+
+  const disclosure = renderNotVisibleSection(PROJECT_PREAMBLE, PROJECT_NOT_VISIBLE, PROJECT_CLOSING);
+
   if (scan.files.length === 0) {
-    return [
-      "# Project design audit",
-      "",
-      `Found no design source under \`${root}\`.`,
-      "",
-      `Looked for ${UI_EXTENSIONS.join(", ")} outside ${[...SKIP_DIRS].slice(0, 6).join(", ")} and friends.`,
-      "",
-      "_If your components live in `.js`/`.ts`, pass those extensions explicitly — they are excluded by default because most such files are logic, and linting them for missing alt text buries the real findings._",
-    ].join("\n");
+    return {
+      text: [
+        "# Project design audit",
+        "",
+        `Found no design source under \`${root}\`.`,
+        "",
+        `Looked for ${UI_EXTENSIONS.join(", ")} outside ${[...SKIP_DIRS].slice(0, 6).join(", ")} and friends.`,
+        "",
+        "_If your components live in `.js`/`.ts`, pass those extensions explicitly — they are excluded by default because most such files are logic, and linting them for missing alt text buries the real findings._",
+        "",
+        ...disclosure,
+      ].join("\n"),
+      structured,
+    };
   }
 
   const errors = a.findings.filter((f) => f.severity === "error").length;
@@ -289,5 +381,11 @@ export function projectAuditReport(root: string, extensions?: string[]): string 
     "",
     "_Static analysis of the files as written. It cannot see values that arrive at runtime, from a theme provider, or from a framework's own defaults._",
   );
-  return out.join("\n");
+
+  // One array, two renderings: the same `PROJECT_NOT_VISIBLE` the structured
+  // half reports is what prints here, so neither reader can be told something
+  // the other is not.
+  out.push("", ...disclosure);
+
+  return { text: out.join("\n"), structured };
 }

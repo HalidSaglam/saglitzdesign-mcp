@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { join } from "node:path";
-import { writeFileSync, mkdtempSync } from "node:fs";
+import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -71,29 +71,40 @@ const SMOKE: Record<string, Record<string, unknown>> = {
 };
 
 /** Every tool that declares an outputSchema. */
-const STRUCTURED_TOOLS = ["audit_seo_geo", "audit_performance", "design_lint", "audit_security", "audit_generic_design"];
+const STRUCTURED_TOOLS = [
+  "audit_seo_geo", "audit_performance", "design_lint", "audit_security", "audit_generic_design", "audit_project",
+];
 
 /**
  * Properties a tool's outputSchema declares beyond the three every structured
- * auditor shares (`findings`, `notVisible`, `summary`). `audit_generic_design`
- * is the one exception so far — it also returns `score`, the same itemised
- * number `genericReport`'s markdown prints, and `scan`, which is what tells a
- * caller reading only structuredContent that a directory audit was truncated
- * (the markdown's cap sentence otherwise has no structured counterpart). Read
- * by the shared schema-shape test below so that test can stay one assertion
- * instead of forking into a per-tool copy the day a second auditor gains its
- * own extra field.
+ * auditor shares (`findings`, `notVisible`, `summary`). Two tools have them:
+ * `audit_generic_design` also returns `score`, the same itemised number
+ * `genericReport`'s markdown prints, and `scan`; `audit_project` returns a
+ * wider `scan` of its own. `scan` is what tells a caller reading only
+ * structuredContent that a directory audit was truncated — the markdown's cap
+ * sentence otherwise has no structured counterpart. Read by the shared
+ * schema-shape test below so that test can stay one assertion instead of
+ * forking into a per-tool copy.
  */
-const EXTRA_SCHEMA_PROPS: Record<string, string[]> = { audit_generic_design: ["score", "scan"] };
+const EXTRA_SCHEMA_PROPS: Record<string, string[]> = {
+  audit_generic_design: ["score", "scan"],
+  audit_project: ["scan"],
+};
 
 /**
- * Same idea, but for `required`: `scan` is present only in directory mode
- * (a snippet has no scan to report), so it is declared `.optional()` and
- * correctly absent from `required` even though it is a real property. A test
- * that reused EXTRA_SCHEMA_PROPS for both checks would demand `scan` be
- * required and fail against the schema's own, deliberately looser, contract.
+ * Same idea, but for `required`: `audit_generic_design`'s `scan` is present
+ * only in directory mode (a snippet has no scan to report), so it is declared
+ * `.optional()` and correctly absent from `required` even though it is a real
+ * property. A test that reused EXTRA_SCHEMA_PROPS for both checks would demand
+ * it be required and fail against the schema's own, deliberately looser,
+ * contract. `audit_project` has no snippet mode — every call scans a directory
+ * — so its `scan` is required, and that difference is the point of keeping the
+ * two tables apart.
  */
-const EXTRA_REQUIRED_PROPS: Record<string, string[]> = { audit_generic_design: ["score"] };
+const EXTRA_REQUIRED_PROPS: Record<string, string[]> = {
+  audit_generic_design: ["score"],
+  audit_project: ["scan"],
+};
 
 /**
  * Does this tool take a `path`, and so can it be handed a bad one? Declaring
@@ -393,8 +404,9 @@ describe("the structured auditors return validated structured output", () => {
       const body = textOf(result);
       for (const entry of notVisible) expect(body, `${name}: ${entry}`).toContain(entry);
       // The claim every structured auditor makes from source, in whichever of
-      // its own several forms applies. The page/source readers (seo/perf/lint)
-      // say in their notVisible array that they measure nothing rendered.
+      // its own several forms applies. The page/source readers (seo/perf/lint,
+      // and audit_project, whose list opens on the same sentence) say in their
+      // notVisible array that they measure nothing rendered.
       // audit_security says it in its preamble instead, which renders inside
       // the "## Not visible to this audit" section but is not itself a member
       // of the notVisible array. Both disclosure lists predate this suite and
@@ -512,6 +524,64 @@ describe("audit_generic_design answers a bad or missing path as an error, not an
     expect(result.isError ?? false).toBe(false);
     expect(result.structuredContent).toBeTruthy();
   });
+});
+
+// audit_project is the third tool to make this change, and the only one whose
+// every call takes a path — it has no snippet mode to fall back to, so a bad
+// path is the whole of its error surface. Before it declared an outputSchema
+// both of these came back as ordinary prose with isError unset, which a caller
+// expecting structuredContent cannot tell from a real audit of an empty
+// directory.
+describe("audit_project answers a bad path as an error, not an empty audit", () => {
+  it("returns an error result, not an empty audit, for a path that is not a directory", async () => {
+    const result = (await client.callTool({
+      name: "audit_project",
+      arguments: { path: join(root, "package.json") },
+    })) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(textOf(result)).toMatch(/is a file, not a directory/);
+  });
+
+  it("returns an error result for a path that does not exist", async () => {
+    const result = (await client.callTool({
+      name: "audit_project",
+      arguments: { path: "/nonexistent-xyz" },
+    })) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(textOf(result)).toMatch(/There is no directory at/);
+  });
+
+  // The genuinely successful side of the same guard, including the branch that
+  // finds nothing to audit: an empty directory is a real, successful audit and
+  // must still carry structuredContent — with a scan saying it read nothing,
+  // which is exactly what tells the caller apart from the error cases above.
+  it("still returns structuredContent for a real audit", async () => {
+    const result = (await client.callTool({
+      name: "audit_project",
+      arguments: SMOKE.audit_project,
+    })) as { isError?: boolean; structuredContent?: { scan?: { filesRead?: number } } };
+    expect(result.isError ?? false).toBe(false);
+    expect(result.structuredContent).toBeTruthy();
+    expect(result.structuredContent!.scan!.filesRead).toBeGreaterThan(0);
+  }, 20_000);
+
+  it("returns a successful, structured audit for a directory with no design source", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "saglitz-empty-project-"));
+    const result = (await client.callTool({
+      name: "audit_project",
+      arguments: { path: empty },
+    })) as {
+      isError?: boolean;
+      structuredContent?: { scan: { filesRead: number }; findings: unknown[]; notVisible: string[] };
+    };
+    expect(result.isError ?? false).toBe(false);
+    expect(result.structuredContent!.scan.filesRead).toBe(0);
+    expect(result.structuredContent!.findings).toEqual([]);
+    expect(result.structuredContent!.notVisible.length).toBeGreaterThan(4);
+    rmSync(empty, { recursive: true, force: true });
+  }, 20_000);
 });
 
 describe("resources", () => {

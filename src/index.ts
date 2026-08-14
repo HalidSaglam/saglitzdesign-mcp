@@ -854,13 +854,39 @@ tool(
   async ({ source, format, name }) => text(importTokensReport(source, (format as TokenFormat) ?? "all", name || "Imported")),
 );
 
+// The shape `audit_project` declares on top of `AUDIT_OUTPUT_SCHEMA`: what the
+// scan actually reached. See `ProjectStructured` in project.ts, which this is
+// the wire-schema mirror of. Unlike `audit_generic_design`'s `scan`, this one
+// is always present — `audit_project` has no snippet mode, so every call
+// scanned a directory — and it carries the two fields that tool did not need:
+// the count and byte total actually read, and the paths that could not be
+// opened at all.
+const PROJECT_OUTPUT_SCHEMA = {
+  ...AUDIT_OUTPUT_SCHEMA,
+  scan: z
+    .object({
+      filesRead: z.number().int().describe("How many files were actually opened and read."),
+      scannedBytes: z.number().int().describe("Total bytes read, which is what the byte cap is measured against."),
+      skippedLarge: z.array(z.string()).describe("Files past the per-file byte cap. Never read, so nothing above is claimed about them."),
+      hitFileCap: z.boolean().describe("True when some source files were not read. Every absence claim in `findings` is unconfirmed while this is true."),
+      hitByteCap: z.boolean().describe("True when the scan stopped because the total-bytes cap was reached before every candidate file was read. Same caveat as hitFileCap."),
+      unreadable: z.array(z.string()).describe("Files and directories that could not be opened. The markdown counts these but names none, and when every candidate is unreadable it reports the project as empty — so this is the only place their paths appear."),
+    })
+    .describe("What the scan reached. Read it before trusting any absence claim: a capped scan looked at part of the project."),
+};
+
 // ── Tool 29: audit a whole project ───────────────────────────────────────────
 tool(
   "audit_project",
-  "Audit a real codebase instead of a pasted snippet: point it at a directory and it walks the design source, runs the design/accessibility lint over every file, and scores the whole thing for consistency — how many distinct colours, type sizes, radii, shadows and spacings the project actually uses, and which colours are indistinguishable duplicates. Returns findings ranked worst-file-first with file:line, plus an explicit list of what it did not look at. Cross-file drift is the thing a single-file lint cannot see, which is the point of this tool. Reads only the directory you name; makes no network call. Pair with measure_screenshot for the rendered result and audit_ux_copy for the words.",
+  "Audit a real codebase instead of a pasted snippet: point it at a directory and it walks the design source, runs the design/accessibility lint over every file, and scores the whole thing for consistency — how many distinct colours, type sizes, radii, shadows and spacings the project actually uses, and which colours are indistinguishable duplicates. Returns findings ranked worst-file-first with file:line, plus an explicit list of what it did not look at. "
+    + "It reads source and does not measure anything: it loads no page, renders nothing, takes no screenshot, and no finding is or can be a rendered-output result. "
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, file, line), a severity summary, a machine-readable `notVisible` list of what it could not check, and a `scan` block saying how many files and bytes were actually read, which files were skipped for size, which could not be opened, and whether the file or byte cap was hit — check that before trusting any absence in `findings`. "
+    + "It runs design_lint's rules and the consistency count, and nothing else: run audit_security, audit_generic_design, audit_seo_geo and audit_performance on the same directory for theirs. "
+    + "A missing or non-directory path is returned as an error result, not as an empty audit. "
+    + "Cross-file drift is the thing a single-file lint cannot see, which is the point of this tool. Reads only the directory you name; makes no network call. Pair with measure_screenshot for the rendered result and audit_ux_copy for the words.",
   {
     path: z.string().describe("Directory to audit. Absolute paths are strongly preferred — a relative path is resolved against the server's working directory, which is usually not your project folder."),
-    extensions: z.array(z.string()).optional().describe("Override which file extensions are scanned, e.g. ['.tsx','.css','.js']. Defaults to CSS/SCSS/HTML/JSX/TSX/Vue/Svelte/Astro; .js and .ts are excluded by default because most are logic, not UI."),
+    extensions: z.array(z.string()).optional().describe("Override which file extensions are scanned, e.g. ['.tsx','.css','.js']. Replaces the default list rather than adding to it, so name every extension you want read. Defaults to CSS/SCSS/HTML/JSX/TSX/Vue/Svelte/Astro; .js and .ts are excluded by default because most are logic, not UI."),
   },
   async ({ path, extensions }) => {
     const abs = isAbsolute(path) ? path : resolve(process.cwd(), path);
@@ -868,13 +894,18 @@ tool(
     try {
       stat = statSync(abs);
     } catch {
-      return text(`There is no directory at \`${abs}\`. Pass an absolute path to the folder you want audited.`);
+      // With an outputSchema declared, answering this as an ordinary successful
+      // result would be a protocol violation: the caller gets no
+      // structuredContent and nothing tells it the audit never ran.
+      return { ...text(`There is no directory at \`${abs}\`. Pass an absolute path to the folder you want audited.`), isError: true };
     }
     if (!stat.isDirectory()) {
-      return text(`\`${abs}\` is a file, not a directory. Use design_lint for a single file, or pass its parent folder.`);
+      return { ...text(`\`${abs}\` is a file, not a directory. Use design_lint for a single file, or pass its parent folder.`), isError: true };
     }
-    return text(projectAuditReport(abs, extensions?.length ? extensions : undefined));
+    const { text: body, structured } = projectAuditReport(abs, extensions?.length ? extensions : undefined);
+    return { ...text(body), structuredContent: structured };
   },
+  PROJECT_OUTPUT_SCHEMA,
 );
 
 // ── Tool 30: audit security ──────────────────────────────────────────────────
