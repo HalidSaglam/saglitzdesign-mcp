@@ -385,6 +385,63 @@ export function designLintReport(code: string): string {
  * `configuration:` rather than to any file — simply arrive with no `file`, and
  * nothing here goes looking for one.
  */
+/**
+ * The structured half of an audit, built from the findings array the report is
+ * built from. Kept separate from `assembleAuditReport` because an auditor may
+ * need this half without adopting that function's report layout — four of them
+ * have their own, and changing nine tools' markdown to share one renderer is a
+ * different change than giving them all one machine contract.
+ */
+export function auditStructuredFrom(input: {
+  findings: Array<LintFinding & { file?: string }>;
+  notVisible: string[];
+  file?: string;
+}): AuditStructured {
+  const { findings, notVisible } = input;
+  return {
+    findings: findings.map((f): AuditFinding => {
+      const file = f.file ?? input.file;
+      return {
+        rule: f.rule,
+        severity: f.severity,
+        message: f.message,
+        fix: f.fix,
+        doc: f.doc ?? "",
+        ...(file ? { file } : {}),
+        line: f.line,
+      };
+    }),
+    summary: {
+      error: findings.filter((f) => f.severity === "error").length,
+      warning: findings.filter((f) => f.severity === "warning").length,
+      info: findings.filter((f) => f.severity === "info").length,
+    },
+    notVisible,
+  };
+}
+
+/**
+ * The markdown rendering of the same `notVisible` array the structured half
+ * carries. One array, two renderings: a disclosure list typed separately from
+ * the field that reports it will drift, and when it does neither reader can
+ * tell which one is lying.
+ */
+export function renderNotVisibleSection(
+  preamble: string,
+  notVisible: string[],
+  closing: string,
+): string[] {
+  return [
+    "## Not visible to this audit",
+    "",
+    preamble,
+    "",
+    ...notVisible.map((entry) => `- ${entry}`),
+    "",
+    closing,
+  ];
+}
+
 export function assembleAuditReport(input: {
   heading: string;
   /** What was read — the file count, the caps, the skips. */
@@ -432,26 +489,9 @@ export function assembleAuditReport(input: {
     }
   }
 
-  lines.push("## Not visible to this audit", "", input.preamble, "");
-  for (const entry of notVisible) lines.push(`- ${entry}`);
-  lines.push("", input.closing);
+  lines.push(...renderNotVisibleSection(input.preamble, notVisible, input.closing));
 
-  const structured: AuditStructured = {
-    findings: findings.map((f): AuditFinding => {
-      const file = f.file ?? input.file;
-      return {
-        rule: f.rule,
-        severity: f.severity,
-        message: f.message,
-        fix: f.fix,
-        doc: f.doc ?? "",
-        ...(file ? { file } : {}),
-        line: f.line,
-      };
-    }),
-    summary,
-    notVisible,
-  };
+  const structured = auditStructuredFrom({ findings, notVisible, file: input.file });
 
   return { text: lines.join("\n"), structured };
 }
