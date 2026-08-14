@@ -359,33 +359,6 @@ export function designLintReport(code: string): string {
 // ── audit reports ────────────────────────────────────────────────────────────
 
 /**
- * Assemble one audit into its two registers at once.
- *
- * `securityReport` and `genericReport` each build their markdown by hand, and
- * that was fine while markdown was all they returned. The two auditors that
- * declare an `outputSchema` return a second representation of the *same*
- * findings, and two hand-built representations of one thing drift — a summary
- * that disagrees with its own findings, or a "Not visible" section that lists
- * one limitation in prose and another in the array, is precisely the silent
- * wrongness these tools exist to catch in other people's code. So both come out
- * of one function, counted once and rendered twice.
- *
- * The path travels as data and is folded into the prose here, never recovered
- * from it. An earlier version did the reverse — the callers prefixed the
- * message with `path: ` for the prose and this function split it back out on
- * the first `": "` — and a file legitimately named `chapter 2: the fall.html`
- * broke the split, silently dropping `file` from every finding in that file.
- * The prose still reads the way `securityReport`'s does, with the path folded
- * into the message (a reader takes one line in at a glance, and `(line 12)`
- * beside `app/page.tsx:12` puts the same number in their eye twice), but that
- * is now a rendering decision rather than a channel.
- *
- * Findings whose path is already inside their message — `seoConfigRules` writes
- * `robots.txt: …` itself, and a project-wide claim is attributed to
- * `configuration:` rather than to any file — simply arrive with no `file`, and
- * nothing here goes looking for one.
- */
-/**
  * The structured half of an audit, built from the findings array the report is
  * built from. Kept separate from `assembleAuditReport` because an auditor may
  * need this half without adopting that function's report layout — four of them
@@ -442,6 +415,33 @@ export function renderNotVisibleSection(
   ];
 }
 
+/**
+ * Assemble one audit into its two registers at once.
+ *
+ * `securityReport` and `genericReport` each build their markdown by hand, and
+ * that was fine while markdown was all they returned. The two auditors that
+ * declare an `outputSchema` return a second representation of the *same*
+ * findings, and two hand-built representations of one thing drift — a summary
+ * that disagrees with its own findings, or a "Not visible" section that lists
+ * one limitation in prose and another in the array, is precisely the silent
+ * wrongness these tools exist to catch in other people's code. So both come out
+ * of one function, counted once and rendered twice.
+ *
+ * The path travels as data and is folded into the prose here, never recovered
+ * from it. An earlier version did the reverse — the callers prefixed the
+ * message with `path: ` for the prose and this function split it back out on
+ * the first `": "` — and a file legitimately named `chapter 2: the fall.html`
+ * broke the split, silently dropping `file` from every finding in that file.
+ * The prose still reads the way `securityReport`'s does, with the path folded
+ * into the message (a reader takes one line in at a glance, and `(line 12)`
+ * beside `app/page.tsx:12` puts the same number in their eye twice), but that
+ * is now a rendering decision rather than a channel.
+ *
+ * Findings whose path is already inside their message — `seoConfigRules` writes
+ * `robots.txt: …` itself, and a project-wide claim is attributed to
+ * `configuration:` rather than to any file — simply arrive with no `file`, and
+ * nothing here goes looking for one.
+ */
 export function assembleAuditReport(input: {
   heading: string;
   /** What was read — the file count, the caps, the skips. */
