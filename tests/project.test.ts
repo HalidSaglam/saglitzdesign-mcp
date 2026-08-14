@@ -107,3 +107,96 @@ describe("the report never reads as complete when it is not", () => {
     rmSync(empty, { recursive: true, force: true });
   });
 });
+
+// Pinned before `projectAuditReport` gained a "Not visible to this audit"
+// section, so the diff of that change can be judged against the exact bytes
+// this report rendered beforehand rather than against itself. The disclosure
+// section is new text and is the point of the change; everything above it —
+// the header, the consistency table, the findings, the "What this did not look
+// at" list and the closing italic — must come out unchanged, and this is what
+// says so.
+//
+// The body is taken as everything above the new section's heading and trimmed
+// at the end: the section is appended after a blank separator line, so the only
+// byte that legitimately differs above it is trailing whitespace nothing
+// renders.
+describe("the report above the disclosure section, pinned before that section existed", () => {
+  let pinRoot: string;
+
+  beforeAll(() => {
+    pinRoot = mkdtempSync(join(tmpdir(), "saglitz-pin-"));
+    mkdirSync(join(pinRoot, "src"), { recursive: true });
+    writeFileSync(join(pinRoot, "src", "Card.tsx"), '<img src="/a.png" />\n<div onClick={go}>Go</div>\n');
+    writeFileSync(
+      join(pinRoot, "src", "styles.css"),
+      ".a{color:#111827;border-radius:6px}\n.b{color:#111928;border-radius:7px}\n",
+    );
+  });
+
+  afterAll(() => rmSync(pinRoot, { recursive: true, force: true }));
+
+  /** The report above the disclosure section, with the tmp path made stable. */
+  const pinnedBody = (root: string): string =>
+    projectAuditReport(root).split("## Not visible to this audit")[0].trimEnd().replaceAll(root, "<root>");
+
+  it("renders the findings half exactly as it did before", () => {
+    expect(pinnedBody(pinRoot)).toMatchInlineSnapshot(`
+      "# Project design audit
+
+      \`<root>\` — 2 file(s), 0 KB scanned.
+
+      **1 error · 3 warning · 2 info** across 2 file(s) · **consistency 96/100**
+
+      ## Is it one system?
+
+      _Budgets are calibrated for one product's UI. A portfolio showing ten brands, a multi-tenant app, or a component library demonstrating every state in both themes legitimately exceeds them — read the numbers, not just the score._
+
+      | dimension | distinct | budget | |
+      |---|---|---|---|
+      | Colors | 2 | ≤ 14 | ✅ |
+      | Font sizes | 0 | ≤ 9 | ✅ |
+      | Border radii | 2 | ≤ 4 | ✅ |
+      | Shadows | 0 | ≤ 6 | ✅ |
+      | Spacing values | 0 | ≤ 12 | ✅ |
+
+      - **1 indistinguishable colour(s)** across the project: keep \`#111827\`, drop \`#111928\`
+
+      ## Findings, worst file first
+
+      ### \`src/Card.tsx\` — 1 error · 1 warning · 0 info
+      - 🔴 **L1** \`img-no-alt\` — <img> without an alt attribute — invisible/opaque to screen readers.
+      - 🟡 **L2** \`clickable-div\` — Clickable <div> without a role — not focusable or announced as interactive.
+
+      ### \`src/styles.css\` — 0 error · 2 warning · 2 info
+      - 🟡 **L1** \`hardcoded-color\` — Hardcoded hex color instead of a design token.
+      - 🔵 **L1** \`magic-number-radius\` — Ad-hoc border-radius — mixed radii look accidental.
+      - 🟡 **L2** \`hardcoded-color\` — Hardcoded hex color instead of a design token.
+      - 🔵 **L2** \`magic-number-radius\` — Ad-hoc border-radius — mixed radii look accidental.
+
+      Fixes for each rule are in \`design_lint\` — run it on a single file to get the fix text, or read the rule id.
+
+      ## What this did not look at
+
+      - Directories never scanned: node_modules, .git, .hg, .svn, dist, build, out, .next, and other build/vendor output.
+      - Extensions scanned: .css, .scss, .sass, .less, .html, .htm, .jsx, .tsx, .vue, .svelte, .astro. \`.js\`/\`.ts\` are excluded by default — pass them explicitly if your components live there.
+      - \`.gitignore\` is not parsed; the skip list above is fixed.
+      - Copy is not audited here: run \`audit_ux_copy\` on the strings that matter. Screens are not measured: run \`measure_screenshot\` on a PNG.
+
+      _Static analysis of the files as written. It cannot see values that arrive at runtime, from a theme provider, or from a framework's own defaults._"
+    `);
+  });
+
+  it("renders the nothing-to-audit half exactly as it did before", () => {
+    const empty = mkdtempSync(join(tmpdir(), "saglitz-pin-empty-"));
+    expect(pinnedBody(empty)).toMatchInlineSnapshot(`
+      "# Project design audit
+
+      Found no design source under \`<root>\`.
+
+      Looked for .css, .scss, .sass, .less, .html, .htm, .jsx, .tsx, .vue, .svelte, .astro outside node_modules, .git, .hg, .svn, dist, build and friends.
+
+      _If your components live in \`.js\`/\`.ts\`, pass those extensions explicitly — they are excluded by default because most such files are logic, and linting them for missing alt text buries the real findings._"
+    `);
+    rmSync(empty, { recursive: true, force: true });
+  });
+});
