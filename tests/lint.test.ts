@@ -220,25 +220,57 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     for (const entry of LINT_NOT_VISIBLE) expect(entry.startsWith("**")).toBe(true);
   });
 
-  // This list has now shipped three false sentences, and all three were the
-  // same shape: an *inference-granting* universal — a claim telling a reader
-  // what a silence means, with no qualification. "a finding from them is real"
-  // and "a silence from them means only 'the attribute was there'" both fell
-  // to a case the writer had not enumerated, because a regex linter goes quiet
-  // for more reasons than any one sentence can list.
+  // Four false sentences have shipped in this list, and every one was the same
+  // shape: a claim telling the reader what a *silence* means. The previous
+  // guard pinned three retracted phrasings, and a reviewer defeated it with a
+  // paraphrase — phrase pins cannot catch the next wording.
   //
-  // The surviving universals are all the other kind: *narrowing* claims — "it
-  // reads only the CSS `font-size:` spelling", "it counts nothing else" —
-  // which under-promise coverage and are demonstrated by enumeration. Those
-  // are safe to state absolutely; a claim that hands the reader an inference
-  // from silence is not, and this is the guard that keeps the retracted
-  // formulas from coming back a fourth time.
-  it("hands the reader no unqualified inference from a silence", () => {
+  // So this is a shape check with a registry. Any sentence that pairs a
+  // silence word with a meaning verb must be listed below together with the
+  // test that demonstrates it. A new one fails until someone registers it,
+  // whatever words it uses, and registering it requires having run it.
+  //
+  // Honest limits, because a guard that only looks like one is worse than
+  // none: this cannot tell a true meaning-claim from a false one, and it
+  // cannot judge whether a registered claim is adequately scoped — a human
+  // reviewer does that. What it does mechanically is fail closed on any
+  // *unregistered* claim about what silence means, which is the step that was
+  // missing all four times. It also does not police claims phrased without
+  // either vocabulary; those are caught by the enumeration discipline instead,
+  // which is why the entries below now list their cases rather than
+  // generalising over them.
+  const SILENCE = /\b(silence|silent|quiet|draws? nothing|reports? nothing|passes? silently)\b/i;
+  const MEANING = /\b(means?|meaning|implies|imply|tells? you|amounts? to|is a verdict|is a pass|is a clean)\b/i;
+
+  /** Sentences asserting something about what a silence means, each demonstrated. */
+  const REGISTERED_SILENCE_CLAIMS: Array<{ fragment: string; demonstratedBy: string }> = [
+    {
+      fragment: "four demonstrated causes of silence, and only one of them is",
+      demonstratedBy: "3c. outline-none's four causes of silence, isolated",
+    },
+    {
+      fragment: "a silence from these four has at least four distinct causes",
+      demonstratedBy: "12. whether a label, a role or a name actually resolves",
+    },
+  ];
+
+  it("registers every claim it makes about what a silence means", () => {
+    const unregistered: string[] = [];
     for (const entry of LINT_NOT_VISIBLE) {
-      const label = entry.slice(0, 70);
-      expect(entry, label).not.toMatch(/silence (?:from|here) (?:them |it )?means only/i);
-      expect(entry, label).not.toMatch(/a finding from (?:them|it) is real/i);
-      expect(entry, label).not.toMatch(/silence (?:therefore )?(?:means|implies) (?:it|they|the code) (?:is|are) (?:clean|correct|fine)/i);
+      for (const sentence of entry.split(/(?<=[.!?])\s+(?=[A-Z`*(])/)) {
+        if (!SILENCE.test(sentence) || !MEANING.test(sentence)) continue;
+        if (REGISTERED_SILENCE_CLAIMS.some((c) => sentence.includes(c.fragment))) continue;
+        unregistered.push(sentence.trim());
+      }
+    }
+    expect(unregistered, "unregistered claim(s) about what a silence means").toEqual([]);
+  });
+
+  it("keeps every registered silence claim present and demonstrated", () => {
+    const joined = LINT_NOT_VISIBLE.join("\n");
+    for (const c of REGISTERED_SILENCE_CLAIMS) {
+      expect(joined, `registry is stale: ${c.fragment}`).toContain(c.fragment);
+      expect(c.demonstratedBy.length).toBeGreaterThan(0);
     }
   });
 
@@ -376,28 +408,35 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(notVisible).toMatch(/cuts both ways/i);
     // "draws nothing" is true of these rules only — a line rule still reads the line.
     expect(rules(`<Avatar style={{ color: "#ff0000" }} />`)).toEqual(["hardcoded-color"]);
-    expect(notVisible).toMatch(/draw nothing \*from these rules\*/);
+    expect(notVisible).toMatch(/draw nothing \*from the four rules keyed to element names\*/);
   });
 
-  it("6b. clickable-div only recognises React's and HTML's onClick spelling", () => {
+  it("6b. clickable-div reads onClick/onclick — which handler syntaxes that misses", () => {
     expect(rules(`<div onClick={go}>x</div>`)).toEqual(["clickable-div"]);
     expect(rules(`<div onclick="go()">x</div>`)).toEqual(["clickable-div"]);
-    // Four advertised stacks, every clickable div silent.
     for (const src of [
-      `<div @click="go">x</div>`,
-      `<div v-on:click="go">x</div>`,
-      `<div on:click={go}>x</div>`,
-      `<div (click)="go()">x</div>`,
-      `<div x-on:click="go">x</div>`,
-      `<div @click.prevent="go">x</div>`,
+      `<div @click="go">x</div>`,          // Vue
+      `<div v-on:click="go">x</div>`,      // Vue
+      `<div (click)="go()">x</div>`,       // Angular
+      `<div x-on:click="go">x</div>`,      // Alpine
+      `<div @click.prevent="go">x</div>`,  // Alpine
+      `<div on:click={go}>x</div>`,        // Svelte 4 — the legacy event directive
     ]) expect(designLint(src), src).toEqual([]);
-    expect(notVisible).toMatch(/any syntax but React's or HTML's/i);
+    // Svelte 5's own syntax is an event *attribute*, and this rule reads it.
+    // Verified against svelte.dev: `onclick={handler}` is current, `on:click`
+    // is the legacy API kept for backwards compatibility. So "a div made
+    // clickable in Svelte's own syntax is silent" is false for current Svelte.
+    expect(rules(`<div onclick={go}>x</div>`)).toEqual(["clickable-div"]);
+    expect(notVisible).toMatch(/a syntax `clickable-div` does not read/i);
     expect(notVisible).toContain("on:click");
-    // Only the framework spelling is missed — "every clickable div in a .vue
-    // file is silent" would be false, because plain HTML works in a template.
+    expect(notVisible).toMatch(/Svelte 5 replaced the event directive with an event attribute/i);
+    expect(notVisible).not.toMatch(/Only the framework spelling is missed/i);
+    // Nor is the handler spelling the only escape inside such a template.
+    expect(designLint(`<template><article onclick="go()">x</article></template>`)).toEqual([]);
+    expect(designLint(`<template><div role="button" onclick="go()">x</div></template>`)).toEqual([]);
+    expect(designLint(`<template><div v-bind="attrs" onclick="go()">x</div></template>`)).toEqual([]);
     expect(rules(`<template><div onclick="go()">x</div></template>`)).toEqual(["clickable-div"]);
-    expect(designLint(`<template><div @click="go">x</div></template>`)).toEqual([]);
-    expect(notVisible).toMatch(/Only the framework spelling is missed/i);
+    expect(notVisible).toMatch(/three separate conditions do it as well/i);
   });
 
   it("7. a namespaced element is graded as its prefix — and <svelte:head> costs nothing here", () => {
@@ -492,7 +531,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(designLint(`.a { height: calc(40px + 1rem); }`)).toEqual([]);
     expect(designLint(`.a { block-size: 40px; }`)).toEqual([]);
     expect(notVisible).toMatch(/matched literally and in lower case/i);
-    expect(notVisible).toMatch(/a narrow slice of the ways a fixed height gets written/i);
+    expect(notVisible).toMatch(/treat that as the list rather than as an example of a larger one/i);
     expect(notVisible).not.toMatch(/Only two-or-more-digit whole pixels are read at all/i);
   });
 
@@ -530,6 +569,48 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(notVisible).toContain("h-10");
   });
 
+  it("3c. outline-none's four causes of silence, isolated", () => {
+    // 1. nothing was removed.
+    expect(designLint(`.a { color: red; }`)).toEqual([]);
+    // 2. something in the snippet looks like a replacement.
+    expect(designLint(`.a:focus { outline: 2px solid blue; }\n.b { outline: none; }`)).toEqual([]);
+    // 3. a spelling the pattern does not carry.
+    expect(designLint(`.a { outline-style: none; }`)).toEqual([]);
+    // 4. the deliberate pointer-focus exemption.
+    expect(designLint(`a:focus:not(:focus-visible) { outline: none; }`)).toEqual([]);
+    expect(designLint(`<div className="not-focus-visible:outline-none">x</div>`)).toEqual([]);
+    // …against the one shape that does fire.
+    expect(rules(`.a { outline: none; }`)).toEqual(["outline-none"]);
+    expect(notVisible).toMatch(/four demonstrated causes of silence, and only one of them is/i);
+    expect(notVisible).toMatch(/pointer-focus exemption/i);
+  });
+
+  it("11b. magic-number-radius reads whole pixels — 0px and 9999px fire, 50% and 0.5rem do not", () => {
+    expect(rules(`.a { border-radius: 0px; }`)).toEqual(["magic-number-radius"]);
+    expect(rules(`.a { border-radius: 9999px; }`)).toEqual(["magic-number-radius"]);
+    expect(designLint(`.a { border-radius: 50%; }`)).toEqual([]);
+    expect(designLint(`.a { border-radius: 0.5rem; }`)).toEqual([]);
+    expect(notVisible).toMatch(/a squared corner and a pill are the two least ad-hoc radii/i);
+  });
+
+  it("10d. hardcoded-color is case-sensitive per branch, not per rule", () => {
+    expect(designLint(`.a { COLOR: #ff0000; }`)).toEqual([]);            // bare-CSS branch: silent
+    expect(rules(`<div style={{ COLOR: "#ff0000" }} />`)).toEqual(["hardcoded-color"]); // quoted-hex branch: fires
+    expect(rules(`.a { color: #FF0000; }`)).toEqual(["hardcoded-color"]);
+    expect(rules(`<div style={{ color: "#FF0000" }} />`)).toEqual(["hardcoded-color"]);
+    expect(notVisible).toMatch(/case-sensitive per \*branch\* rather than per rule/i);
+  });
+
+  it("11c. fixed-height-text needs the digits straight after the colon — a quote blocks it", () => {
+    expect(rules(`.a { height: 40px; }`)).toEqual(["fixed-height-text"]);
+    expect(rules(`.a { height:40px; }`)).toEqual(["fixed-height-text"]);
+    expect(rules(`.a { height :  40px; }`)).toEqual(["fixed-height-text"]);
+    // Both of these are a lower-case `px` behind two digits — the quote is in the way.
+    expect(designLint(`.a { height: "40px"; }`)).toEqual([]);
+    expect(designLint(`<div style={{ height: "40px" }} />`)).toEqual([]);
+    expect(notVisible).toMatch(/Nothing but whitespace may sit between the colon and the digits/i);
+  });
+
   // C1's sweep: the two universal claims about behaviour that survived being
   // tested. They stay in the prose unscoped because they can be demonstrated,
   // and these are the demonstrations.
@@ -537,7 +618,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     // "switches the rule off for every `outline: none` in it" — two of them, both gone.
     expect(designLint(`.z:focus { outline: 2px solid blue; }\n.a { outline: none; }\n.b { outline: none; }`)).toEqual([]);
     expect(designLint(`.a { outline: none; }\n.b { outline: none; }`)).toHaveLength(2);
-    expect(notVisible).toMatch(/switches the rule off for every `outline: none` in it/);
+    expect(notVisible).toMatch(/switches the rule off for every `outline: none` in the text/);
   });
 
   it("11. the two info rules stand down for a word anywhere on the line", () => {
@@ -572,21 +653,30 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(designLint(`<button aria-label=""><Icon/></button>`)).toEqual([]);
     expect(notVisible).toMatch(/actually resolves/i);
     expect(notVisible).toMatch(/wrapping label/i);
-    expect(notVisible).toMatch(/All four grade the presence of an attribute and never its content/i);
+    expect(notVisible).toMatch(/These four read an attribute's presence rather than its content/i);
     // The entry may claim nothing about findings being real: three cases these
     // rules report are called correct markup elsewhere in this same list.
     expect(rules(`<label>Email <input type="email"></label>`)).toEqual(["control-no-label"]);
     expect(rules(`<Input type="email" />`)).toEqual(["control-no-label"]);
     expect(rules(`<button>{label}</button>`)).toEqual(["icon-button-no-label"]);
-    // The claim is scoped to going quiet ON THE ATTRIBUTE. Both unscoped forms
-    // this entry has shipped are falsified here, and both are guarded against.
-    expect(designLint(`<img {...p} src="a.png">`)).toEqual([]);          // silent, no attribute at all
-    expect(designLint(`<button {...p}><Icon/></button>`)).toEqual([]);   // ditto
-    expect(designLint(`<button>Save</button>`)).toEqual([]);             // silent for visible text
-    expect(notVisible).toMatch(/when one of them goes quiet \*on the attribute\*/i);
-    expect(notVisible).toMatch(/It does not follow that a silence implies an attribute at all/i);
+    // control-no-label reads the VALUE of `type` and exempts five, so
+    // "these four read presence and never content" was false as a universal.
+    for (const t of ["hidden", "submit", "button", "image", "reset"])
+      expect(designLint(`<input type="${t}">`), t).toEqual([]);
+    for (const t of ["text", "email", "checkbox"])
+      expect(rules(`<input type="${t}">`), t).toEqual(["control-no-label"]);
+    expect(notVisible).toMatch(/reads the \*value\* of `type` and exempts five of them/i);
+    // The entry now enumerates the causes of silence instead of asserting a
+    // meaning for it. All four causes, each demonstrated:
+    expect(designLint(`<input aria-label="Email">`)).toEqual([]);        // 1. attribute present
+    expect(designLint(`<img {...p} src="a.png">`)).toEqual([]);          // 2. spread, no attribute at all
+    expect(designLint(`<input type="hidden">`)).toEqual([]);             // 3. exempt type value
+    expect(designLint(`<button>Save</button>`)).toEqual([]);             // 4. visible text
+    expect(notVisible).toMatch(/a silence from these four has at least four distinct causes/i);
+    // The three retracted formulas may not return, in any of their wordings.
     expect(notVisible).not.toMatch(/a finding from them is real/i);
     expect(notVisible).not.toMatch(/silence from them means only .the attribute was there/i);
+    expect(notVisible).not.toMatch(/grade the presence of an attribute and never its content/i);
   });
 
   it("13. the count is findings, not defects — one per rule per line", () => {
