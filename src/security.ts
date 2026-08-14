@@ -1072,13 +1072,18 @@ export function securityConfigRules(
     rule: string, message: string, fix: string, doc = "web-security-headers",
   ) =>
     out.push({
-      line, severity, rule, message: `${file}: ${message}`, fix, doc,
+      line, severity, rule, fix, doc,
       // `"configuration"` is a pseudo-path `absent()` uses for a project-wide
       // absence claim attributable to no single file — carrying it as `file`
       // would misrepresent it as a real path relative to the audited
       // directory, so those findings arrive with no `file`, matching the
       // convention `assembleAuditReport`'s project-wide claims already use.
-      ...(file === "configuration" ? {} : { file }),
+      // A finding that *does* name a real file carries the path once, in
+      // `file`; the renderer puts it back in front of the message, so the
+      // markdown is unchanged and `message` is never the path plus the
+      // sentence. `"configuration"` has no `file` to render from, so it —
+      // and only it — keeps the prefix folded into the message.
+      ...(file === "configuration" ? { message: `${file}: ${message}` } : { message, file }),
     });
 
   const truncated = options.truncated === true;
@@ -1391,15 +1396,14 @@ export function securityReport(input: { source?: string; filename?: string; root
     const scan = scanProject(input.root, SECURITY_EXTENSIONS, SECURITY_FILENAMES);
     const files = scan.files.map((f) => ({ path: f.path, source: f.source }));
     for (const f of files) {
-      // The file is folded into the message (colon-separated, matching the
-      // convention securityConfigRules already uses for its own findings)
-      // rather than appended after the line number — the bullet below shows
-      // the line once, from `f.line`. Repeating it here as `path:line —`
-      // would put the same number in the reader's eye twice for one finding.
-      // It is also carried as its own `file` field, unfolded, for the
-      // structured half — the message stays exactly as rendered, `file` is
-      // additional, not a replacement.
-      findings.push(...securitySourceRules(f.source, f.path).map((x) => ({ ...x, file: f.path, message: `${f.path}: ${x.message}` })));
+      // The path is carried once, as `file`. The bullet below renders it back
+      // in front of the message (colon-separated) rather than appending it
+      // after the line number — the bullet shows the line once, from
+      // `f.line`, and repeating it here as `path:line —` would put the same
+      // number in the reader's eye twice for one finding. Folding it into
+      // `message` as well would hand a structured caller rendering
+      // `${f.file}:${f.line} — ${f.message}` the path twice.
+      findings.push(...securitySourceRules(f.source, f.path).map((x) => ({ ...x, file: f.path })));
     }
     const truncated = scan.hitFileCap || scan.hitByteCap;
     findings.push(...securityConfigRules(files, { truncated }));
@@ -1440,7 +1444,7 @@ export function securityReport(input: { source?: string; filename?: string; root
       if (!group.items.length) continue;
       lines.push(`## ${group.title}`, "");
       for (const f of group.items) {
-        lines.push(`- **${f.rule}** (line ${f.line}) — ${f.message}`);
+        lines.push(`- **${f.rule}** (line ${f.line}) — ${f.file ? `${f.file}: ` : ""}${f.message}`);
         lines.push(`  - Fix: ${f.fix}`);
         if (f.doc) lines.push(`  - Read: \`get_design_doc("${f.doc}")\``);
       }

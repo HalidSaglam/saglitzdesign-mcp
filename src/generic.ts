@@ -986,7 +986,11 @@ export function genericReport(input: { source?: string; filename?: string; root?
         if (!filesByRule.has(finding.rule)) filesByRule.set(finding.rule, new Set());
         filesByRule.get(finding.rule)!.add(f.path);
       }
-      findings.push(...fileFindings.map((x) => ({ ...x, file: f.path, message: `${f.path}: ${x.message}` })));
+      // The path is carried once, as `file`. The bullet renders it back in
+      // front of the message; folding it into `message` too would hand a
+      // structured caller rendering `${f.file}:${f.line} — ${f.message}` the
+      // path twice.
+      findings.push(...fileFindings.map((x) => ({ ...x, file: f.path })));
     }
     scanned = `Scanned ${audited.length} files under \`${input.root}\`.`;
     if (demoSkipped) {
@@ -1034,7 +1038,7 @@ export function genericReport(input: { source?: string; filename?: string; root?
       if (!group.items.length) continue;
       lines.push(`## ${group.title}`, "");
       for (const f of group.items) {
-        lines.push(`- **${f.rule}** (line ${f.line}) — ${f.message}`);
+        lines.push(`- **${f.rule}** (line ${f.line}) — ${f.file ? `${f.file}: ` : ""}${f.message}`);
         lines.push(`  - Fix: ${f.fix}`);
         if (f.doc) lines.push(`  - Read: \`get_design_doc("${f.doc}")\``);
       }
@@ -1063,7 +1067,12 @@ export function genericReport(input: { source?: string; filename?: string; root?
       return {
         weight: item.weight,
         rule: item.rule,
-        evidence: example ? `${example.message} (line ${example.line})` : "",
+        // The path is prefixed here the same way the bullet above prefixes
+        // it, so `evidence` still reads as the exact line a reader chasing
+        // the rule down would land on — the path lives in `file` on the
+        // finding, and this is the one place it has to be spelled back out
+        // because `items` carries no `file` of its own.
+        evidence: example ? `${example.file ? `${example.file}: ` : ""}${example.message} (line ${example.line})` : "",
       };
     }),
   };

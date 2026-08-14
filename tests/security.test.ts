@@ -1180,7 +1180,11 @@ describe("an unreadable header is reported as unread, not as nothing", () => {
     expect(hit!.severity).toBe("info");
     expect(hit!.doc).toBe("web-security-headers");
     // What was found, where, and that the real response is the authority.
-    expect(hit!.message).toContain("middleware.ts");
+    // The path is carried once, as `file` — not also folded into `message`,
+    // which would hand a caller rendering `${file}:${line} — ${message}` the
+    // same path twice. The markdown puts it back at render time.
+    expect(hit!.file).toBe("middleware.ts");
+    expect(hit!.message).not.toContain("middleware.ts");
     expect(hit!.message).toMatch(/assembled at runtime/);
     // csp-undeterminable's own wording predates the other four and says "in a
     // response"; the point asserted here is that all five send the reader to
@@ -1596,12 +1600,12 @@ describe("audit_security returns both registers", () => {
     expect(r.structured.findings[0].file).toBe("a.tsx");
   });
 
-  it("carries each project-scanned finding's own path as `file`, in addition to folding it into the message", () => {
-    // `file` is additional, not a replacement: the markdown still needs the
-    // path folded into the message (securityReport builds its own report by
-    // hand rather than through assembleAuditReport's render-time `file`
-    // prefix), and a machine consumer now gets the same path as a field
-    // instead of having to parse it back out of the message text.
+  it("carries each project-scanned finding's own path as `file` only, never also inside the message", () => {
+    // `file` is a replacement, not an addition: an agent that renders
+    // `${f.file}:${f.line} — ${f.message}` must not read the path twice.
+    // The markdown loses nothing — it prefixes `file` back onto the message
+    // at render time, exactly as assembleAuditReport does — so the bullet is
+    // byte-for-byte what it was when the path lived in the message.
     const root = mkdtempSync(join(tmpdir(), "saglitz-sec-struct-"));
     try {
       writeFileSync(join(root, "a.html"), `<script src="https://cdn.example.com/a.js"></script>`, "utf8");
@@ -1609,13 +1613,14 @@ describe("audit_security returns both registers", () => {
       const f = r.structured.findings.find((x: { rule: string }) => x.rule === "external-script-no-sri");
       expect(f).toBeDefined();
       expect(f!.file).toBe("a.html");
-      expect(f!.message).toContain("a.html: ");
+      expect(f!.message).not.toContain("a.html");
+      expect(r.text).toContain(`— ${f!.file}: ${f!.message}`);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("carries a config rule's real file as `file` too, when the declaration was found in one", () => {
+  it("carries a config rule's real file as `file` only too, when the declaration was found in one", () => {
     const root = mkdtempSync(join(tmpdir(), "saglitz-sec-struct-"));
     try {
       writeFileSync(
@@ -1627,7 +1632,8 @@ describe("audit_security returns both registers", () => {
       const f = r.structured.findings.find((x: { rule: string }) => x.rule === "csp-unsafe-inline");
       expect(f).toBeDefined();
       expect(f!.file).toBe("_headers");
-      expect(f!.message).toContain("_headers: ");
+      expect(f!.message).not.toContain("_headers");
+      expect(r.text).toContain(`— ${f!.file}: ${f!.message}`);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

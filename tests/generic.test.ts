@@ -1011,7 +1011,18 @@ describe("the structured half populates findings[].file for project-scanned find
       writeFileSync(join(dir, "hero.tsx"), `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`);
       const r = genericReport({ root: dir });
       expect(r.structured.findings.length).toBeGreaterThan(0);
-      for (const f of r.structured.findings) expect(f.file).toBe("hero.tsx");
+      for (const f of r.structured.findings) {
+        expect(f.file).toBe("hero.tsx");
+        // The path lives in `file` and nowhere else on the finding. An agent
+        // rendering `${f.file}:${f.line} — ${f.message}` must not read it
+        // twice. The markdown prefixes it back at render time, so the bullet
+        // is byte-for-byte what it was when the path lived in the message.
+        expect(f.message).not.toContain("hero.tsx");
+        expect(r.text).toContain(`— ${f.file}: ${f.message}`);
+      }
+      // `items[].evidence` has no `file` of its own, so it spells the path
+      // back out — it must stay the exact line the bullet above prints.
+      for (const item of r.structured.score.items) expect(item.evidence).toMatch(/^hero\.tsx: /);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
