@@ -695,7 +695,11 @@ tool(
   "design_lint",
   "Lint a snippet of HTML / CSS / JSX / Tailwind for design & accessibility anti-patterns: hardcoded colors instead of tokens, px font-sizes, removed focus outlines, images without alt, clickable divs, icon-only buttons without labels, positive tabindex, ad-hoc radii, !important overuse. Returns findings with line numbers, severity, and fixes. "
     + "It reads source and does not measure anything: nothing is rendered, no contrast ratio is computed and no tap target is sized, so no finding is or can be a visual or an accessibility verdict. "
-    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, file, line), a severity summary, and a machine-readable `notVisible` list of what it could not check. "
+    // No `file` in that list: design_lint takes a snippet and neither a
+    // `filename` nor a `path`, so no finding it can produce has a path to
+    // carry. The other five structured auditors list it and all have
+    // something to put in it.
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, line), a severity summary, and a machine-readable `notVisible` list of what it could not check. "
     + "Fast static design-time check — not a replacement for a full audit. Complements design_review_checklist.",
   {
     code: z.string().describe("The HTML/CSS/JSX/Tailwind snippet to lint"),

@@ -441,6 +441,28 @@ describe("the structured auditors return validated structured output", () => {
       expect(structured.findings.length, `${name} should find something in its smoke case`).toBeGreaterThan(0);
     }, 20_000);
 
+    // A description that lists `file` among the fields it returns is making a
+    // claim a caller will plan around. design_lint listed it and emits it on
+    // nothing: it takes a snippet and neither a `filename` nor a `path`, so
+    // no finding it can produce has a path to carry. The probe below hands
+    // each tool the path input it declares — a snippet auditor called without
+    // a filename legitimately has nothing to put in `file`, which is not the
+    // same as never having anything.
+    it(`${name} emits \`file\` if, and only if, its description says it does`, async () => {
+      const { tools } = await client.listTools();
+      const tool = tools.find((t) => t.name === name)!;
+      const claimed = /findings \([^)]*\bfile\b[^)]*\)/.test(tool.description ?? "");
+      const inputs = Object.keys((tool.inputSchema as { properties?: Record<string, unknown> }).properties ?? {});
+      const args = inputs.includes("filename")
+        ? { ...SMOKE[name], filename: "probe.html" }
+        : SMOKE[name];
+      const result = (await client.callTool({ name, arguments: args })) as {
+        structuredContent?: { findings: Array<{ file?: string }> };
+      };
+      const emitted = result.structuredContent!.findings.some((f) => typeof f.file === "string");
+      expect(emitted, `${name}: description ${claimed ? "claims" : "does not claim"} \`file\``).toBe(claimed);
+    }, 20_000);
+
     it(`${name} carries a non-empty notVisible list that exactly matches the markdown's bullets`, async () => {
       const result = (await client.callTool({ name, arguments: SMOKE[name] })) as {
         structuredContent?: { notVisible: string[] };
