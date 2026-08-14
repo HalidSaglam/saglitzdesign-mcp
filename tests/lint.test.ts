@@ -220,6 +220,28 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     for (const entry of LINT_NOT_VISIBLE) expect(entry.startsWith("**")).toBe(true);
   });
 
+  // This list has now shipped three false sentences, and all three were the
+  // same shape: an *inference-granting* universal — a claim telling a reader
+  // what a silence means, with no qualification. "a finding from them is real"
+  // and "a silence from them means only 'the attribute was there'" both fell
+  // to a case the writer had not enumerated, because a regex linter goes quiet
+  // for more reasons than any one sentence can list.
+  //
+  // The surviving universals are all the other kind: *narrowing* claims — "it
+  // reads only the CSS `font-size:` spelling", "it counts nothing else" —
+  // which under-promise coverage and are demonstrated by enumeration. Those
+  // are safe to state absolutely; a claim that hands the reader an inference
+  // from silence is not, and this is the guard that keeps the retracted
+  // formulas from coming back a fourth time.
+  it("hands the reader no unqualified inference from a silence", () => {
+    for (const entry of LINT_NOT_VISIBLE) {
+      const label = entry.slice(0, 70);
+      expect(entry, label).not.toMatch(/silence (?:from|here) (?:them |it )?means only/i);
+      expect(entry, label).not.toMatch(/a finding from (?:them|it) is real/i);
+      expect(entry, label).not.toMatch(/silence (?:therefore )?(?:means|implies) (?:it|they|the code) (?:is|are) (?:clean|correct|fine)/i);
+    }
+  });
+
   it("1. renders and measures nothing: no contrast, no spacing rhythm", () => {
     expect(rules(`.a { color: #777777; background: #888888; }`)).toEqual(["hardcoded-color"]);
     expect(rules(`.a { padding: 13px 27px; margin-top: 7px; }`)).toEqual([]);
@@ -284,6 +306,10 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(rules(`<input />`)).toEqual(["control-no-label"]);
     expect(rules(`<button><Icon/></button>`)).toEqual(["icon-button-no-label"]);
     expect(notVisible).toMatch(/A tag that carries a spread/);
+    // Scope: it stands those four down on that element, and nothing more.
+    expect(rules(`<div {...p} className="outline-none">x</div>`)).toEqual(["outline-none"]);
+    expect(rules(`<div {...p} style={{ color: "#ff0000" }} />`)).toEqual(["hardcoded-color"]);
+    expect(notVisible).toMatch(/stands down those four rules on that element and nothing more/i);
   });
 
   it("5. run-time values — silent for the line rules, a false positive for icon-button-no-label", () => {
@@ -308,6 +334,12 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(designLint(`<button>好的</button>`)).toEqual([]);
     expect(notVisible).toMatch(/Fewer than two letters or digits/i);
     expect(notVisible).toMatch(/a whole word/i);
+    // The threshold only applies when nothing else names the button, so the
+    // unconditional form of this claim ("fewer than two … fires") is false.
+    expect(designLint(`<button title="Save">×</button>`)).toEqual([]);
+    expect(designLint(`<button aria-label="Search">×</button>`)).toEqual([]);
+    expect(designLint(`<button {...p}>×</button>`)).toEqual([]);
+    expect(notVisible).toMatch(/With no `aria-label`, `aria-labelledby`, `title` or spread to name the button/);
   });
 
   it("6. a tag rule matches the literal name, lowercased — so components spelling an element ARE graded", () => {
@@ -342,6 +374,9 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     ]) expect(designLint(src), src).toEqual([]);
     expect(notVisible).toMatch(/the literal name, lowercased/i);
     expect(notVisible).toMatch(/cuts both ways/i);
+    // "draws nothing" is true of these rules only — a line rule still reads the line.
+    expect(rules(`<Avatar style={{ color: "#ff0000" }} />`)).toEqual(["hardcoded-color"]);
+    expect(notVisible).toMatch(/draw nothing \*from these rules\*/);
   });
 
   it("6b. clickable-div only recognises React's and HTML's onClick spelling", () => {
@@ -358,6 +393,11 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     ]) expect(designLint(src), src).toEqual([]);
     expect(notVisible).toMatch(/any syntax but React's or HTML's/i);
     expect(notVisible).toContain("on:click");
+    // Only the framework spelling is missed — "every clickable div in a .vue
+    // file is silent" would be false, because plain HTML works in a template.
+    expect(rules(`<template><div onclick="go()">x</div></template>`)).toEqual(["clickable-div"]);
+    expect(designLint(`<template><div @click="go">x</div></template>`)).toEqual([]);
+    expect(notVisible).toMatch(/Only the framework spelling is missed/i);
   });
 
   it("7. a namespaced element is graded as its prefix — and <svelte:head> costs nothing here", () => {
@@ -445,7 +485,15 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(notVisible).toMatch(/does not mean \*fixed\*/i);
     expect(notVisible).toMatch(/flags its own advice/i);
     expect(notVisible).toMatch(/two or more digits and a literal `px`/i);
-    expect(notVisible).toMatch(/Only two-or-more-digit whole pixels are read at all/i);
+    // The unit is literal and lower-case, so "two-or-more-digit whole pixels
+    // are read" is false as an unconditional claim — these are exactly that.
+    expect(designLint(`.a { height: 40PX; }`)).toEqual([]);
+    expect(designLint(`.a { height: 40Px; }`)).toEqual([]);
+    expect(designLint(`.a { height: calc(40px + 1rem); }`)).toEqual([]);
+    expect(designLint(`.a { block-size: 40px; }`)).toEqual([]);
+    expect(notVisible).toMatch(/matched literally and in lower case/i);
+    expect(notVisible).toMatch(/a narrow slice of the ways a fixed height gets written/i);
+    expect(notVisible).not.toMatch(/Only two-or-more-digit whole pixels are read at all/i);
   });
 
   it("10b. five of the six line rules are case-sensitive; positive-tabindex is not", () => {
@@ -463,10 +511,33 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(rules(`.a { font-size: 14px; }`)).toEqual(["px-font-size"]);
     expect(rules(`.a { border-radius: 6px; }`)).toEqual(["magic-number-radius"]);
     expect(rules(`.a { color: red !important; }`)).toEqual(["important-overuse"]);
-    // The one exception carries the case-insensitive flag.
-    expect(rules(`<div TABINDEX="5">x</div>`)).toEqual(["positive-tabindex"]);
+    // positive-tabindex is excepted on only ONE of its two alternatives: the
+    // HTML-attribute form is case-insensitive, the JSX brace form is not.
+    for (const src of [`<div TABINDEX="5">x</div>`, `<div TabIndex="5">x</div>`, `<div TABINDEX=5>x</div>`, `<div tabindex="5">x</div>`])
+      expect(rules(src), src).toEqual(["positive-tabindex"]);
+    for (const src of [`<div TABINDEX={5}>x</div>`, `<div TabIndex={5}>x</div>`, `<div tabindex={5}>x</div>`])
+      expect(designLint(src), src).toEqual([]);
+    expect(rules(`<div tabIndex={5}>x</div>`)).toEqual(["positive-tabindex"]);
     expect(notVisible).toMatch(/five of the six line rules are case-sensitive/i);
-    expect(notVisible).toMatch(/`positive-tabindex` is the one exception/i);
+    expect(notVisible).toMatch(/the partial exception, and only on one of its two alternatives/i);
+    expect(notVisible).not.toMatch(/`positive-tabindex` is the one exception/i);
+  });
+
+  it("10c. the Tailwind spellings named include the height utilities", () => {
+    expect(designLint(`<div className="h-[40px]">x</div>`)).toEqual([]);
+    expect(designLint(`<div className="h-10">x</div>`)).toEqual([]);
+    expect(notVisible).toContain("h-[40px]");
+    expect(notVisible).toContain("h-10");
+  });
+
+  // C1's sweep: the two universal claims about behaviour that survived being
+  // tested. They stay in the prose unscoped because they can be demonstrated,
+  // and these are the demonstrations.
+  it("sweep: the universals that survived — outline-none's snippet-wide gate is total", () => {
+    // "switches the rule off for every `outline: none` in it" — two of them, both gone.
+    expect(designLint(`.z:focus { outline: 2px solid blue; }\n.a { outline: none; }\n.b { outline: none; }`)).toEqual([]);
+    expect(designLint(`.a { outline: none; }\n.b { outline: none; }`)).toHaveLength(2);
+    expect(notVisible).toMatch(/switches the rule off for every `outline: none` in it/);
   });
 
   it("11. the two info rules stand down for a word anywhere on the line", () => {
@@ -507,9 +578,15 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(rules(`<label>Email <input type="email"></label>`)).toEqual(["control-no-label"]);
     expect(rules(`<Input type="email" />`)).toEqual(["control-no-label"]);
     expect(rules(`<button>{label}</button>`)).toEqual(["icon-button-no-label"]);
-    expect(notVisible).toMatch(/silence from them means only .the attribute was there. and never that it works/i);
-    expect(notVisible).toMatch(/Their findings carry no matching guarantee/i);
+    // The claim is scoped to going quiet ON THE ATTRIBUTE. Both unscoped forms
+    // this entry has shipped are falsified here, and both are guarded against.
+    expect(designLint(`<img {...p} src="a.png">`)).toEqual([]);          // silent, no attribute at all
+    expect(designLint(`<button {...p}><Icon/></button>`)).toEqual([]);   // ditto
+    expect(designLint(`<button>Save</button>`)).toEqual([]);             // silent for visible text
+    expect(notVisible).toMatch(/when one of them goes quiet \*on the attribute\*/i);
+    expect(notVisible).toMatch(/It does not follow that a silence implies an attribute at all/i);
     expect(notVisible).not.toMatch(/a finding from them is real/i);
+    expect(notVisible).not.toMatch(/silence from them means only .the attribute was there/i);
   });
 
   it("13. the count is findings, not defects — one per rule per line", () => {
