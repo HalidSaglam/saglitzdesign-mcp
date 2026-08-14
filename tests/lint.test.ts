@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   auditStructuredFrom, renderNotVisibleSection, assembleAuditReport,
   designLint, designLintReport, LINT_NOT_VISIBLE, LINT_PREAMBLE, LINT_CLOSING,
@@ -225,20 +226,35 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
   // guard pinned three retracted phrasings, and a reviewer defeated it with a
   // paraphrase — phrase pins cannot catch the next wording.
   //
-  // So this is a shape check with a registry. Any sentence that pairs a
-  // silence word with a meaning verb must be listed below together with the
-  // test that demonstrates it. A new one fails until someone registers it,
-  // whatever words it uses, and registering it requires having run it.
+  // So this is a shape check with a registry. Any sentence that pairs a word
+  // from SILENCE with one from MEANING must be listed below together with a
+  // test in this file that demonstrates it; an unregistered one fails, and
+  // rewording a registered one makes the registry stale and also fails.
   //
-  // Honest limits, because a guard that only looks like one is worse than
-  // none: this cannot tell a true meaning-claim from a false one, and it
-  // cannot judge whether a registered claim is adequately scoped — a human
-  // reviewer does that. What it does mechanically is fail closed on any
-  // *unregistered* claim about what silence means, which is the step that was
-  // missing all four times. It also does not police claims phrased without
-  // either vocabulary; those are caught by the enumeration discipline instead,
-  // which is why the entries below now list their cases rather than
-  // generalising over them.
+  // What this does NOT do — measured, not assumed, because a guard whose
+  // comment over-claims is the same defect as a disclosure that over-claims:
+  //
+  //   • It is not word-agnostic. The two vocabularies below ARE the mechanism,
+  //     and one off-list word walks past it. Verified escapes: "guarantees",
+  //     "proves", "a hush", "an empty result set", "when nothing is reported".
+  //   • It does not span sentences. "These four often stay silent. That means
+  //     the attribute was present." escapes — each half is clean alone.
+  //     `Silent = clean.` escapes too, having no meaning verb at all.
+  //   • `demonstratedBy` is checked to name a test that exists in this file,
+  //     which is weaker than it sounds: it is not proof that the named test
+  //     exercises the claim, only that the name is not invented.
+  //   • It cannot tell a true meaning-claim from a false one, nor judge
+  //     whether a registered one is adequately scoped. A human does that.
+  //
+  // What it does do is fail closed on an unregistered claim in the shapes it
+  // covers — the step that was missing all four times. The rest is held by
+  // the enumeration discipline in the entries themselves, and by the standing
+  // rule this list now follows: write narrowing claims ("reads only X"), never
+  // completeness claims ("these are the shapes that fire"). A narrowing claim
+  // that is wrong under-promises; a completeness claim that is wrong invites a
+  // reader to trust a gap that is not there. Four sweeps have not falsified a
+  // narrowing claim here; the one completeness claim was false on first
+  // outing, on `:root { --header-height: 64px; }`.
   const SILENCE = /\b(silence|silent|quiet|draws? nothing|reports? nothing|passes? silently)\b/i;
   const MEANING = /\b(means?|meaning|implies|imply|tells? you|amounts? to|is a verdict|is a pass|is a clean)\b/i;
 
@@ -266,11 +282,15 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(unregistered, "unregistered claim(s) about what a silence means").toEqual([]);
   });
 
-  it("keeps every registered silence claim present and demonstrated", () => {
+  it("keeps every registered silence claim present, and names a test that exists", () => {
     const joined = LINT_NOT_VISIBLE.join("\n");
+    const suite = readFileSync(new URL("./lint.test.ts", import.meta.url), "utf8");
     for (const c of REGISTERED_SILENCE_CLAIMS) {
       expect(joined, `registry is stale: ${c.fragment}`).toContain(c.fragment);
-      expect(c.demonstratedBy.length).toBeGreaterThan(0);
+      // Weaker than it sounds — see the note above — but it does stop a
+      // registry entry naming a test that was never written.
+      expect(suite, `demonstratedBy names no test in this file: ${c.demonstratedBy}`)
+        .toContain(`it("${c.demonstratedBy}`);
     }
   });
 
@@ -531,7 +551,10 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(designLint(`.a { height: calc(40px + 1rem); }`)).toEqual([]);
     expect(designLint(`.a { block-size: 40px; }`)).toEqual([]);
     expect(notVisible).toMatch(/matched literally and in lower case/i);
-    expect(notVisible).toMatch(/treat that as the list rather than as an example of a larger one/i);
+    // Narrowing phrasing, not a closed list — the round-4 completeness claim
+    // was falsified by `:root { --header-height: 64px; }` (see 11d).
+    expect(notVisible).toMatch(/a narrow slice of the ways a fixed height gets written/i);
+    expect(notVisible).toMatch(/Shapes demonstrated to fire include/i);
     expect(notVisible).not.toMatch(/Only two-or-more-digit whole pixels are read at all/i);
   });
 
@@ -611,6 +634,41 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(notVisible).toMatch(/Nothing but whitespace may sit between the colon and the digits/i);
   });
 
+  // `\b` matches after `--`, so the three value rules reach custom-property
+  // *definitions* — the design tokens their own fix text sends you to write.
+  // This is the case that falsified the closed-list phrasing, which is why the
+  // entries now say "include" and "a sample rather than a closed list".
+  it("11d. the value rules reach custom-property definitions — the tokens they recommend", () => {
+    expect(rules(`:root { --header-height: 64px; }`)).toEqual(["fixed-height-text"]);
+    for (const css of [`:root { --height: 40px; }`, `:root { --card-height: 40px; }`, `:root { --nav-height: 40px; }`])
+      expect(rules(css), css).toEqual(["fixed-height-text"]);
+    expect(rules(`:root { --border-radius: 8px; }`)).toEqual(["magic-number-radius"]);
+    expect(designLint(`:root { --radius: 8px; }`)).toEqual([]);
+    // hardcoded-color turns on whether the token name ends in a watched word.
+    expect(rules(`:root { --brand-color: #ff0000; }`)).toEqual(["hardcoded-color"]);
+    expect(designLint(`:root { --brand: #ff0000; }`)).toEqual([]);
+    expect(notVisible).toContain("--header-height: 64px");
+    expect(notVisible).toMatch(/design tokens this rule's own fix text sends you to write/i);
+    expect(notVisible).toMatch(/`--brand-color: #ff0000` fires while `--brand: #ff0000` does not/);
+    // The retracted completeness claim may not come back.
+    expect(notVisible).not.toMatch(/treat that as the list rather than as an example of a larger one/i);
+    expect(notVisible).toMatch(/a sample rather than a closed list/i);
+  });
+
+  it("11e. the two suppressors are not parallel — only one is case-insensitive", () => {
+    expect(designLint(`.a { height: 40px; BORDER: 1px solid; }`)).toEqual([]);
+    expect(designLint(`.a { height: 40px; ICON: x; }`)).toEqual([]);
+    expect(rules(`.ROUNDED-card { border-radius: 8px; }`)).toEqual(["magic-number-radius"]);
+    expect(designLint(`.rounded-card { border-radius: 8px; }`)).toEqual([]);
+    expect(notVisible).toMatch(/they are not parallel, though they read as though they were/i);
+  });
+
+  it("9b. commenting out a focus replacement silences a live outline-none", () => {
+    expect(designLint(`<!-- .a:focus { outline: 2px solid blue; } -->\n.b { outline: none; }`)).toEqual([]);
+    expect(rules(`.b { outline: none; }`)).toEqual(["outline-none"]);
+    expect(notVisible).toMatch(/commenting out a \*focus replacement\* silences a real one/i);
+  });
+
   // C1's sweep: the two universal claims about behaviour that survived being
   // tested. They stay in the prose unscoped because they can be demonstrated,
   // and these are the demonstrations.
@@ -674,7 +732,11 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(designLint(`<button>Save</button>`)).toEqual([]);             // 4. visible text
     expect(notVisible).toMatch(/a silence from these four has at least four distinct causes/i);
     // The three retracted formulas may not return, in any of their wordings.
-    expect(notVisible).not.toMatch(/a finding from them is real/i);
+    // Round 3 pinned the alternation; round 4 narrowed it to `them` and left
+    // "a finding from it is real" unpinned — and the shape check does not
+    // reach that phrasing (no silence word, and "is real" is not a meaning
+    // verb). The alternation is restored.
+    expect(notVisible).not.toMatch(/a finding from (?:them|it) is real/i);
     expect(notVisible).not.toMatch(/silence from them means only .the attribute was there/i);
     expect(notVisible).not.toMatch(/grade the presence of an attribute and never its content/i);
   });
