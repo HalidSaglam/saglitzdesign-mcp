@@ -1520,3 +1520,40 @@ describe("source rules — prose that names a sink is not a sink", () => {
     expect(ids(`<button onclick="go()">x</button>`, "page.html")).toContain("inline-event-handler");
   });
 });
+
+// Pinned before `NOT_VISIBLE` moved from a prose template literal to
+// `SECURITY_PREAMBLE` / `SECURITY_NOT_VISIBLE` / `SECURITY_CLOSING`, so that
+// the split can be checked against the exact bytes `securityReport` rendered
+// beforehand. A container change — array in, same markdown out — has nothing
+// to prove if the "before" picture is taken after the change.
+describe("the disclosure section, pinned before the split into an array", () => {
+  it("renders the same disclosure section it rendered before the split", () => {
+    expect(securityReport({ source: `<div dangerouslySetInnerHTML={{__html: x}} />`, filename: "a.tsx" }))
+      .toMatchInlineSnapshot(`
+        "# Security audit
+
+        Scanned one snippet. Configuration rules need a directory — pass \`path\` to check headers.
+
+        **0 error · 1 warning · 0 info**
+
+        ## Warnings
+
+        - **dangerous-html** (line 1) — dangerouslySetInnerHTML with no sanitiser imported in this file renders untrusted markup as live HTML.
+          - Fix: Sanitise the value first (DOMPurify), or render it as text.
+          - Read: \`get_design_doc("frontend-attack-surface")\`
+
+        ## Not visible to this audit
+
+        This audit reads local files only — it makes no request to your site. It cannot see:
+
+        - Headers added by a CDN, WAF or reverse proxy (Cloudflare, Fastly, nginx) after your app responds.
+        - Headers set by runtime logic that depends on the request.
+        - Any value assembled from variables, which is reported as undeterminable rather than absent.
+        - Server-side concerns entirely: authorization, injection, and access control are out of scope for a design server.
+        - **Header shapes it does not recognise.** It reads \`next.config\` \`headers()\` \`key\`/\`value\` entries; \`vercel.json\`, \`netlify.toml\`, \`_headers\`, \`staticwebapp.config.json\`; quoted object properties (\`{ "Content-Security-Policy": "…" }\`) — Nuxt \`routeRules\`, a Remix/React Router \`headers\` export, \`new Response(body, { headers })\`, \`new Headers({…})\`, \`res.set({…})\`; \`res.setHeader(…)\`, \`headers.set/append(…)\`, \`reply.header(…)\` — including from Next.js and Astro \`middleware\`; SvelteKit's \`hooks.server.ts\` and \`kit.csp.directives\`, and \`<meta http-equiv>\`. A library that builds headers without naming them in your source — \`helmet\`, a framework preset, a shared middleware package — is invisible to it, and so is any shape not in that list. If your headers are set some other way, a "missing" finding above is about this audit's reach, not about your site.
+        - **A truncated scan cannot prove absence.** If the scan line above says it stopped at a cap, every "missing" finding is unconfirmed and is reported as a note rather than a defect.
+
+        A clean result here means these files declare nothing wrong. Confirm the emitted headers on a real response before treating it as coverage."
+      `);
+  });
+});
