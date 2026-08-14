@@ -71,7 +71,17 @@ const SMOKE: Record<string, Record<string, unknown>> = {
 };
 
 /** Every tool that declares an outputSchema. */
-const STRUCTURED_TOOLS = ["audit_seo_geo", "audit_performance", "design_lint", "audit_security"];
+const STRUCTURED_TOOLS = ["audit_seo_geo", "audit_performance", "design_lint", "audit_security", "audit_generic_design"];
+
+/**
+ * Properties a tool's outputSchema declares beyond the three every structured
+ * auditor shares (`findings`, `notVisible`, `summary`). `audit_generic_design`
+ * is the one exception so far — it also returns `score`, the same itemised
+ * number `genericReport`'s markdown prints. Read by the shared schema-shape
+ * test below so that test can stay one assertion instead of forking into a
+ * per-tool copy the day a second auditor gains its own extra field.
+ */
+const EXTRA_SCHEMA_PROPS: Record<string, string[]> = { audit_generic_design: ["score"] };
 
 /**
  * Does this tool take a `path`, and so can it be handed a bad one? Declaring
@@ -320,8 +330,9 @@ describe("the structured auditors return validated structured output", () => {
       const schema = tools.find((t) => t.name === name)?.outputSchema as any;
       expect(schema, name).toBeTruthy();
       expect(schema.type).toBe("object");
-      expect(Object.keys(schema.properties ?? {}).sort()).toEqual(["findings", "notVisible", "summary"]);
-      expect((schema.required ?? []).sort()).toEqual(["findings", "notVisible", "summary"]);
+      const expectedProps = ["findings", "notVisible", "summary", ...(EXTRA_SCHEMA_PROPS[name] ?? [])].sort();
+      expect(Object.keys(schema.properties ?? {}).sort()).toEqual(expectedProps);
+      expect((schema.required ?? []).sort()).toEqual(expectedProps);
       const finding = schema.properties.findings.items;
       expect((finding.required ?? []).sort()).toEqual(["doc", "fix", "message", "rule", "severity"]);
       expect(finding.properties.severity.enum.sort()).toEqual(["error", "info", "warning"]);
@@ -369,21 +380,23 @@ describe("the structured auditors return validated structured output", () => {
       const body = textOf(result);
       for (const entry of notVisible) expect(body, `${name}: ${entry}`).toContain(entry);
       // The claim every structured auditor makes from source, in whichever of
-      // its own two forms applies: the page/source readers (seo/perf/lint) say
-      // in their notVisible array that they measure nothing rendered;
+      // its own several forms applies. The page/source readers (seo/perf/lint)
+      // say in their notVisible array that they measure nothing rendered.
       // audit_security says it in its preamble instead, which renders inside
       // the "## Not visible to this audit" section but is not itself a member
-      // of the notVisible array. Its disclosure list predates this suite and
-      // is pinned byte-for-byte against what it rendered before returning
-      // structured output, so it keeps its own wording here rather than
-      // adopting the other tools' phrase to pass this assertion — but the
-      // check still has to be scoped to that section specifically, not to the
-      // whole body, or it would pass just as well if the sentence were moved
+      // of the notVisible array. Both disclosure lists predate this suite and
+      // are pinned byte-for-byte against what they rendered before returning
+      // structured output, so each keeps its own wording here rather than
+      // adopting another tool's phrase to pass this assertion — but the check
+      // still has to be scoped to that section specifically, not to the whole
+      // body, or it would pass just as well if the sentence were moved
       // somewhere else in the report entirely (e.g. into the scan-summary
       // line), which is not the same claim landing in the same place.
       if (name === "audit_security") {
         const notVisibleSection = body.slice(body.indexOf("## Not visible to this audit"));
         expect(notVisibleSection).toMatch(/makes no request to your site/i);
+      } else if (name === "audit_generic_design") {
+        expect(notVisible.join(" ")).toMatch(/none of that is visible from source text/i);
       } else {
         expect(notVisible.join(" ")).toMatch(/Nothing here is measured/i);
       }
@@ -440,6 +453,51 @@ describe("audit_security answers a bad or missing path as an error, not an empty
     })) as { isError?: boolean; structuredContent?: unknown };
     expect(result.isError).toBe(true);
     expect(result.structuredContent).toBeUndefined();
+  });
+});
+
+// Same protocol violation, same fix, for the other auditor that gained an
+// outputSchema in this pass: a bad or missing path used to come back as
+// ordinary prose, which a caller expecting structuredContent has no way to
+// tell apart from a real, empty audit.
+describe("audit_generic_design answers a bad or missing path as an error, not an empty audit", () => {
+  it("returns an error result, not an empty audit, for a path that is not a directory", async () => {
+    const result = (await client.callTool({
+      name: "audit_generic_design",
+      arguments: { path: join(root, "package.json") },
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  it("returns an error result for a path that does not exist", async () => {
+    const result = (await client.callTool({
+      name: "audit_generic_design",
+      arguments: { path: "/nonexistent-xyz" },
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  it("returns an error result when neither path nor code is given", async () => {
+    const result = (await client.callTool({
+      name: "audit_generic_design",
+      arguments: {},
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+  });
+
+  // The genuinely successful side of the same guard: a real audit still
+  // carries structuredContent, so the isError fix above did not overreach
+  // into the tool's normal, no-error path.
+  it("still returns structuredContent for a real audit", async () => {
+    const result = (await client.callTool({
+      name: "audit_generic_design",
+      arguments: SMOKE.audit_generic_design,
+    })) as { isError?: boolean; structuredContent?: unknown };
+    expect(result.isError ?? false).toBe(false);
+    expect(result.structuredContent).toBeTruthy();
   });
 });
 

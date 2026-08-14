@@ -745,14 +745,14 @@ describe("the score", () => {
 
 describe("the report", () => {
   it("always states what it could not see", () => {
-    expect(genericReport({ source: `<p>Anything</p>` })).toMatch(/not visible to this audit/i);
+    expect(genericReport({ source: `<p>Anything</p>` }).text).toMatch(/not visible to this audit/i);
   });
 
   // Three limits the report has to state because a reader cannot infer any of
   // them from a clean score. Each is paired below with the input that
   // demonstrates it, so the disclosure and the behaviour cannot drift apart.
   describe("states the limits it cannot fix", () => {
-    const notVisible = genericReport({ source: `<p>Anything</p>` });
+    const notVisible = genericReport({ source: `<p>Anything</p>` }).text;
 
     it("says the copy rules read English only, and they do", () => {
       expect(notVisible).toMatch(/Copy in any language but English/);
@@ -783,7 +783,7 @@ describe("the report", () => {
   });
 
   it("prints the score itemised, not as a bare number", () => {
-    const out = genericReport({ source: `<div class="from-indigo-500 to-purple-600">` });
+    const out = genericReport({ source: `<div class="from-indigo-500 to-purple-600">` }).text;
     expect(out).toMatch(/ai-default-gradient/);
     expect(out).toMatch(/\d+\s*\/\s*100/);
   });
@@ -800,7 +800,7 @@ describe("the report", () => {
       // Inside the try, so a throw while swapping the table still restores it.
       for (const key of Object.keys(RULE_WEIGHTS)) delete RULE_WEIGHTS[key];
       Object.assign(RULE_WEIGHTS, { "ai-default-gradient": 70, "emoji-as-icon": 60 });
-      const out = genericReport({ source: `<div class="from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>` });
+      const out = genericReport({ source: `<div class="from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>` }).text;
       expect(out).toMatch(/\*\*Score: 100 \/ 100\*\*/);
       // The note appears, and names the real uncapped sum rather than a
       // rounded or rescaled stand-in.
@@ -815,7 +815,7 @@ describe("the report", () => {
   });
 
   it("says nothing about a cap when the itemised points fit under 100", () => {
-    const out = genericReport({ source: `<div class="from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>` });
+    const out = genericReport({ source: `<div class="from-indigo-500 to-purple-600"><h3>🚀 Fast</h3></div>` }).text;
     expect(out).not.toMatch(/capped at 100/);
   });
 });
@@ -827,7 +827,7 @@ describe("the report", () => {
 // the "before" picture is taken after the change.
 describe("the disclosure section, pinned before the split into an array", () => {
   it("renders the same disclosure section it rendered before the split", () => {
-    expect(genericReport({ source: `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`, filename: "Hero.tsx" }))
+    expect(genericReport({ source: `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`, filename: "Hero.tsx" }).text)
       .toMatchInlineSnapshot(`
         "# Generic-design audit
 
@@ -894,6 +894,54 @@ describe("the disclosure section, pinned before the split into an array", () => 
   });
 });
 
+describe("the structured half carries the same itemised score the markdown prints", () => {
+  it("carries the same itemised score the markdown prints", () => {
+    const r = genericReport({ source: `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`, filename: "Hero.tsx" });
+    expect(r.structured.score.total).toBeGreaterThan(0);
+    for (const item of r.structured.score.items) {
+      expect(r.text).toContain(item.rule);
+      expect(r.text).toContain(String(item.weight));
+    }
+    expect(r.structured.score.items.reduce((n, i) => n + i.weight, 0)).toBe(r.structured.score.total);
+  });
+
+  it("scores a page carrying no signal at 0, with no score items", () => {
+    const r = genericReport({ source: `<article><h1>A quiet page</h1></article>`, filename: "page.tsx" });
+    expect(r.structured.score).toEqual({ total: 0, items: [] });
+  });
+
+  it("gives each score item evidence naming what was found", () => {
+    const r = genericReport({ source: `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`, filename: "Hero.tsx" });
+    const item = r.structured.score.items.find((i) => i.rule === "ai-default-gradient");
+    expect(item?.evidence).toBeTruthy();
+    // The evidence is the same finding message and line the reader sees in
+    // the Warnings section, not a fresh description invented for this field.
+    const finding = r.structured.findings.find((f) => f.rule === "ai-default-gradient");
+    expect(item?.evidence).toContain(finding?.message);
+    expect(item?.evidence).toContain(String(finding?.line));
+  });
+});
+
+describe("the structured half populates findings[].file for project-scanned findings", () => {
+  it("carries the scanned file's path on every finding, in directory mode", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-generic-file-"));
+    try {
+      writeFileSync(join(dir, "hero.tsx"), `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`);
+      const r = genericReport({ root: dir });
+      expect(r.structured.findings.length).toBeGreaterThan(0);
+      for (const f of r.structured.findings) expect(f.file).toBe("hero.tsx");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("carries the snippet's filename on every finding, in snippet mode", () => {
+    const r = genericReport({ source: `<div class="bg-gradient-to-r from-indigo-500 to-purple-600"></div>`, filename: "Hero.tsx" });
+    expect(r.structured.findings.length).toBeGreaterThan(0);
+    for (const f of r.structured.findings) expect(f.file).toBe("Hero.tsx");
+  });
+});
+
 describe("the report — directory-mode breadth", () => {
   // Reproduces the exact gap a project-wide score can't carry on its own:
   // two files each carrying one instance of the same signals score
@@ -910,8 +958,8 @@ describe("the report — directory-mode breadth", () => {
       writeFileSync(join(twoFiles, "b.html"), gradientCard);
       writeFileSync(join(oneFile, "a.html"), gradientCard.repeat(2));
 
-      const twoFilesReport = genericReport({ root: twoFiles });
-      const oneFileReport = genericReport({ root: oneFile });
+      const twoFilesReport = genericReport({ root: twoFiles }).text;
+      const oneFileReport = genericReport({ root: oneFile }).text;
 
       // Same signals, so the same score either way...
       const scoreOf = (report: string) => report.match(/\*\*Score: (\d+) \/ 100\*\*/)?.[1];
@@ -958,7 +1006,7 @@ describe("the report — directory-mode breadth", () => {
     ])("scores a bespoke project zero despite %s", (name) => {
       const dir = withStory(name);
       try {
-        const out = genericReport({ root: dir });
+        const out = genericReport({ root: dir }).text;
         expect(out).toMatch(/\*\*Score: 0 \/ 100\*\*/);
         expect(out).toMatch(/Skipped 1 story, test or fixture file/);
       } finally {
@@ -972,7 +1020,7 @@ describe("the report — directory-mode breadth", () => {
         writeFileSync(join(dir, "page.html"), realPage);
         mkdirSync(join(dir, "__fixtures__"));
         writeFileSync(join(dir, "__fixtures__", "generic.html"), storyFile);
-        expect(genericReport({ root: dir })).toMatch(/\*\*Score: 0 \/ 100\*\*/);
+        expect(genericReport({ root: dir }).text).toMatch(/\*\*Score: 0 \/ 100\*\*/);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -985,7 +1033,7 @@ describe("the report — directory-mode breadth", () => {
       try {
         writeFileSync(join(dir, "page.html"), realPage);
         writeFileSync(join(dir, "hero.tsx"), storyFile);
-        expect(genericReport({ root: dir })).not.toMatch(/\*\*Score: 0 \/ 100\*\*/);
+        expect(genericReport({ root: dir }).text).not.toMatch(/\*\*Score: 0 \/ 100\*\*/);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -994,7 +1042,7 @@ describe("the report — directory-mode breadth", () => {
     it("says in the report what it did not read", () => {
       const dir = withStory("Button.stories.tsx");
       try {
-        expect(genericReport({ root: dir })).toMatch(/\*\*Story, test and fixture files, in directory mode\.\*\*/);
+        expect(genericReport({ root: dir }).text).toMatch(/\*\*Story, test and fixture files, in directory mode\.\*\*/);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -1002,7 +1050,7 @@ describe("the report — directory-mode breadth", () => {
   });
 
   it("says nothing about file breadth in snippet mode", () => {
-    expect(genericReport({ source: gradientCard })).not.toMatch(/found in \d+ of \d+ files/);
+    expect(genericReport({ source: gradientCard }).text).not.toMatch(/found in \d+ of \d+ files/);
   });
 });
 

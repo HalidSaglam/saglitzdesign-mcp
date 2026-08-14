@@ -918,13 +918,36 @@ tool(
   AUDIT_OUTPUT_SCHEMA,
 );
 
+// The shape `audit_generic_design` declares on top of every other structured
+// auditor's `AUDIT_OUTPUT_SCHEMA` — the score `genericScore` computes,
+// itemised exactly the way `genericReport`'s markdown prints it. See
+// `GenericStructured` in generic.ts, which this is the wire-schema mirror of.
+const GENERIC_OUTPUT_SCHEMA = {
+  ...AUDIT_OUTPUT_SCHEMA,
+  score: z
+    .object({
+      total: z.number().int().describe("0-100. Counts distinct signals, never occurrences — a page with forty stock cards carries the same one signal as a page with three."),
+      items: z.array(
+        z.object({
+          weight: z.number().int().describe("What this rule contributed. Each rule contributes at most once."),
+          rule: z.string().describe("The rule that contributed it."),
+          evidence: z.string().describe("What was found, and where."),
+        }),
+      ).describe("Every point in `total`, itemised. There is no opaque number: a reader can disagree with one line rather than with a verdict."),
+    })
+    .describe("The generic-design score, itemised. Not a quality judgement — it counts documented defaults that were left unchanged."),
+};
+
 // ── Tool 31: audit generic design ────────────────────────────────────────────
 tool(
   "audit_generic_design",
   "Audits a web project or snippet for the specific defaults generated interfaces reach for: the stock Tailwind indigo/violet/purple gradient (as classes, hex, or OKLCH), Inter/Roboto/Open Sans/DM Sans/Plus Jakarta Sans as the only declared typeface on a brand surface, emoji standing in for icons, the rounded-2xl + shadow-lg + border card recipe repeated across a page, gradient-filled heading text, an eyebrow label over every heading, the backdrop-blur + white/10 glassmorphism recipe, stock hype-opener copy ('unlock the power of', 'say goodbye to', …), stacked filler adverbs ('seamlessly', 'effortlessly', …), and a page whose every call to action is drawn from the stock set ('Get Started', 'Learn More'). "
     + "Every finding is a fact about the source text — a class name, a phrase, a repeated structure — never a judgement about whether the result is good design; it reports facts, not taste, so pair it with design_review_checklist or get_design_doc(\"design-critique-scoring\") for actual critique. "
-    + "Returns a 0-100 score built from distinct signals — each rule counts once no matter how many times it fires, so a long page never scores higher purely for its length — with every point itemised to the rule and file:line that earned it, plus what this audit structurally cannot see. "
-    + "In directory mode it does not read story, test or fixture files (*.stories.*, *.story.*, *.spec.*, *.test.*, __fixtures__/, __mocks__/), whose job is to demonstrate a component rather than ship a surface; it reports how many it skipped. The copy rules match English only, so a page in another language is scored by the visual rules alone. Makes no network request.",
+    + "It reads source and does not measure anything: it makes no network request, renders nothing, and no finding is or can be a rendered-output or aesthetic judgement. "
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, file, line), a severity summary, a machine-readable `notVisible` list of what it could not check, and a 0-100 score itemised to the same rule, weight and evidence the markdown prints — each rule counts once no matter how many times it fires, so a long page never scores higher purely for its length. "
+    + "In directory mode it does not read story, test or fixture files (*.stories.*, *.story.*, *.spec.*, *.test.*, __fixtures__/, __mocks__/), whose job is to demonstrate a component rather than ship a surface; it reports how many it skipped. The copy rules match English only, so a page in another language is scored by the visual rules alone. "
+    + "A missing or non-directory path is returned as an error result, not as an empty audit. "
+    + "Pair with audit_project for design drift and design_review_checklist for critique.",
   {
     path: z.string().optional().describe("Directory to audit. Absolute paths are strongly preferred."),
     code: z.string().optional().describe("A single snippet to audit instead of a directory."),
@@ -932,7 +955,10 @@ tool(
   },
   async ({ path, code, filename }) => {
     if (!path && !code) {
-      return text("Pass `path` for a project audit, or `code` for a single snippet.");
+      return {
+        ...text("Pass `path` for a project audit, or `code` for a single snippet."),
+        isError: true,
+      };
     }
     if (path) {
       const abs = isAbsolute(path) ? path : resolve(process.cwd(), path);
@@ -940,15 +966,18 @@ tool(
       try {
         stat = statSync(abs);
       } catch {
-        return text(`There is no directory at \`${abs}\`. Pass an absolute path to the folder you want audited.`);
+        return { ...text(`There is no directory at \`${abs}\`. Pass an absolute path to the folder you want audited.`), isError: true };
       }
       if (!stat.isDirectory()) {
-        return text(`\`${abs}\` is a file, not a directory. Pass its parent folder, or use \`code\` for a single snippet.`);
+        return { ...text(`\`${abs}\` is a file, not a directory. Pass its parent folder, or use \`code\` for a single snippet.`), isError: true };
       }
-      return text(genericReport({ root: abs }));
+      const { text: body, structured } = genericReport({ root: abs });
+      return { ...text(body), structuredContent: structured };
     }
-    return text(genericReport({ source: code, filename }));
+    const { text: body, structured } = genericReport({ source: code, filename });
+    return { ...text(body), structuredContent: structured };
   },
+  GENERIC_OUTPUT_SCHEMA,
 );
 
 // ── Tools 32 & 33: audit SEO/GEO and performance ─────────────────────────────
