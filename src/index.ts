@@ -856,11 +856,10 @@ tool(
 
 // The shape `audit_project` declares on top of `AUDIT_OUTPUT_SCHEMA`: what the
 // scan actually reached. See `ProjectStructured` in project.ts, which this is
-// the wire-schema mirror of. Unlike `audit_generic_design`'s `scan`, this one
-// is always present — `audit_project` has no snippet mode, so every call
-// scanned a directory — and it carries the two fields that tool did not need:
-// the count and byte total actually read, and the paths that could not be
-// opened at all.
+// the wire-schema mirror of. It declares the same six fields
+// `audit_generic_design`'s `scan` does, read off the same `scanProject`
+// result. The one difference is presence, not shape: this one is always there
+// — `audit_project` has no snippet mode, so every call scanned a directory.
 const PROJECT_OUTPUT_SCHEMA = {
   ...AUDIT_OUTPUT_SCHEMA,
   scan: z
@@ -968,11 +967,19 @@ const GENERIC_OUTPUT_SCHEMA = {
       ).describe("Every point in `total`, itemised. There is no opaque number: a reader can disagree with one line rather than with a verdict."),
     })
     .describe("The generic-design score, itemised. Not a quality judgement — it counts documented defaults that were left unchanged."),
+  // The same six fields `audit_project`'s `scan` declares, meaning the same
+  // things and read off the same `scanProject` result. The two differ only in
+  // presence — `audit_generic_design` has a snippet mode, which has no scan to
+  // report — and never in shape, so a caller that learned the block from one
+  // tool can read it from the other.
   scan: z
     .object({
+      filesRead: z.number().int().describe("How many files were actually opened and read. Story, test and fixture files are opened — they count here, and their bytes count towards the cap — and are then dropped before auditing, so this is the markdown's \"Scanned N files\" plus the \"Skipped N story, test or fixture file(s)\" beside it, not the first number alone."),
+      scannedBytes: z.number().int().describe("Total bytes read, which is what the byte cap is measured against."),
+      skippedLarge: z.array(z.string()).describe("Files over the per-file byte cap. Never read, so nothing above is claimed about them."),
       hitFileCap: z.boolean().describe("True when some source files were not read because the file cap was reached. Every absence claim above — a rule that never fired, a score of 0 — is unconfirmed while this is true, and the closing line of `notVisible` (\"the source carries none of these... defaults\") does not hold for this run."),
       hitByteCap: z.boolean().describe("True when the scan stopped because the total-bytes cap was reached before every candidate file was read. Same caveat as hitFileCap."),
-      skippedLarge: z.array(z.string()).describe("Files over the per-file byte cap. Never read, so nothing above is claimed about them."),
+      unreadable: z.array(z.string()).describe("Files and directories that could not be opened. The markdown does not mention them at all, so this is the only place they appear — a directory this process may not list reads exactly like one holding nothing to report."),
     })
     .optional()
     .describe(

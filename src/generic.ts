@@ -933,6 +933,12 @@ const NOT_A_SHIPPED_SURFACE =
  * exactly like a clean one, so a caller reading only structuredContent gets a
  * clean bill for a project that was never fully read. It is present only when
  * a directory was audited — a snippet has no scan to report.
+ *
+ * Its six fields are the six `audit_project`'s `scan` declares, and they mean
+ * the same things there. Two tools carrying a block under one name with
+ * different shapes made `scan.filesRead` come back `undefined` from one of
+ * them for no reason but what each task happened to need first; a caller that
+ * learns the block from either tool can now read it from both.
  */
 export interface GenericStructured extends AuditStructured {
   score: {
@@ -941,7 +947,21 @@ export interface GenericStructured extends AuditStructured {
     rawTotal?: number;
     items: Array<{ weight: number; rule: string; evidence: string }>;
   };
-  scan?: { hitFileCap: boolean; hitByteCap: boolean; skippedLarge: string[] };
+  scan?: {
+    /**
+     * How many files were opened and read. Story, test and fixture files are
+     * opened — they count here and their bytes count towards the cap — and
+     * then dropped before auditing, so this is the markdown's "Scanned N
+     * files" plus the "Skipped N story, test or fixture file(s)" it names
+     * beside it, not the first number alone.
+     */
+    filesRead: number;
+    scannedBytes: number;
+    skippedLarge: string[];
+    hitFileCap: boolean;
+    hitByteCap: boolean;
+    unreadable: string[];
+  };
 }
 
 /**
@@ -975,7 +995,14 @@ export function genericReport(input: { source?: string; filename?: string; root?
 
   if (input.root) {
     const scan = scanProject(input.root);
-    scanStructured = { hitFileCap: scan.hitFileCap, hitByteCap: scan.hitByteCap, skippedLarge: scan.skippedLarge };
+    scanStructured = {
+      filesRead: scan.files.length,
+      scannedBytes: scan.scannedBytes,
+      skippedLarge: scan.skippedLarge,
+      hitFileCap: scan.hitFileCap,
+      hitByteCap: scan.hitByteCap,
+      unreadable: scan.unreadable,
+    };
     const audited = scan.files.filter((f) => !NOT_A_SHIPPED_SURFACE.test(f.path));
     const demoSkipped = scan.files.length - audited.length;
     filesByRule = new Map();

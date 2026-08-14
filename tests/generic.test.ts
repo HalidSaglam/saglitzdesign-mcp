@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { genericVisualRules, genericCopyRules, genericScore, genericReport, isBrandSurface, RULE_WEIGHTS } from "../dist/generic.js";
 import { loadKnowledge, findDoc } from "../dist/knowledge.js";
 import { seoRules } from "../dist/seo.js";
+import { projectAuditReport } from "../dist/project.js";
 
 const ids = (code: string, filename?: string) =>
   genericVisualRules(code, filename).map((f) => f.rule).sort();
@@ -980,7 +981,10 @@ describe("the structured half discloses a truncated scan", () => {
       expect(r.text).toMatch(/Stopped at the 400-file cap/);
       // ...and now so does the structured half, without a caller having to
       // string-parse the markdown for it.
-      expect(r.structured.scan).toEqual({ hitFileCap: true, hitByteCap: false, skippedLarge: [] });
+      expect(r.structured.scan).toEqual({
+        filesRead: 400, scannedBytes: 3600, skippedLarge: [],
+        hitFileCap: true, hitByteCap: false, unreadable: [],
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -991,7 +995,43 @@ describe("the structured half discloses a truncated scan", () => {
     try {
       writeFileSync(join(dir, "page.html"), `<p>Fine</p>`);
       const r = genericReport({ root: dir });
-      expect(r.structured.scan).toEqual({ hitFileCap: false, hitByteCap: false, skippedLarge: [] });
+      expect(r.structured.scan).toEqual({
+        filesRead: 1, scannedBytes: 11, skippedLarge: [],
+        hitFileCap: false, hitByteCap: false, unreadable: [],
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // One `scan` under one name, one shape. Before this the block declared three
+  // fields here and six on audit_project, so `scan.filesRead` came back
+  // `undefined` from one of the two tools that has a `scan` — a difference
+  // justified by nothing but which fields each task happened to need first.
+  it("declares the same field set audit_project's scan does", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-generic-scanshape-"));
+    try {
+      writeFileSync(join(dir, "page.html"), `<p>Fine</p>`);
+      const generic = genericReport({ root: dir });
+      const project = projectAuditReport(dir);
+      expect(Object.keys(generic.structured.scan!).sort()).toEqual(Object.keys(project.structured.scan).sort());
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // `filesRead` counts what was opened, which is not what the markdown's
+  // "Scanned N files" counts: a story file is read (its bytes spend the cap)
+  // and then dropped before auditing.
+  it("counts a demo file in filesRead even though the audit dropped it", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-generic-scanshape-"));
+    try {
+      writeFileSync(join(dir, "page.html"), `<p>Fine</p>`);
+      writeFileSync(join(dir, "Button.stories.tsx"), `<p>Fine</p>`);
+      const r = genericReport({ root: dir });
+      expect(r.text).toContain("Scanned 1 files");
+      expect(r.text).toContain("Skipped 1 story, test or fixture file(s)");
+      expect(r.structured.scan!.filesRead).toBe(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
