@@ -584,6 +584,53 @@ describe("audit_project answers a bad path as an error, not an empty audit", () 
   }, 20_000);
 });
 
+// The cross-cutting gate: every task above added its own coverage as it wired
+// up structured output for one more tool, but nothing yet asserts the six as
+// a set — that this exact list, no more and no fewer, advertises a schema,
+// and that the two invariants (structuredContent present, the two registers
+// in agreement) hold across all of them read together rather than tool by
+// tool. This is the C2-style check: two tool descriptions once advertised a
+// capability that did not exist, and the fix was an assertion over the whole
+// advertised set, not a per-tool spot check that a dropped tool could slip
+// past silently. SMOKE already carries a minimal, real argument set for
+// every registered tool, so it doubles as the sample-args table here rather
+// than duplicating one.
+describe("the six structured auditors, asserted together", () => {
+  it("advertises an outputSchema on exactly the findings-producing auditors", async () => {
+    const { tools } = await client.listTools();
+    const withSchema = tools.filter((t) => t.outputSchema).map((t) => t.name).sort();
+    expect(withSchema).toEqual([...STRUCTURED_TOOLS].sort());
+  });
+
+  it("returns structuredContent from every tool that advertises a schema", async () => {
+    for (const name of STRUCTURED_TOOLS) {
+      const r = (await client.callTool({ name, arguments: SMOKE[name] })) as {
+        structuredContent?: {
+          notVisible: string[];
+          summary: { error: number; warning: number; info: number };
+          findings: unknown[];
+        };
+      };
+      expect(r.structuredContent, name).toBeDefined();
+      expect(r.structuredContent!.notVisible.length, name).toBeGreaterThan(0);
+      const { error, warning, info } = r.structuredContent!.summary;
+      expect(error + warning + info, name).toBe(r.structuredContent!.findings.length);
+    }
+  });
+
+  it("prints every notVisible entry in the markdown it returns", async () => {
+    for (const name of STRUCTURED_TOOLS) {
+      const r = (await client.callTool({ name, arguments: SMOKE[name] })) as {
+        structuredContent?: { notVisible: string[] };
+        content?: Array<{ type: string; text?: string }>;
+      };
+      for (const entry of r.structuredContent!.notVisible) {
+        expect(textOf(r), `${name}: ${entry.slice(0, 40)}`).toContain(entry);
+      }
+    }
+  });
+});
+
 describe("resources", () => {
   it("exposes every knowledge doc as a readable resource", async () => {
     const { resources } = await client.listResources();
