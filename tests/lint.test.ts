@@ -262,7 +262,15 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
       `<div className="outline-0">x</div>`,
     ]) expect(designLint(css), css).toEqual([]);
     expect(notVisible).toMatch(/outline-style: none/);
-    expect(notVisible).toMatch(/only `error` rule/i);
+    // The severity claim in that entry, counted from the tool rather than asserted:
+    // outline-none and img-no-alt are the only two `error` rules there are.
+    const errorRules = new Set(
+      designLint(`<img src="a.png">\n.a { outline: none; }\n<div onClick={go}>x</div>\n<input />\n<button><Icon/></button>\n.a { color: #fff; font-size: 14px; }\n.b { border-radius: 6px; height: 40px; color: red !important; }\n<div tabIndex={5}>x</div>`)
+        .filter((f) => f.severity === "error")
+        .map((f) => f.rule),
+    );
+    expect([...errorRules].sort()).toEqual(["img-no-alt", "outline-none"]);
+    expect(notVisible).toMatch(/one of only two `error` rules here — `img-no-alt` is the other/);
   });
 
   it("4. a tag that carries a spread", () => {
@@ -425,8 +433,40 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(designLint(`.a { min-height: 40px; }`)[0].fix).toContain("min-height");
     // line-height escapes only because `line` is on the suppressor list.
     expect(designLint(`.a { line-height: 40px; }`)).toEqual([]);
+    // The other half of the pattern: two-or-more-digit whole pixels, nothing else.
+    for (const css of [
+      `.a { height: 9px; }`,
+      `.a { height: 40rem; }`,
+      `.a { height: 100%; }`,
+      `.a { height: 40vh; }`,
+      `.a { height: 40.5px; }`,
+    ]) expect(designLint(css), css).toEqual([]);
+    expect(rules(`.a { height: 40px; }`)).toEqual(["fixed-height-text"]);
     expect(notVisible).toMatch(/does not mean \*fixed\*/i);
     expect(notVisible).toMatch(/flags its own advice/i);
+    expect(notVisible).toMatch(/two or more digits and a literal `px`/i);
+    expect(notVisible).toMatch(/Only two-or-more-digit whole pixels are read at all/i);
+  });
+
+  it("10b. five of the six line rules are case-sensitive; positive-tabindex is not", () => {
+    for (const css of [
+      `.a { HEIGHT: 40px; }`,
+      `.a { COLOR: #ff0000; }`,
+      `.a { FONT-SIZE: 14px; }`,
+      `.a { BORDER-RADIUS: 6px; }`,
+      `.a { color: red !IMPORTANT; }`,
+      `.a { Height: 40px; }`,
+    ]) expect(designLint(css), css).toEqual([]);
+    // Each lowercase form does fire, so case is the only difference above.
+    expect(rules(`.a { height: 40px; }`)).toEqual(["fixed-height-text"]);
+    expect(rules(`.a { color: #ff0000; }`)).toEqual(["hardcoded-color"]);
+    expect(rules(`.a { font-size: 14px; }`)).toEqual(["px-font-size"]);
+    expect(rules(`.a { border-radius: 6px; }`)).toEqual(["magic-number-radius"]);
+    expect(rules(`.a { color: red !important; }`)).toEqual(["important-overuse"]);
+    // The one exception carries the case-insensitive flag.
+    expect(rules(`<div TABINDEX="5">x</div>`)).toEqual(["positive-tabindex"]);
+    expect(notVisible).toMatch(/five of the six line rules are case-sensitive/i);
+    expect(notVisible).toMatch(/`positive-tabindex` is the one exception/i);
   });
 
   it("11. the two info rules stand down for a word anywhere on the line", () => {
@@ -462,6 +502,14 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(notVisible).toMatch(/actually resolves/i);
     expect(notVisible).toMatch(/wrapping label/i);
     expect(notVisible).toMatch(/All four grade the presence of an attribute and never its content/i);
+    // The entry may claim nothing about findings being real: three cases these
+    // rules report are called correct markup elsewhere in this same list.
+    expect(rules(`<label>Email <input type="email"></label>`)).toEqual(["control-no-label"]);
+    expect(rules(`<Input type="email" />`)).toEqual(["control-no-label"]);
+    expect(rules(`<button>{label}</button>`)).toEqual(["icon-button-no-label"]);
+    expect(notVisible).toMatch(/silence from them means only .the attribute was there. and never that it works/i);
+    expect(notVisible).toMatch(/Their findings carry no matching guarantee/i);
+    expect(notVisible).not.toMatch(/a finding from them is real/i);
   });
 
   it("13. the count is findings, not defects — one per rule per line", () => {
