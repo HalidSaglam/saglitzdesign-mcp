@@ -4,8 +4,8 @@ title: "macOS App Design — Complete Guide"
 category: design-language
 platform: macos
 tags: [macos, apple, hig, menu-bar, keyboard, windows]
-sources: ["https://developer.apple.com/design/human-interface-guidelines/the-menu-bar", "https://developer.apple.com/design/human-interface-guidelines/windows", "https://developer.apple.com/design/human-interface-guidelines/toolbars", "https://developer.apple.com/design/human-interface-guidelines/keyboards", "https://www.apple.com/newsroom/2025/06/apple-introduces-a-delightful-and-elegant-new-software-design/", "https://pfandrade.me/blog/mac-assed-swiftui-app/", "https://daringfireball.net/2020/11/sketch_mac_app_mac_apps", "https://www.sketch.com/blog/part-of-your-world-why-we-re-proud-to-build-a-truly-native-mac-app/", "https://evilmartians.com/chronicles/how-to-make-absolutely-any-app-look-like-a-macos-app", "https://successfulsoftware.net/2025/09/26/updating-application-icons-for-macos-26-tahoe-and-liquid-glass/", "https://zenn.dev/usagimaru/articles/b2a328775124ef", "https://troz.net/post/2025/swiftui-mac-2025/", "https://www.macrumors.com/2025/09/24/all-the-new-macos-tahoe-features/"]
-updated: 2026-07-08
+sources: ["https://developer.apple.com/design/human-interface-guidelines/designing-for-macos", "https://developer.apple.com/design/human-interface-guidelines/the-menu-bar", "https://developer.apple.com/design/human-interface-guidelines/windows", "https://developer.apple.com/design/human-interface-guidelines/toolbars", "https://developer.apple.com/design/human-interface-guidelines/sidebars", "https://developer.apple.com/design/human-interface-guidelines/keyboards", "https://developer.apple.com/design/human-interface-guidelines/settings", "https://developer.apple.com/design/human-interface-guidelines/undo-and-redo", "https://developer.apple.com/design/human-interface-guidelines/drag-and-drop", "https://developer.apple.com/design/human-interface-guidelines/pointing-devices", "https://developer.apple.com/design/human-interface-guidelines/typography", "https://developer.apple.com/design/human-interface-guidelines/materials", "https://developer.apple.com/design/human-interface-guidelines/app-icons", "https://developer.apple.com/design/human-interface-guidelines/app-shortcuts", "https://developer.apple.com/design/human-interface-guidelines/mac-catalyst", "https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass", "https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer", "https://developer.apple.com/documentation/appkit/nsfilepromiseprovider", "https://www.apple.com/newsroom/2025/06/apple-introduces-a-delightful-and-elegant-new-software-design/"]
+updated: 2026-08-15
 ---
 
 # macOS App Design — Complete Guide (macOS Tahoe 26 era)
@@ -17,7 +17,6 @@ How to design a real Mac app — window anatomy, menus, keyboard, pointer, and t
 - **Main/document windows**: freely resizable, remember size/position per window, restore state on relaunch. Set a sensible minimum (~460×300 for utility apps); content must **reflow, not letterbox**, at any size. Default first-launch size: comfortable on a 13" display (~1100×700 max), roughly centered.
 - **Title bar**: traffic lights top-leading (close ⌘W, minimize ⌘M, full screen ^⌘F; ⌥-hover zoom reveals tiling options). Document windows show a **proxy icon** beside the title (drag it to move/attach the file, ⌘-click it for the path popover) and an edited/dirty indicator for unsaved changes.
 - **Window tabs**: document apps should support native tabbing (View → Show Tab Bar, ⌘⇧\ cycling, Window → Merge All Windows) for free via standard window classes.
-- **Tiling (Tahoe)**: windows tile to halves/quarters by dragging to screen edges, via the ⌥-hover zoom-button menu, and Window → Move & Resize shortcuts. Apps must behave at exactly 50%/25% of common displays — check 720pt-wide layouts.
 - **Window levels**: normal windows only; avoid always-on-top unless the app is a utility whose whole point is floating (color picker, timer), and then make it a setting.
 - **Unified toolbar** (the modern default): toolbar merges with the title bar, ~52pt tall. Toolbar items are icon-first SF Symbols (~24pt), grouped by function; in Tahoe related actions cluster into shared Liquid Glass capsules floating over content. Support **right-click → Customize Toolbar…** with drag-to-arrange, and graceful overflow (») when the window narrows.
 - **Panels**: floating auxiliary windows (torn-off inspectors, color/font panels). Non-activating, closable with Esc where transient; HUD style only in media/full-screen contexts.
@@ -112,27 +111,29 @@ Standard order and contents:
 
 ## 4. Settings, About, onboarding
 
-- **Settings window** (⌘, and App menu → "Settings…"): toolbar-style tab bar (`.preference` toolbar style) with icon+label tabs — never a sidebar, never fake tabs. General first, Advanced last. Fixed width; height animates per tab.
-- **Changes apply instantly** — no OK/Apply/Cancel row. Non-resizable, not restorable, centers on the main screen on first open, ⌘W closes it.
-- Settings content uses the form layout: right-aligned labels, left-aligned controls in a single column, 20pt content margins, related controls grouped with 8pt spacing and groups separated by 20pt. Keep it to what users actually need to change — the best Mac apps have shockingly few settings.
+- **Settings window**: reached from the Settings item in the **App menu** and by ⌘, — put it there, not in a window toolbar, where it would eat space meant for frequent commands. Document-level options go in the File menu instead.
+- Navigate panes with a **noncustomizable toolbar** that stays visible and always shows which pane is active; people rely on a stable settings interface to find things. Update the window title to name the current pane (or "*App Name* Settings" when there's only one), and reopen on the pane last used.
+- **Dim the minimize and maximize buttons.** ⌘, is fast enough that the window never needs to live in the Dock, and the window sizes itself to the current pane.
+- Put only general, infrequently changed options here — people must suspend what they're doing to reach them. Anything task-specific (show/hide parts of a view, reorder a collection, filter a list) belongs in the screen it affects.
+- **Minimize the number of settings.** Too many make the app feel less approachable and bury the one a person came for. Never restate a systemwide setting: a duplicate implies the system's own choice might not apply to you.
 - **About window**: small fixed panel with icon, app name, version + build, copyright, optional scrolling Credits. Don't turn it into a marketing page; do link acknowledgements/licenses there.
 - **Onboarding**: Mac apps mostly skip it. Acceptable patterns: a single welcome window (recents + "New Document" + template picker), or one-screen permission priming for tools needing Accessibility/Screen Recording/Full Disk access — explain why, deep-link to the exact System Settings pane, and detect the grant live so the user never hunts. Never a swipe-through carousel; never gate launch on login for a local tool.
 
 ## 5. macOS Tahoe 26 / Liquid Glass on the desktop
 
 - Toolbars, sidebars, and menus are Liquid Glass: they refract the content and desktop behind them; content scrolls under bars with a scroll-edge effect (progressive blur). Don't paint opaque bar backgrounds and don't stack custom glass on system glass.
-- The **menu bar is fully transparent** by default (users can restore a background in System Settings → Menu Bar); menu bar extras must be legible over any wallpaper — template icons only.
+- The **menu bar is completely transparent** in Tahoe, which makes the display feel larger — and makes menu bar extras sit directly on the wallpaper. Define extras with black-and-clear shapes (an interface icon or SF Symbol) so the system can recolor them for light and dark bars and for the selected state. The menu bar is 24pt tall.
 - Windows and controls use **concentric corner radii** aligned to the window's rounded corners; derive nested radii from the container, never hardcode. Controls lean capsule-shaped and slightly taller; menus/popovers morph out of the control that opened them.
 - Adopt by compiling with Xcode 26 and *removing* customizations rather than adding any. Test with Reduce Transparency and Increase Contrast — glass falls back to opaque and layouts must survive.
-- **App icon**: mandatory rounded-rectangle (squircle). Freeform icons that overflow the shape get auto-boxed onto a generic background and look broken. Author a layered **Icon Composer `.icon`** file (≤4 layer groups, 1024pt canvas, no baked shadows/gloss); the system renders Default, Dark, Clear Light/Dark, Tinted Light/Dark variants plus the glass depth. Keep legacy `.icns` only as a fallback for older macOS.
-- Desktop hosts widgets and iPhone-style Controls; Spotlight runs App Intents actions directly — model core commands as App Intents on Mac too, and expose them to Shortcuts.
-- Mac widgets follow the iOS widget rules (glanceable, deep-linking, tint/clear-mode safe) and additionally render on the desktop behind windows — verify legibility at reduced desktop opacity.
-- The compatibility opt-out (`UIDesignRequiresCompatibility`) is temporary; treat Liquid Glass as the only target. Screenshots and marketing imagery should show the Tahoe appearance — pre-26 chrome instantly dates the product page.
+- **App icon**: the system masks every layer edge to produce the final rounded-rectangle shape, so supply square, unmasked layers and keep content centred. **Irregularly shaped icons receive a system-provided background** — a freeform silhouette is no longer a Mac icon style. Author a layered **Icon Composer** file (max four groups, 1024×1024 canvas, blurs/shadows/specular removed before export); the system renders the default, dark, clear, and tinted appearances plus the glass depth. Adding the Icon Composer file replaces your icon asset catalog, and Xcode generates a similar-looking icon for earlier releases automatically — keep the asset catalog only if you want your *old* icon to appear there.
+- Desktop and Dock host widgets that come to life in light or dark appearances. Model core commands as App Intents and expose them as App Shortcuts, which people reach through Siri, Spotlight, and the Shortcuts app.
+- Mac widgets follow the iOS widget rules (glanceable, deep-linking, tint/clear-mode safe) and use smaller margins on the desktop than the 16pt standard — verify legibility there.
+- The compatibility opt-out (`UIDesignRequiresCompatibility`) is temporary and the system ignores it once you build for macOS 27 or later; treat Liquid Glass as the only target. Screenshots and marketing imagery should show the Tahoe appearance — pre-26 chrome instantly dates the product page.
 - Full-height sidebars now extend behind the toolbar region; use the safe-area APIs rather than hardcoding a title-bar offset, and let the scroll-edge effect handle content/bar separation.
 
 ## 6. Typography, color, and materials
 
-- System font is SF Pro at the 13pt-body scale (table above in §1); use text styles, not fixed sizes — macOS Sonoma+ supports Dynamic Type-like scaling in some contexts and larger text accessibility settings affect layouts.
+- System font is SF Pro at the 13pt-body scale (table above in §1; macOS minimum is 10pt). **macOS does not support Dynamic Type** — unlike iOS, there is no user text-size dial to design against. Still use the built-in text styles rather than fixed sizes, so weights and leading come from the system.
 - Semantic colors only: `labelColor`, `secondaryLabelColor`, `tertiaryLabelColor`, `windowBackgroundColor`, `controlBackgroundColor`, `separatorColor`, plus `controlAccentColor` for the user's chosen accent. Hardcoded hex breaks dark mode, accent settings, and increased-contrast mode.
 - **Vibrancy**: text/symbols on sidebar and toolbar materials should use vibrant label colors (automatic with system components) so they modulate with the material — flat gray text on a vibrant sidebar is a port tell.
 - Emphasis hierarchy: one accent-tinted control per context (default button); everything else neutral. Destructive menu/dialog actions in red only when they destroy data.
@@ -157,7 +158,7 @@ Standard order and contents:
 
 Concrete tells, in priority order:
 1. **Density & metrics** — 13pt body, 24–28pt rows, mini/small controls where appropriate, compact padding. iOS-sized (17pt text / 44pt controls) chrome instantly reads as a port.
-2. **Resizable everything** — any window size works; panels collapse before content squishes; no fixed-canvas layouts; full screen and Tahoe window tiling behave.
+2. **Resizable everything** — any window size works; panels collapse before content squishes; no fixed-canvas layouts. Set a minimum *and* a maximum size so nothing overlaps at one extreme or breaks at the other, and support full-screen mode.
 3. **Multiple windows** — ⌘N opens another window/document; two projects side by side; state is per-window, not per-app. Closing the last window doesn't quit a document app.
 4. **Undo everywhere** — every mutating action goes through the undo stack with named entries ("Undo Move Card"), effectively unlimited depth, ⌘Z/⇧⌘Z. Confirmation dialogs are a smell; undo is the Mac answer to mistakes.
 5. **Document model** (content apps) — real files users own in Finder: autosave + Versions (Revert To ▸ Browse All Versions…), Rename/Move via the title-bar menu, proxy-icon drag, Open Recent, Quick Look previews, correct UTI/file icons.
@@ -177,10 +178,10 @@ Anti-patterns that scream wrapper:
 
 ## 10. Catalyst / SwiftUI multiplatform pitfalls
 
-- **Never ship the iPad idiom raw.** Catalyst: choose "Optimize Interface for Mac" (native AppKit controls, correct density) over scaled-iPad (75% blur). SwiftUI: audit every screen on Mac — the framework shares defaults, not conventions.
-- Replace iOS navigation furniture: tab bars → sidebar (or a toolbar-style switcher); navigation stacks → split view + selection; sheets presenting peer content → separate windows (`openWindow` / `WindowGroup`); swipe actions → context menus + menu bar commands; pull-to-refresh → ⌘R and automatic refresh.
+- **Never ship the iPad idiom raw.** Xcode defaults Catalyst apps to "Scale Interface to Match iPad", which scales iPadOS views and text down to **77%** — a 17pt iPad baseline lands at 13pt, less detailed. The Mac idiom renders at 100% with more Mac-like elements, at the cost of a real layout audit; budget that audit rather than shipping the scaled build. SwiftUI: audit every screen on Mac — the framework shares defaults, not conventions.
+- Replace iOS navigation furniture: tab bars → split view with a sidebar (or a segmented control for genuinely flat hierarchies), and list the former top-level items in the View menu so they stay reachable; navigation stacks → split view + selection; sheets presenting peer content → separate windows (`openWindow` / `WindowGroup`); popovers → an inspector beside the content; swipe actions → context menus + menu bar commands; pull-to-refresh → ⌘R and automatic refresh.
+- Relocate controls parked on the screen's bottom and side edges. That placement is an iPad reachability accommodation and buys nothing on a Mac — move them into the window toolbar, and register the matching commands in the menu bar.
 - Build the menu bar deliberately (`Commands` API): SwiftUI gives a skeleton; every feature still needs a real menu item with a shortcut. Wire `focusedSceneValue`/`FocusedValue` so items enable/disable per the active window and selection.
-- Known SwiftUI gaps to design around (2026): toolbar semantic placements (`.primaryAction` etc.) order items unpredictably — use explicit placements; drag sessions expose no source-side state (dimming dragged rows risks stuck UI when drops land outside the window); `.onMoveCommand` arrow-key handling is macOS-only; keyboard navigation while a TextField has focus needs manual handling; context-menu-open state isn't exposed, so focus rings around menu targets need workarounds.
 - Drop to AppKit (`NSViewRepresentable`) without guilt for the fidelity-critical 10%: tables, text views, drag sources, and window management.
 - Windowing in SwiftUI: use `Window` (single) vs `WindowGroup` (multi) deliberately, set `windowResizability(.contentSize)` for fixed utilities, `defaultSize`/`defaultPosition` for first launch, and `Settings { }` for the settings scene — it wires ⌘, and the menu item automatically.
 - Electron/web-tech apps can still pass as Mac-like if they implement §9 behaviors (real menu bar via native APIs, keyboard set, context menus, density) — the tell is behavior, not the rendering engine. But default-configured wrappers fail every test above.
@@ -192,11 +193,11 @@ Anti-patterns that scream wrapper:
 - [ ] Sidebar/inspector follow source-list conventions; 13pt-scale density; real tables with sortable headers
 - [ ] Every feature in the menu bar; verb-first names, ellipsis rules, dynamic Undo/Paste labels, ⌥-alternates
 - [ ] Standard shortcut set + Full Keyboard Access + type-select all pass; core loop is pointer-free
-- [ ] Settings: toolbar tabs, instant apply, ⌘,; standard About window
+- [ ] Settings: App-menu item + ⌘,, stable pane toolbar, dimmed minimize/maximize, few settings; standard About window
 - [ ] Tahoe: no custom bar backgrounds, concentric radii, template menu-bar-extra icons, Icon Composer squircle icon with all variants
 - [ ] Tooltips, right-click menus on every object, multi-item drag & drop with file promises
 - [ ] Undo on every mutation; document model (if content app) with autosave + Versions + proxy icon
 - [ ] System open/save panels, accent color, dark mode, Shortcuts/AppleScript surface
-- [ ] Catalyst/SwiftUI audit: no iPad furniture, explicit toolbar placements, menus wired to window focus
+- [ ] Catalyst/SwiftUI audit: no iPad furniture, edge-parked controls moved into the toolbar, menus wired to window focus
 - [ ] Empty/progress/error states designed; long work non-blocking with Dock progress
 - [ ] Cold launch < 1s to a usable window; state restoration on relaunch verified

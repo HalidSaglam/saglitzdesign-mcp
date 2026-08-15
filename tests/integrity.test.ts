@@ -321,12 +321,15 @@ describe("release metadata is in sync", () => {
 // references that track them rather than any one vendor's product — MDN,
 // web.dev, caniuse. `vendor` holds first-party documentation of the system
 // being described, including a browser vendor's own docs for its own engine.
+// MDN is platform-neutral and stays in `standard`; hacks.mozilla.org is
+// Mozilla's own engineering blog about Firefox, so it sits in `vendor` for the
+// same reason webkit.org and developer.chrome.com do.
 const SOURCE_TIERS = {
   standard: new Set([
     "w3.org", "w3c.github.io", "whatwg.org", "html.spec.whatwg.org",
     "datatracker.ietf.org", "rfc-editor.org", "developer.mozilla.org",
     "web.dev", "caniuse.com",
-    "hacks.mozilla.org", "owasp.org", "cheatsheetseries.owasp.org",
+    "owasp.org", "cheatsheetseries.owasp.org",
     "genai.owasp.org", "fidoalliance.org", "passkeys.dev",
     "edpb.europa.eu", "ico.org.uk", "kvkk.gov.tr", "eur-lex.europa.eu",
     "cppa.ca.gov",
@@ -334,6 +337,7 @@ const SOURCE_TIERS = {
   vendor: new Set([
     "developer.apple.com", "apple.com",
     "developer.chrome.com", "developers.google.com", "webkit.org",
+    "hacks.mozilla.org",
     "nextjs.org", "docs.astro.build", "svelte.dev", "vite.dev",
   ]),
   research: new Set([
@@ -377,6 +381,42 @@ describe("the source tiers", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+// The Apple guides make platform claims — bar heights, adoption rules, what a
+// system API does — that only Apple can settle. A blog restating Apple is one
+// transcription error away from being wrong, and nothing downstream can tell the
+// difference, so these documents are held to Apple's own pages plus the tiers.
+// Tasks adding further Apple documents add their ids here.
+const APPLE_DOC_IDS = ["macos-app-design", "ios-app-design", "apple-hig-liquid-glass"];
+
+describe("Apple documents are sourced to Apple", () => {
+  const appleDocs = () => docs.filter((d) => APPLE_DOC_IDS.includes(d.id));
+
+  it("finds every Apple document", () => {
+    expect(appleDocs().map((d) => d.id).sort()).toEqual([...APPLE_DOC_IDS].sort());
+  });
+
+  it("cites no source outside the tiers", () => {
+    const offenders: string[] = [];
+    for (const d of appleDocs()) {
+      for (const url of d.sources ?? []) {
+        if (tierOf(new URL(url).hostname) === null) offenders.push(`${d.id}: ${url}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("carries at least one developer.apple.com source each", () => {
+    const thin = appleDocs()
+      .filter((d) => !(d.sources ?? []).some((u) => new URL(u).hostname.replace(/^www\./, "") === "developer.apple.com"))
+      .map((d) => d.id);
+    expect(thin).toEqual([]);
+  });
+
+  it("cites at least three sources each", () => {
+    expect(appleDocs().filter((d) => (d.sources ?? []).length < 3).map((d) => d.id)).toEqual([]);
   });
 });
 

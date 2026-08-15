@@ -4,8 +4,8 @@ title: "iOS App Design — Complete Guide"
 category: design-language
 platform: mobile
 tags: [ios, apple, hig, navigation, app-store]
-sources: ["https://developer.apple.com/design/human-interface-guidelines/tab-bars", "https://developer.apple.com/design/human-interface-guidelines/navigation-bars", "https://developer.apple.com/videos/play/wwdc2025/323/", "https://developer.apple.com/videos/play/wwdc2025/284/", "https://www.donnywals.com/exploring-tab-bars-on-ios-26-with-liquid-glass/", "https://developer.apple.com/videos/play/wwdc2025/278/", "https://developer.apple.com/videos/play/wwdc2025/275/", "https://www.createwithswift.com/crafting-liquid-glass-app-icons-with-icon-composer/", "https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/", "https://appfollow.io/blog/aso-screenshots-best-practices", "https://developer.apple.com/design/human-interface-guidelines/playing-haptics", "https://developer.apple.com/design/human-interface-guidelines/typography", "https://www.createwithswift.com/making-the-tab-bar-collapse-while-scrolling/"]
-updated: 2026-07-08
+sources: ["https://developer.apple.com/design/human-interface-guidelines/tab-bars", "https://developer.apple.com/design/human-interface-guidelines/toolbars", "https://developer.apple.com/design/human-interface-guidelines/buttons", "https://developer.apple.com/design/human-interface-guidelines/sheets", "https://developer.apple.com/design/human-interface-guidelines/widgets", "https://developer.apple.com/design/human-interface-guidelines/live-activities", "https://developer.apple.com/design/human-interface-guidelines/app-shortcuts", "https://developer.apple.com/design/human-interface-guidelines/app-icons", "https://developer.apple.com/design/human-interface-guidelines/playing-haptics", "https://developer.apple.com/design/human-interface-guidelines/typography", "https://developer.apple.com/documentation/swiftui/tabbarminimizebehavior", "https://developer.apple.com/documentation/swiftui/view/tabviewbottomaccessory(content:)", "https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer", "https://developer.apple.com/videos/play/wwdc2025/323/", "https://developer.apple.com/videos/play/wwdc2025/284/", "https://developer.apple.com/videos/play/wwdc2025/278/", "https://developer.apple.com/videos/play/wwdc2025/275/", "https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/", "https://developer.apple.com/app-store/product-page-optimization/", "https://developer.apple.com/app-store/custom-product-pages/", "https://developer.apple.com/app-store/in-app-events/", "https://developer.apple.com/app-store/review/guidelines/"]
+updated: 2026-08-15
 ---
 
 # iOS App Design — Complete Guide (iOS 26 era)
@@ -23,9 +23,9 @@ Structural, app-level guide for iPhone/iPad apps in the Liquid Glass era. For th
 ### Tab bar (iOS 26)
 - Floating **Liquid Glass capsule**, inset from screen edges (~21pt sides/bottom), no longer a full-width 49pt strip. Selected tab gets a glass highlight capsule.
 - 2–5 tabs on iPhone. Icons: SF Symbols at ~25×25pt with 10pt labels; always label tabs.
-- **Minimize-on-scroll** (`tabBarMinimizeBehavior(.onScrollDown)`): bar collapses to a small pill while scrolling down, restores on scroll up. Enable for content-first feeds; skip for tool-like apps.
-- **Search tab role** (`Tab(role: .search)`): search detaches into its own trailing glass island next to the tab bar. Use it whenever search is a top-level destination (App Store, Music, Maps pattern).
-- **Bottom accessory** (`tabViewBottomAccessory`): a persistent app-wide bar above the tabs (e.g., Music's Now Playing). One only; it docks beside the minimized bar. Use for global state, not per-tab actions.
+- **Minimize-on-scroll** (`tabBarMinimizeBehavior`): where the tab bar has an attached accessory, it can minimize and pull the accessory inline when a person scrolls down; tapping a tab or scrolling back to the top restores it. Enable for content-first feeds; skip for tool-like apps.
+- **Search tab** (`Tab(role: .search)`): a tab bar can carry a dedicated search tab at its trailing end. Use it whenever search is a top-level destination (App Store, Music, Maps pattern).
+- **Bottom accessory** (`tabViewBottomAccessory`): a persistent app-wide view (e.g., Music's Now Playing). It sits above a normal-size tab bar and displays inline when the bar is collapsed — read `tabViewBottomAccessoryPlacement` and adapt its content to the two placements. Use for global state, not per-tab actions.
 - On iPad, the tab bar renders in the top bar and can morph into a sidebar (`tabViewStyle(.sidebarAdaptable)`).
 
 ### Navigation bar
@@ -128,24 +128,25 @@ Structural, app-level guide for iPhone/iPad apps in the Liquid Glass era. For th
 
 ## 5. App icon (iOS 26)
 
-- Author one **layered `.icon` file in Icon Composer** (ships with Xcode 26); the system generates: Default, Dark, Clear Light, Clear Dark, Tinted Light, Tinted Dark.
-- Structure: background layer (color/gradient) + 1–3 foreground layers (max 4 groups). The system adds the glass: specular highlights, depth, masking. **Never bake in** shadows, gloss, borders, or a pre-rounded mask.
-- Keep the foreground glyph identical across variants; only the background hue changes. Bold simple silhouette, centered, filling ~50–60% of the canvas; flat solid or semi-transparent fills beat photographic detail.
-- No text (except an essential brand letterform), no photos, no screenshots, no transparency at the outer edge. Canvas 1024×1024; design on Apple's icon grid.
-- Test all six modes plus small sizes (Spotlight 40pt, Settings 29pt). The tinted variant must survive as a monochrome glyph.
-- Alternate icons are allowed (settings-driven or paywalled) but each needs the full variant set; don't change the icon silently.
+- Author one **layered Icon Composer file** (ships with the latest Xcode); people choose default, dark, clear, or tinted Home Screen icons, and the system generates any variant you don't provide.
+- Structure: a background layer (solid or gradient, full-bleed and opaque) plus foreground layers, organised into **a maximum of four groups**. The system adds the glass — specular highlights, refraction, translucency, and the corner masking. **Remove** blurs, shadows, and baked specular/opacity/translucency settings before export, and never export the canvas mask.
+- Keep the icon's core visual features the same across all four appearances; don't swap elements in and out per variant, or people lose track of your app when they switch appearance.
+- Prefer clearly defined edges over soft feathered ones, vary opacity between foreground layers for depth, and prefer vector (SVG/PDF) over raster so layers stay crisp at every size.
+- Include text only when it's essential to the brand — it doesn't localize or support accessibility. Prefer illustration to photography, avoid replicating standard UI components or screenshots, and never reproduce Apple hardware.
+- Canvas 1024×1024 for iPhone and iPad (1088×1088 for Apple Watch); start from Apple's icon template so you get the current grid, shape, and canvas size. Keep primary content centred so masking doesn't truncate it.
+- Alternate icons are allowed (settings-driven) but each needs its own dark, clear, and tinted variants and each is subject to App Review; keep them closely related to your content.
 
 ## 6. App Store presence (design-side ASO)
 
 - **Screenshots**: 1–10 per localization; required master size 1320×2868 (6.9" portrait); Apple downscales for smaller iPhones. iPad: 2064×2752 (13"). Flattened PNG or JPEG, no alpha.
-- The listing is decided in ~7 seconds and the **first 2–3 screenshots** show in search results — front-load the core value; don't open with a splash/logo shot.
-- Formula per screenshot: one short benefit caption (≤5–6 words, rendered ≥60pt at export, top-aligned) + device frame or full-bleed UI. One background system across the set; sequential panorama layouts are fine but each frame must stand alone.
-- Show real UI (required by review), current-OS status bar, full battery, 9:41 time. Localize captions AND the UI language shown for top markets.
-- Caption copy: concrete outcomes ("Split bills in seconds"), not hype ("Best app ever") — salesy imperatives depress conversion and risk rejection.
-- **Preview videos**: 15–30s, up to 3, autoplay muted — design for no sound (on-screen captions), show actual app footage within the first 5s, portrait video occupies gallery slot 1 ahead of screenshots.
-- Use **Product Page Optimization** to A/B test icon/screenshots and Custom Product Pages per campaign; vary one variable per test so results read cleanly. A strong set lifts conversion 20–35%.
-- **In-app events** get their own 1080×1920 event card (30-char name, 50-char short description) surfaced in search and Today — design them like mini campaign posters, consistent with the app's visual system.
-- App name ≤30 chars, subtitle ≤30 chars carries the value proposition; the icon must remain recognizable at 60px search-result size next to competitors.
+- **Screenshots must show the app in use** — "not merely the title art, login page, or splash screen" is a review requirement, not a style preference. Text and image overlays are explicitly allowed (e.g. to show an input mechanism). So: front-load the working product, never open on a logo.
+- One background system across the set; sequential panorama layouts are fine but each frame must stand alone. Localize captions AND the UI language shown for top markets.
+- Caption copy: concrete outcomes ("Split bills in seconds"), not hype. Review rejects metadata packed with irrelevant phrases, prices, or terms that aren't specific to the metadata type.
+- **Preview videos** may only use video screen captures of the app itself; narration and video or text overlays are allowed to explain what the footage alone doesn't. Design for muted autoplay.
+- Use **Product Page Optimization** to test alternate icons, screenshots, and previews — up to three treatments against your baseline. Apple's own advice is to weigh *how many elements you change in a treatment* so you can tell which one moved the result, and to wait for a treatment to beat or lose to the baseline at ≥90% confidence before acting. Treatment assets can themselves appear in search results and on the Today, Games, and Apps tabs.
+- **Custom Product Pages**: up to 70 additional versions of the page, each with its own URL, varying screenshots, promotional text, and previews — one per campaign, character, or feature, with optional keywords and a deep link.
+- **In-app events** get their own 16:9 event card (1920×1080 minimum, up to 3840×2160): a ≤30-character title-case name and a ≤50-character sentence-case short description. They surface on the product page, in search results, and in curated selections on the Today, Games, and Apps tabs — design them like mini campaign posters, consistent with the app's visual system.
+- App name ≤30 chars; the subtitle carries the value proposition. The icon must stay recognizable at search-result size next to competitors.
 
 ## 7. Launch, first run, permissions
 
@@ -199,7 +200,7 @@ Default (Large) text styles: largeTitle 34pt · title1 28 · title2 22 · title3
 - [ ] All controls system-standard; 44pt targets; swipe actions mirrored elsewhere
 - [ ] Empty/loading/error states designed for every list
 - [ ] Widget/Live Activity/App Intent surfaces designed incl. tinted/clear modes
-- [ ] Layered Icon Composer icon, six variants checked at small sizes
-- [ ] Screenshots: value in first 3, ≤6-word captions, 1320×2868 masters; preview video mute-friendly
+- [ ] Layered Icon Composer icon, ≤4 groups, default/dark/clear/tinted all checked at small sizes
+- [ ] Screenshots show the app in use (never splash or login), 1320×2868 masters; preview video is app footage and mute-friendly
 - [ ] Launch screen = first-screen skeleton; permissions asked in context with explainers
 - [ ] Haptics semantic and paired with visuals; Dynamic Type passes at AX5; Reduce Motion/Transparency verified
