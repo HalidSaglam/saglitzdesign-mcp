@@ -9,7 +9,7 @@ expert‑level guidance on **web, iOS, Android and macOS design** — plus the
 **UX, copywriting, SEO, GEO and marketing** knowledge that makes a product
 actually convert.
 
-94 curated knowledge documents · 33 tools · 8 build/review/port workflows · MCP resources with id autocomplete · a one‑call design‑system builder · real token/color/type/elevation/motion/a11y generators · design & UX‑copy linters · production component recipes · phased roadmaps · real‑world visual examples
+96 curated knowledge documents · 33 tools · 8 build/review/port workflows · MCP resources with id autocomplete · a one‑call design‑system builder · real token/color/type/elevation/motion/a11y generators · design & UX‑copy linters · production component recipes · phased roadmaps · real‑world visual examples
 
 [![npm](https://img.shields.io/npm/v/saglitzdesign-mcp?color=cb3837&logo=npm)](https://www.npmjs.com/package/saglitzdesign-mcp)
 [![CI](https://github.com/HalidSaglam/saglitzdesign-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/HalidSaglam/saglitzdesign-mcp/actions/workflows/ci.yml)
@@ -50,11 +50,11 @@ instead of guessing.
 
 ## What's inside
 
-**94 knowledge documents across 11 categories:**
+**96 knowledge documents across 11 categories:**
 
 | Category | Coverage |
 |---|---|
-| 🎨 **Design languages** | Material 3 & M3 Expressive · Apple HIG + Liquid Glass (iOS 26) · deep **iOS**, **Android** (Android 16 / M3 Expressive) and **macOS** app‑design guides · **Apple Intelligence design** (AI features: Writing Tools, App Intents, on‑device Foundation Models) · **visionOS / spatial design** (Vision Pro) · Fluent 2 · 2026 web trends · design tokens & theming (W3C DTCG) · Apple WWDC design principles (fluid interfaces) |
+| 🎨 **Design languages** | Material 3 & M3 Expressive · Apple HIG + Liquid Glass (iOS 26) · deep **iOS**, **Android** (Android 16 / M3 Expressive) and **macOS** app‑design guides · **Apple accessibility** (Dynamic Type, VoiceOver, hit regions) and **Apple shipping readiness** (`Info.plist` purpose strings, entitlements, app icon sets, orientation/multitasking restrictions) · **Apple Intelligence design** (AI features: Writing Tools, App Intents, on‑device Foundation Models) · **visionOS / spatial design** (Vision Pro) · Fluent 2 · 2026 web trends · design tokens & theming (W3C DTCG) · Apple WWDC design principles (fluid interfaces) — the six Apple documents are held to a stricter allowlist, cited to Apple's own developer pages |
 | 🧩 **Components** | Buttons (hierarchy, sizing, states, labels) · forms & inputs · navigation · cards / lists / modals / sheets / empty states |
 | 🧠 **UX** | Nielsen heuristics & behavioral laws · accessibility (WCAG 2.2) · typography · color & dark mode · spacing & grids · motion · mobile UX · conversion / CRO · **data visualization** · **information architecture** · **i18n / localization (RTL)** · **AI product UX** (chat, streaming, agentic) · **onboarding & permission priming** |
 | ✨ **Craft** | Expert polish standards · typographic craft · animation craft (easing, springs, interruptibility) · UX writing & cognitive load · 0–40 critique rubric · **clean/minimal app design** · **design‑engineering** (semantic HTML, CSS architecture, tokens‑in‑code) · **ethical design** (avoiding dark patterns) · **iconography** (choosing & using an icon system) · **the AI‑default aesthetic** (the stock gradient, font, card chrome and copy generated interfaces reach for, cited to each system's own docs) |
@@ -141,7 +141,7 @@ with id autocompletion — instead of spending a tool call:
 | URI | What it is |
 |---|---|
 | `saglitzdesign://index` | The whole index: every document by category, with platform and last‑verified date. |
-| `saglitzdesign://doc/{id}` | One knowledge document in full (94 of them). Autocompletes on `id`. |
+| `saglitzdesign://doc/{id}` | One knowledge document in full (96 of them). Autocompletes on `id`. |
 | `saglitzdesign://recipe/{component}` | A component's spec plus its reference implementation in every available stack. |
 
 ### Visual examples
