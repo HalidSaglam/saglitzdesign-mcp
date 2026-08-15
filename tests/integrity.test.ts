@@ -392,6 +392,7 @@ describe("the source tiers", () => {
 // Apple design-language document` below fails until they do.
 const APPLE_DOC_IDS = [
   "macos-app-design", "ios-app-design", "apple-hig-liquid-glass", "wwdc-design-principles",
+  "apple-accessibility",
 ];
 
 /**
@@ -436,6 +437,19 @@ describe("Apple documents are sourced to Apple", () => {
 
   it("cites at least three sources each", () => {
     expect(appleDocs().filter((d) => (d.sources ?? []).length < 3).map((d) => d.id)).toEqual([]);
+  });
+
+  // The accessibility document is what E2's rules will cite when they flag a
+  // fixed font size, an unlabelled icon button, an undersized hit region or an
+  // ungated animation. A rule that cites a document which no longer makes the
+  // claim is worse than no rule, so the four subjects are pinned here.
+  it("apple-accessibility states the Dynamic Type and tap-target facts E2 will cite", () => {
+    const d = docs.find((x) => x.id === "apple-accessibility");
+    expect(d, "document is missing").toBeDefined();
+    const body = d!.body.toLowerCase();
+    for (const term of ["dynamic type", "voiceover", "reduce motion", "contrast"]) {
+      expect(body, `does not mention ${term}`).toContain(term);
+    }
   });
 });
 
