@@ -36,7 +36,7 @@ Apple frames Liquid Glass adoption as establishing **hierarchy**, creating **har
 ## System behavior to design around
 
 - **Tab bar**: now an inset floating capsule (inset ~21pt from left/right/bottom), 2–5 destinations, with Search often split into its own trailing "island." It can minimize on scroll.
-- **Navigation bar**: large title (34pt bold) collapses to compact (17pt semibold) on scroll; content scrolls *under* the glass bars with edge blur/fade.
+- **Navigation bar**: large title (34pt) collapses to compact (17pt semibold) on scroll; content scrolls *under* the glass bars with edge blur/fade.
 - **Toolbars**: related actions group into shared glass capsules; icons preferred over text labels; system spacing groups/separates actions.
 - **Sheets & menus**: partial-height sheets are glass and become opaque when expanded; menus/popovers morph out of the buttons that spawn them.
 - Home Screen icons/widgets are layered glass; ship a **layered app icon** (Icon Composer) so the system can render light/dark/clear/tinted variants.
@@ -45,7 +45,7 @@ Apple frames Liquid Glass adoption as establishing **hierarchy**, creating **har
 
 | Element | Spec |
 |---|---|
-| Large page title | SF Pro 34pt Bold |
+| Large page title | SF Pro 34pt Regular (Bold is Apple's emphasized weight) |
 | Compact title / primary button | 17pt Semibold / 17pt Regular |
 | Body & list items | 17pt Regular |
 | Secondary text | 15pt Regular (Subhead; use the secondary label color) |
