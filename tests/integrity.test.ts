@@ -482,6 +482,29 @@ describe("Apple documents are sourced to Apple", () => {
     }
   });
 
+  // The macOS guide is what E2's platform-fit rules will cite when they flag an
+  // iOS-shaped app shipped on the Mac — no menu bar commands, no keyboard
+  // shortcuts, a sheet where a window belongs. Pinning the subjects here means a
+  // rule can never cite a document that has stopped naming what it flags.
+  it("macos-app-design names the platform-fit subjects E2 will cite", () => {
+    const d = docs.find((x) => x.id === "macos-app-design");
+    expect(d, "document is missing").toBeDefined();
+    const body = d!.body.toLowerCase();
+    for (const term of ["menu bar", "toolbar", "keyboard shortcut", "window", "sidebar"]) {
+      expect(body, `does not mention ${term}`).toContain(term);
+    }
+  });
+
+  // A "hardcoded string" rule written from web instinct would flag `Text("Hello")`
+  // — which SwiftUI already localizes, because the literal becomes a
+  // LocalizedStringKey. The myth-check is the document E2 has to read before
+  // writing that rule, so the term it turns on is pinned.
+  it("ios-app-design records the localization myth-check", () => {
+    const d = docs.find((x) => x.id === "ios-app-design");
+    expect(d, "document is missing").toBeDefined();
+    expect(d!.body).toMatch(/LocalizedStringKey/);
+  });
+
   // Same contract for the shipping document: E2's shipping rules will match on
   // the literal key and entitlement names it publishes, so a rule citing this
   // doc must be able to find the subject it names.
