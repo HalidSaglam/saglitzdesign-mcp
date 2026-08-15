@@ -76,10 +76,23 @@ cite `standard` and `vendor` only. A security claim resting on research-tier
 sourcing would be a regression, and the whole reason that allowlist exists is
 that blog-tier sourcing is how confidently-wrong security advice spreads.
 
-**The test flips last.** Extending the assertion from `category === "security"`
-to every document makes 57 documents its subject at once. The migration lands
-first; the widened test lands with the commit that makes it pass. A package that
-breaks its own net teaches nothing.
+**Enforcement lands where the sources are already right.** Extending the
+assertion to all 81 documents at once is not possible in this package, and the
+reason is a measurement made while planning: after admitting the obvious
+vendor, standard and research hosts, **38 documents still fail, over 146
+citations, 100 of them one-off**. Each is a decision requiring verification
+against a live source, and a citation that cannot be replaced takes its claim
+with it — so that migration touches 38 documents' prose.
+
+That is larger than the Apple knowledge work and it does not block the auditor.
+This package therefore builds the tiered list and enforces it on the
+**`security` and Apple documents** — the two sets whose sources are, or are
+being made, correct. The long tail becomes its own package, sequenced with the
+knowledge freshness sweep, which touches the same documents and needs the same
+live-source verification.
+
+The test never widens beyond what passes. A package that breaks its own net
+teaches nothing.
 
 ## Apple knowledge, sized to what the auditor will need
 
@@ -115,9 +128,9 @@ Documents state what is true, and name the plausible wrong belief beside it.
 
 ## Scope
 
-**In:** the tiered allowlist and its enforcement across all 81 documents; the
-source migration; two new Apple documents; three deepened or re-sourced ones;
-myth-checks.
+**In:** the tiered allowlist; its enforcement on the `security` and Apple
+documents; the Apple source migration; two new Apple documents; three deepened
+or re-sourced ones; myth-checks.
 
 **Out:**
 
@@ -131,21 +144,29 @@ myth-checks.
 
 ## Testing
 
-- The allowlist assertion runs over **every** document, not the `security`
-  category alone.
+- The allowlist assertion runs over the `security` **and** Apple documents,
+  where it passes. It is written so widening it to another category is a
+  one-line change.
 - A test that each source's host resolves to exactly one tier, so a host cannot
   be silently promoted by being listed twice.
 - A test that a document citing a `research` host attributes it in the prose.
 - A test that `security`-category documents cite `standard` and `vendor` only.
 - A test that every Apple document carries at least one `developer.apple.com`
   source.
-- The existing per-document minimum of three sources continues to hold.
+- The existing per-document minimum of three sources continues to hold, and
+  extends to the Apple documents.
 
 ## Out of scope for this spec, tracked
 
 Package E2 (`audit_apple_ui`), the skill layer that follows it, package D2
-(generators, measurers, knowledge-reader metadata), the knowledge freshness
-sweep, and `audit_project` integration for the newer auditors.
+(generators, measurers, knowledge-reader metadata), and `audit_project`
+integration for the newer auditors.
+
+**The long-tail source migration** — 38 documents, 146 citations, 100 of them
+one-off — is its own package, to be merged with the knowledge freshness sweep
+(~70 documents still dated 2026-07-08/09). They touch the same files and both
+require verification against live sources, so doing them separately would mean
+opening every document twice.
 
 Seven disclosure sentences known to be false remain open in
 `SECURITY_NOT_VISIBLE` and `GENERIC_NOT_VISIBLE`, deferred from v0.23.0 with a
