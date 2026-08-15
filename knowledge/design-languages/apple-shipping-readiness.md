@@ -135,7 +135,7 @@ Finally, always check before you reach: "Because a person can change authorizati
 
 **What:** "The App Sandbox is an access control technology that macOS provides and **enforces at the kernel level**. The sandbox's primary function is to contain damage to the system and the user's data if the user executes a compromised app. While the sandbox doesn't prevent attacks against your app, it does reduce the harm a successful attack can cause by restricting your app to the minimum set of privileges it requires to function properly." *(Xcode › Configuring the macOS App Sandbox)*
 
-**When required — Mac App Store distribution.** Apple states it in three places, and all three scope the requirement to the Mac App Store:
+**When required — Mac App Store distribution.** Apple states it in three places, two of which name the Mac App Store explicitly:
 
 - "**To distribute a macOS app through the Mac App Store, you must enable the App Sandbox capability.**" *(Security › App Sandbox)*
 - "App Sandbox — **a requirement for distributing your app on the App Store** — limits the scope for an attacker to abuse platform features via your app." *(Security › Protecting user data with App Sandbox)*
@@ -398,7 +398,7 @@ TN3192 states the timeline and the cost of ignoring it: "Starting in iPadOS 26, 
 
 Three places where it is tempting to fill the gap, and where this document does not:
 
-1. **Why a missing purpose string crashes.** Apple says access "fail[s] in a resource-specific way" and "might" / "may" / "will" crash depending on the key. That page carries neither the enforcement mechanism nor a rule mapping resource to failure mode. Report the missing key and Apple's stated range; don't narrate the runtime.
+1. **Why a missing purpose string crashes.** Apple says access "fail[s] in a resource-specific way" and "might" / "may" / "will" crash depending on the key. UIKit › Requesting access to protected resources carries neither the enforcement mechanism nor a rule mapping resource to failure mode. Report the missing key and Apple's stated range; don't narrate the runtime.
 2. **An enumerated list of macOS icon pixel sizes.** The asset-catalog path says macOS "need[s] an asset for each size" without listing the sizes; the HIG's Specifications table gives one layout size per platform; the WWDC sessions say sizes are no longer something you produce by hand. Do not reconstruct a size list from memory of older documentation.
 3. **Whether tvOS auto-generates from one image.** *Configuring your app icon using an asset catalog* says both, in consecutive bullets, and does not reconcile them.
 

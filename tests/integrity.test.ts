@@ -683,6 +683,9 @@ describe("the Apple documents state absences in the scoped form", () => {
           if (m) offenders.push(`${id}:${i + 1} [${form.name}] "${m[0].replace(/\s+/g, " ").trim()}"`);
         }
       }
+      // An unclosed fence would exempt everything after it, silently — the same
+      // shape as the defect this whole check exists to catch.
+      expect(inFence, `${id}: unbalanced code fence`).toBe(false);
     }
     expect(
       offenders,
