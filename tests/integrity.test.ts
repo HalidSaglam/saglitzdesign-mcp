@@ -316,18 +316,24 @@ describe("release metadata is in sync", () => {
 // could sit in it unnoticed, and hosts that plainly qualified were missing
 // because the list was written for one category. Naming the tiers makes both
 // visible, and lets `security` hold a stricter line than the rest.
+//
+// `standard` holds standards bodies and regulators, plus the platform-neutral
+// references that track them rather than any one vendor's product — MDN,
+// web.dev, caniuse. `vendor` holds first-party documentation of the system
+// being described, including a browser vendor's own docs for its own engine.
 const SOURCE_TIERS = {
   standard: new Set([
     "w3.org", "w3c.github.io", "whatwg.org", "html.spec.whatwg.org",
     "datatracker.ietf.org", "rfc-editor.org", "developer.mozilla.org",
-    "web.dev", "developer.chrome.com", "developers.google.com", "webkit.org",
+    "web.dev", "caniuse.com",
     "hacks.mozilla.org", "owasp.org", "cheatsheetseries.owasp.org",
-    "genai.owasp.org", "fidoalliance.org", "passkeys.dev", "caniuse.com",
+    "genai.owasp.org", "fidoalliance.org", "passkeys.dev",
     "edpb.europa.eu", "ico.org.uk", "kvkk.gov.tr", "eur-lex.europa.eu",
     "cppa.ca.gov",
   ]),
   vendor: new Set([
     "developer.apple.com", "apple.com",
+    "developer.chrome.com", "developers.google.com", "webkit.org",
     "nextjs.org", "docs.astro.build", "svelte.dev", "vite.dev",
   ]),
   research: new Set([
@@ -336,7 +342,7 @@ const SOURCE_TIERS = {
 } as const;
 
 const tierOf = (host: string): keyof typeof SOURCE_TIERS | null => {
-  const h = host.replace(/^www\./, "");
+  const h = host.toLowerCase().replace(/^www\./, "");
   for (const [tier, hosts] of Object.entries(SOURCE_TIERS)) {
     if (hosts.has(h)) return tier as keyof typeof SOURCE_TIERS;
   }
@@ -358,6 +364,10 @@ describe("the source tiers", () => {
     expect(tierOf("example.invalid")).toBeNull();
   });
 
+  it("resolves a host regardless of case", () => {
+    expect(tierOf("DEVELOPER.APPLE.COM")).toBe("vendor");
+  });
+
   it("keeps security documents on standard and vendor sources only", () => {
     const offenders: string[] = [];
     for (const d of docs.filter((x) => x.category === "security")) {
@@ -377,7 +387,7 @@ describe("security documents cite permitted sources only", () => {
       for (const url of d.sources ?? []) {
         let host: string;
         try {
-          host = new URL(url).hostname;
+          host = new URL(url).hostname.replace(/^www\./, "");
         } catch {
           offenders.push(`${d.id}: unparseable source ${url}`);
           continue;
