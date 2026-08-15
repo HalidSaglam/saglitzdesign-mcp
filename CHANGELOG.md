@@ -4,6 +4,74 @@ All notable changes to SaglitzDesign MCP are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.24.0] — 2026-08-15
+
+The three existing Apple documents — `macos-app-design`, `ios-app-design`,
+`apple-hig-liquid-glass` — carried source URLs that had never been checked
+against the Apple page they claimed to summarize. This release re-sources all
+three, adds two new Apple documents, deepens two of the existing ones, and
+introduces a tiered source allowlist that the six Apple documents (and the
+five `security` documents) are now held to. The most useful output of this
+work was not the new prose — it was what verification destroyed: 16 claims
+that no primary source supported, and several statements that were simply
+wrong.
+
+### Added
+
+- **`apple-accessibility`** — Dynamic Type, VoiceOver, hit regions, motion and
+  contrast, cited to developer.apple.com and WCAG 2.2.
+- **`apple-shipping-readiness`** — the `Info.plist` purpose strings a
+  capability requires, the entitlements macOS distribution requires, what a
+  complete app icon set is, and what an orientation or multitasking
+  restriction costs. Every claim is a statement Apple publishes, cited beside
+  it.
+- **A three-tier source allowlist — `standard`, `vendor`, `research`.**
+  Enforced today on the five `security` documents (`standard` and `vendor`
+  only) and the six Apple design-language documents — `macos-app-design`,
+  `ios-app-design`, `apple-hig-liquid-glass`, `wwdc-design-principles`,
+  `apple-accessibility`, `apple-shipping-readiness` — which additionally
+  require at least one `developer.apple.com` source. It is **not** enforced
+  on the other documents in the knowledge base; migrating the rest is a
+  separate package.
+
+### Changed
+
+- **`macos-app-design` and `ios-app-design` re-sourced and deepened.**
+  `macos-app-design` gains a platform-fit section — the SwiftUI/UIKit symbols
+  Mac Catalyst supports that macOS does not, and the macOS-only scaffolding an
+  iOS-shaped app never wrote — plus a menu bar and keyboard-shortcut table
+  rebuilt from Apple's own tables. `ios-app-design` gains orientation
+  coverage it previously had nothing on: the size-class table and the
+  orientation-lock request that replaced the deprecated opt-out. Both guides
+  are smaller where Apple does not back a claim, not larger.
+- **`apple-hig-liquid-glass` re-sourced** to the Apple pages that make its
+  claims, alongside the other two guides above — three documents re-sourced
+  in total.
+
+### Removed
+
+- **16 claims removed because no primary source supported them.** The three
+  existing Apple documents' 17 blog-tier sources were each traced to the
+  prose they backed and checked against Apple's own page for the same claim;
+  where Apple made no such claim, the claim was deleted rather than softened.
+  Among them: the SwiftUI "known gaps" list (three of whose five claims were
+  not even in the blog originally cited for them), the Tahoe window-tiling
+  mechanics, the settings-window metrics, the App Store conversion
+  statistics, and five Liquid Glass assertions, including one that named no
+  source at all. One dead citation (`hig/navigation-bars`, which now
+  redirects to `hig/toolbars`) was also replaced.
+
+### Fixed
+
+- **Factual corrections found only by reading the source, not by suspicion:**
+  - Mac Catalyst scales the iPad idiom to **77%**, not 75%.
+  - The in-app event card is **16:9, minimum 1920×1080**, not 1080×1920.
+  - **macOS does not support Dynamic Type** — the guide had claimed it did
+    since Sonoma.
+  - Three keyboard shortcuts were wrong: **⌘T is the Fonts window**, **⌥⌘T
+    toggles the toolbar**, and **⌥⌘I opens an inspector** — none of them the
+    bindings the guide previously named.
+
 ## [0.23.0] — 2026-08-14
 
 `audit_seo_geo` and `audit_performance` were the only two tools that answered
