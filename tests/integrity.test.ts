@@ -574,10 +574,22 @@ describe("Apple documents are sourced to Apple", () => {
 // worse than no guard:
 //
 //   1. Apple's own words. "macOS doesn't support Dynamic Type" is Apple's
-//      sentence. Both documents declare that wording inside quote marks is
-//      Apple's, unaltered — so quoted spans are blanked before matching, and
-//      the convention that makes this safe is stated in the documents
-//      themselves rather than assumed here.
+//      sentence. A document that declares wording inside quote marks to be
+//      Apple's, unaltered, gets its quoted spans blanked before matching — and
+//      the convention that makes this safe is stated in the document itself
+//      rather than assumed here.
+//
+//      That exemption is *earned per document*, not granted to the set. It was
+//      granted to the set once, and it was unearned in two of the six:
+//      `apple-hig-liquid-glass` and `wwdc-design-principles` declare no
+//      convention and use quote marks for paraphrase and scare-quotes
+//      ("I understood you", "durations", "tick", "pour"), so a false absolute
+//      wrapped in quote marks in either one passed. Adding the convention line
+//      to those two would have closed the hole by publishing a false statement
+//      — their quoted spans are not Apple's verbatim wording — so the blanking
+//      is keyed on the declaration instead. A document that later adopts the
+//      convention gains the exemption by saying so, in the document, where a
+//      reader can check it against the quotes around it.
 //   2. A claim scoped to a named page or table: "the HIG's standard-shortcut
 //      table contains no sidebar entry". This one survived every review while
 //      its absolute twin failed on the first fetch, and the reason is
@@ -661,6 +673,59 @@ const ABSENCE_FORMS: { name: string; re: RegExp }[] = [
   },
 ];
 
+/** The declaration that earns a document the quotation exemption, matched in
+ *  the document's own text so the exemption cannot be granted from here. */
+const QUOTE_CONVENTION = /^\s*\*?Quotation convention:/m;
+
+/**
+ * One line, reduced to what the patterns see. `blankQuotes` is the earned
+ * exemption; emphasis is always stripped, because `Apple does **not** publish`
+ * is the same sentence and evaded three rounds of grepping.
+ */
+const scanLine = (line: string, blankQuotes: boolean) =>
+  (blankQuotes ? line.replace(/"[^"]*"/g, (m) => " ".repeat(m.length)) : line)
+    .replace(/[*_`]/g, " ");
+
+/** Every absence form matching a line, as `[name, matched text]` pairs. */
+const absenceHits = (line: string, blankQuotes: boolean): [string, string][] => {
+  const scanned = scanLine(line, blankQuotes);
+  const hits: [string, string][] = [];
+  for (const form of ABSENCE_FORMS) {
+    form.re.lastIndex = 0;
+    const m = form.re.exec(scanned);
+    if (m) hits.push([form.name, m[0].replace(/\s+/g, " ").trim()]);
+  }
+  return hits;
+};
+
+describe("the quotation exemption is earned per document", () => {
+  const absolute = 'Apple publishes no minimum for this control.';
+
+  it("catches a bare absolute either way", () => {
+    expect(absenceHits(absolute, true).length).toBeGreaterThan(0);
+    expect(absenceHits(absolute, false).length).toBeGreaterThan(0);
+  });
+
+  it("exempts a quoted absolute only where the convention is declared", () => {
+    expect(absenceHits(`"${absolute}"`, true)).toEqual([]);
+    expect(absenceHits(`"${absolute}"`, false).length).toBeGreaterThan(0);
+  });
+
+  it("reads the declaration out of the document rather than a list here", () => {
+    const declaring = APPLE_DOC_IDS
+      .map((id) => docs.find((d) => d.id === id))
+      .filter((d): d is (typeof docs)[number] => Boolean(d))
+      .filter((d) => QUOTE_CONVENTION.test(readFileSync(d.path, "utf8")))
+      .map((d) => d.id);
+    // Not pinned to a fixed set — a document adopting the convention should be
+    // able to gain the exemption without editing this file. What is pinned is
+    // that the exemption is a minority privilege rather than a blanket one, so
+    // granting it back to the whole set is a visible change.
+    expect(declaring.length).toBeLessThan(APPLE_DOC_IDS.length);
+    expect(declaring.length).toBeGreaterThan(0);
+  });
+});
+
 describe("the Apple documents state absences in the scoped form", () => {
   it("uses no absolute absence construction outside a quotation", () => {
     const offenders: string[] = [];
@@ -669,18 +734,15 @@ describe("the Apple documents state absences in the scoped form", () => {
       if (!doc) continue; // `names an id that exists for every entry` owns this
       // Read the file rather than `doc.body` so a failure names the line a
       // person can open, frontmatter included.
-      const lines = readFileSync(doc.path, "utf8").split("\n");
+      const source = readFileSync(doc.path, "utf8");
+      const blankQuotes = QUOTE_CONVENTION.test(source);
+      const lines = source.split("\n");
       let inFence = false;
       for (let i = 0; i < lines.length; i++) {
         if (/^\s*```/.test(lines[i])) { inFence = !inFence; continue; }
         if (inFence) continue;
-        const scanned = lines[i]
-          .replace(/"[^"]*"/g, (m) => " ".repeat(m.length)) // Apple's own words
-          .replace(/[*_`]/g, " ");                          // emphasis can't hide it
-        for (const form of ABSENCE_FORMS) {
-          form.re.lastIndex = 0;
-          const m = form.re.exec(scanned);
-          if (m) offenders.push(`${id}:${i + 1} [${form.name}] "${m[0].replace(/\s+/g, " ").trim()}"`);
+        for (const [name, matched] of absenceHits(lines[i], blankQuotes)) {
+          offenders.push(`${id}:${i + 1} [${name}] "${matched}"`);
         }
       }
       // An unclosed fence would exempt everything after it, silently — the same
