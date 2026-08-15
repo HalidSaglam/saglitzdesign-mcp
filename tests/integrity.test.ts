@@ -324,6 +324,15 @@ describe("release metadata is in sync", () => {
 // MDN is platform-neutral and stays in `standard`; hacks.mozilla.org is
 // Mozilla's own engineering blog about Firefox, so it sits in `vendor` for the
 // same reason webkit.org and developer.chrome.com do.
+//
+// support.apple.com is Apple's end-user documentation of Apple's own systems,
+// which is what `vendor` is defined to hold — the audience differs from
+// developer.apple.com, the first-party-ness does not. It earns its place: the
+// only source for a Mac keyboard shortcut Apple ships but never states in the
+// HIG (Option-Command-S for the Finder sidebar) is an end-user article, and a
+// rule that reads only the HIG would tell an app that binds it that it invented
+// the key. Note that a source living in prose because no tier admits it is a
+// source no assertion can check — frontmatter is what these checks see.
 const SOURCE_TIERS = {
   standard: new Set([
     "w3.org", "w3c.github.io", "whatwg.org", "html.spec.whatwg.org",
@@ -335,7 +344,7 @@ const SOURCE_TIERS = {
     "cppa.ca.gov",
   ]),
   vendor: new Set([
-    "developer.apple.com", "apple.com",
+    "developer.apple.com", "apple.com", "support.apple.com",
     "developer.chrome.com", "developers.google.com", "webkit.org",
     "hacks.mozilla.org",
     "nextjs.org", "docs.astro.build", "svelte.dev", "vite.dev",
