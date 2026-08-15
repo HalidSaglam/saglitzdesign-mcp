@@ -362,6 +362,27 @@ const tierOf = (host: string): keyof typeof SOURCE_TIERS | null => {
   return null;
 };
 
+/**
+ * The one operation in this file that can *throw* rather than fail. 33 sources
+ * across 20 documents are not URLs at all — whole `book`, `craft`, `process`
+ * and `marketing` categories cite book titles like "Breakthrough Advertising
+ * (Eugene Schwartz)" — and `new URL(...)` on one of those raises a TypeError
+ * that aborts the run and names neither the document nor the source. None of
+ * those documents is in the Apple or security sets today, so nothing throws;
+ * that is one `category:` or `APPLE_DOC_IDS` edit away from being untrue, and
+ * the failure it produces would be a stack trace rather than a finding.
+ *
+ * So every check that reads a source goes through here and gets `null` for a
+ * source it cannot parse, which the caller reports as a named offender.
+ */
+const hostOf = (url: string): string | null => {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+};
+
 describe("the source tiers", () => {
   it("puts every host in exactly one tier", () => {
     const seen = new Map<string, string[]>();
@@ -385,7 +406,12 @@ describe("the source tiers", () => {
     const offenders: string[] = [];
     for (const d of docs.filter((x) => x.category === "security")) {
       for (const url of d.sources ?? []) {
-        const tier = tierOf(new URL(url).hostname);
+        const host = hostOf(url);
+        if (host === null) {
+          offenders.push(`${d.id}: unparseable source ${url}`);
+          continue;
+        }
+        const tier = tierOf(host);
         if (tier !== "standard" && tier !== "vendor") offenders.push(`${d.id}: ${url}`);
       }
     }
@@ -461,7 +487,9 @@ describe("Apple documents are sourced to Apple", () => {
     const offenders: string[] = [];
     for (const d of appleDocs()) {
       for (const url of d.sources ?? []) {
-        if (tierOf(new URL(url).hostname) === null) offenders.push(`${d.id}: ${url}`);
+        const host = hostOf(url);
+        if (host === null) offenders.push(`${d.id}: unparseable source ${url}`);
+        else if (tierOf(host) === null) offenders.push(`${d.id}: ${url}`);
       }
     }
     expect(offenders).toEqual([]);
@@ -469,7 +497,7 @@ describe("Apple documents are sourced to Apple", () => {
 
   it("carries at least one developer.apple.com source each", () => {
     const thin = appleDocs()
-      .filter((d) => !(d.sources ?? []).some((u) => new URL(u).hostname.replace(/^www\./, "") === "developer.apple.com"))
+      .filter((d) => !(d.sources ?? []).some((u) => hostOf(u) === "developer.apple.com"))
       .map((d) => d.id);
     expect(thin).toEqual([]);
   });
@@ -526,15 +554,150 @@ describe("Apple documents are sourced to Apple", () => {
   });
 });
 
+// This package has published five false absence claims, and the last two were
+// each introduced by the fix for the previous one — same author, same session,
+// same fact. The cause is not the research; every round verified against live
+// pages. The cause is the sentence form.
+//
+//   "Apple publishes no X"   — a claim about every Apple surface at once. One
+//                              fetch kills it, and one did, five times.
+//   "Not found on [pages],   — a claim about the search. A missed surface makes
+//    having searched         it incomplete rather than false, and correcting it
+//    [surfaces]"             means adding a page rather than reversing an
+//                            assertion.
+//
+// The previous rounds identified this correctly, wrote it into both documents'
+// parentheticals, and then wrote three more absolutes anyway. Correcting each
+// instance by hand is what did not work, so the form is enforced here instead.
+//
+// Two kinds of absolute are legitimate, and a guard that fires on them would be
+// worse than no guard:
+//
+//   1. Apple's own words. "macOS doesn't support Dynamic Type" is Apple's
+//      sentence. Both documents declare that wording inside quote marks is
+//      Apple's, unaltered — so quoted spans are blanked before matching, and
+//      the convention that makes this safe is stated in the documents
+//      themselves rather than assumed here.
+//   2. A claim scoped to a named page or table: "the HIG's standard-shortcut
+//      table contains no sidebar entry". This one survived every review while
+//      its absolute twin failed on the first fetch, and the reason is
+//      grammatical — its *subject* is a page, not Apple. That is what the
+//      patterns below key on. An absence claim with Apple as its subject is
+//      unbounded; the same claim with a named page as its subject is a finite,
+//      checkable, correctable statement.
+//
+// Emphasis markers are stripped before matching, because `Apple does **not**
+// publish` is the same sentence and slipped past a first draft of this check.
+const ABSENCE_VERBS = [
+  "publish", "publishes", "published",
+  "assign", "assigns", "assigned",
+  "define", "defines", "defined",
+  "state", "states", "stated",
+  "document", "documents", "documented",
+  "specify", "specifies", "specified",
+  "give", "gives", "given", "gave",
+  "list", "lists", "listed",
+  "provide", "provides", "provided",
+  "carry", "carries", "carried",
+  "name", "names", "named",
+  "say", "says", "said",
+  "ship", "ships", "shipped",
+  "mention", "mentions", "mentioned",
+  "record", "records", "recorded",
+  "declare", "declares", "declared",
+].join("|");
+
+// Words that introduce a different grammatical subject. If one appears between
+// "Apple" and the negated verb, Apple is no longer the thing doing the
+// not-publishing, and the sentence is the scoped form we want people writing.
+const NEW_SUBJECT = [
+  "\\.", "\\bthe\\b", "\\bits\\b", "\\ba\\b", "\\ban\\b", "\\bthis\\b", "\\bthat\\b",
+  "\\bthese\\b", "\\bthose\\b", "\\bHIG\\b", "\\bpage\\b", "\\btable\\b",
+  "\\bsection\\b", "\\bguidelines\\b",
+].join("|");
+const GAP = `(?:(?!${NEW_SUBJECT})[^.\\n]){0,80}?`;
+// `Apple` is matched case-sensitively so document ids like `apple-accessibility`
+// are not read as the subject of the next clause.
+const APPLE = "(?<![\\w-])Apple(?![\\w-])";
+
+const ABSENCE_FORMS: { name: string; re: RegExp }[] = [
+  {
+    name: "Apple as the subject of a negated publication verb",
+    re: new RegExp(`${APPLE}${GAP}\\b(?:${ABSENCE_VERBS})\\s+(?:no|none|nothing|nowhere)\\b`, "g"),
+  },
+  {
+    name: "Apple does not <publication verb>",
+    re: new RegExp(`${APPLE}${GAP}\\b(?:does\\s+not|doesn't|do\\s+not|don't)\\s+(?:${ABSENCE_VERBS})\\b`, "g"),
+  },
+  {
+    // "Apple never publishes", "It never states" — absolute across time as well
+    // as surface. Requires a preceding word so the imperative "Never ship …"
+    // (advice to the reader, not a claim about Apple) does not match.
+    name: "<subject> never <publication verb>",
+    re: new RegExp(`\\b\\w+\\s+never\\s+(?:${ABSENCE_VERBS})\\b`, "gi"),
+  },
+  {
+    name: "<publication verb> nowhere",
+    re: new RegExp(
+      `\\b(?:${ABSENCE_VERBS}|appear|appears|appeared|reconcile|reconciles|reconciled)` +
+      `\\s+(?:it\\s+|them\\s+|the\\s+two\\s+)?nowhere\\b`, "gi"),
+  },
+  {
+    // "on no Apple page", "on any Apple page" — the same universal claim with
+    // the quantifier moved. "…on any Apple page searched" is the scoped form
+    // and is what the exception admits.
+    name: "any/every/no Apple page",
+    re: /\b(?:any|every|no|all)\s+Apple\s+(?:page|pages|surface|surfaces|document|documents|documentation|source|sources)\b(?!\s+(?:searched|checked|read|fetched|listed))/gi,
+  },
+  {
+    // An exhaustive claim about what a page contains. This is the one that
+    // produced the fifth defect: `ios-app-design` said HIG › Layout's "only pt
+    // figures" were two, and the page carried eight more tables inside a
+    // `tabNavigator` node the render walk never reached. "The pt figures found
+    // there are …" says the same thing without claiming to have seen the whole
+    // page, and is always available.
+    name: "exhaustive claim about a page's contents",
+    re: /\b(?:its|their|whose|the)\s+only\s+[\w-]*\s*(?:figures?|numbers?|counts?|entr(?:y|ies)|mentions?|rows?|statements?)\b|\bonly\s+[\w-]+\s+(?:on|in)\s+(?:the|that|this)\s+(?:page|table|document)\b|\bcontains\s+exactly\b/gi,
+  },
+];
+
+describe("the Apple documents state absences in the scoped form", () => {
+  it("uses no absolute absence construction outside a quotation", () => {
+    const offenders: string[] = [];
+    for (const id of APPLE_DOC_IDS) {
+      const doc = docs.find((d) => d.id === id);
+      if (!doc) continue; // `names an id that exists for every entry` owns this
+      // Read the file rather than `doc.body` so a failure names the line a
+      // person can open, frontmatter included.
+      const lines = readFileSync(doc.path, "utf8").split("\n");
+      let inFence = false;
+      for (let i = 0; i < lines.length; i++) {
+        if (/^\s*```/.test(lines[i])) { inFence = !inFence; continue; }
+        if (inFence) continue;
+        const scanned = lines[i]
+          .replace(/"[^"]*"/g, (m) => " ".repeat(m.length)) // Apple's own words
+          .replace(/[*_`]/g, " ");                          // emphasis can't hide it
+        for (const form of ABSENCE_FORMS) {
+          form.re.lastIndex = 0;
+          const m = form.re.exec(scanned);
+          if (m) offenders.push(`${id}:${i + 1} [${form.name}] "${m[0].replace(/\s+/g, " ").trim()}"`);
+        }
+      }
+    }
+    expect(
+      offenders,
+      "absolute absence claim — say what the search found on the pages named, not what Apple publishes",
+    ).toEqual([]);
+  });
+});
+
 describe("security documents cite permitted sources only", () => {
   it("uses no blog-tier source", () => {
     const offenders: string[] = [];
     for (const d of docs.filter((x) => x.category === "security")) {
       for (const url of d.sources ?? []) {
-        let host: string;
-        try {
-          host = new URL(url).hostname.replace(/^www\./, "");
-        } catch {
+        const host = hostOf(url);
+        if (host === null) {
           offenders.push(`${d.id}: unparseable source ${url}`);
           continue;
         }
