@@ -46,15 +46,16 @@ Apple frames Liquid Glass adoption as establishing **hierarchy**, creating **har
 | Element | Spec |
 |---|---|
 | Large page title | SF Pro 34pt Regular (Bold is Apple's emphasized weight) |
-| Compact title / primary button | 17pt Semibold / 17pt Regular |
-| Body & list items | 17pt Regular |
+| Compact title | 17pt Semibold (Headline) |
+| Body & list items | 17pt Regular (Body) |
+| Primary button label | 17pt Regular — **convention**; HIG › Buttons sizes buttons by height (Mini 28 / Small 32 / Regular 44 / Large 52 / Extra large 64 pt), not by label size |
 | Secondary text | 15pt Regular (Subhead; use the secondary label color) |
-| Caption/tertiary | 13pt Regular |
-| Tab bar labels | 11pt Regular |
+| Caption/tertiary | 13pt Regular is **Footnote**; Caption 1 is 12pt and Caption 2 is 11pt |
+| Tab bar labels | ~10pt — **convention**, not an Apple step (see `ios-app-design` §1) |
 | Minimum hit region | 44×44pt (visionOS 60×60pt) |
 | Reference canvas | 390×844pt (iPhone 16e/14/13/12 class); check up to 440×956pt (iPhone 17 Pro Max / 16 Pro Max) |
 
-Sizes above are the iOS/iPadOS Large (default) Dynamic Type step. Use Dynamic Type text styles (LargeTitle…Caption2), never fixed sizes, and SF Pro / SF Symbols throughout — the styles carry weight and leading for every size, and SF Symbols weight-match adjacent text automatically.
+**Which rows are Apple's, and which are not.** The type sizes above are the iOS/iPadOS **Large (default)** Dynamic Type step from HIG › Typography, and only for the five rows that name an Apple text style — Large Title (34/41), Headline (17/22), Body (17/22), Subhead (15/20), Footnote (13/18). The primary button's label size and the tab bar's label size are marked convention above because they are working defaults rather than rows on that page; `ios-app-design` §1 lists the tab bar's label size among the figures not found on the Apple pages it searched. Do not report a deviation from a convention as a HIG violation. Use Dynamic Type text styles (LargeTitle…Caption2), never fixed sizes, and SF Pro / SF Symbols throughout — the styles carry weight and leading for every size, and SF Symbols weight-match adjacent text automatically.
 
 ## Adoption guidance (SwiftUI)
 
