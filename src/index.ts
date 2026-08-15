@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, isAbsolute, resolve, basename, delimiter } from "node:path";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { loadKnowledge, mergeKnowledge, searchKnowledge, sections, findDoc, platformMatches, type KnowledgeDoc } from "./knowledge.js";
-import { CATEGORIES, PLATFORMS, DESIGN_LANGUAGES, REVIEW_MAP, FOCUS_MAP, ROADMAPS, STALE_DAYS } from "./catalog.js";
+import { CATEGORIES, PLATFORMS, DESIGN_LANGUAGES, REVIEW_MAP, FOCUS_MAP, ROADMAPS, STALE_DAYS, isSourceEnforced } from "./catalog.js";
 import { loadExamples, searchExamples, imageMime } from "./examples.js";
 import { registerPrompts } from "./prompts.js";
 import {
@@ -95,7 +95,16 @@ function docHeader(d: KnowledgeDoc): string {
 }
 
 function fullDoc(d: KnowledgeDoc): string {
-  const src = d.sources.length ? `\n\n**Sources:** ${d.sources.join(" · ")}` : "";
+  // Say which side of the sourcing boundary this document sits on. Printing
+  // `**Sources:**` identically for all 96 documents makes a vetted document and
+  // an unvetted one look the same to whoever is about to cite one — and today
+  // only 11 are vetted, so identical presentation flatters the other 85.
+  const vetted = isSourceEnforced(d)
+    ? "checked against the source allowlist (standards bodies, first-party vendor docs, named research)"
+    : "curated, but not yet checked against the source allowlist";
+  const src = d.sources.length
+    ? `\n\n**Sources:** ${d.sources.join(" · ")}\n\n_Sourcing: ${vetted}._`
+    : "";
   return `${docHeader(d)}\n${d.body}${src}`;
 }
 

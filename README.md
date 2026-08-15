@@ -54,7 +54,7 @@ instead of guessing.
 
 | Category | Coverage |
 |---|---|
-| 🎨 **Design languages** | Material 3 & M3 Expressive · Apple HIG + Liquid Glass (iOS 26) · deep **iOS**, **Android** (Android 16 / M3 Expressive) and **macOS** app‑design guides · **Apple accessibility** (Dynamic Type, VoiceOver, hit regions) and **Apple shipping readiness** (`Info.plist` purpose strings, entitlements, app icon sets, orientation/multitasking restrictions) · **Apple Intelligence design** (AI features: Writing Tools, App Intents, on‑device Foundation Models) · **visionOS / spatial design** (Vision Pro) · Fluent 2 · 2026 web trends · design tokens & theming (W3C DTCG) · Apple WWDC design principles (fluid interfaces) — the six Apple documents are held to a stricter allowlist, cited to Apple's own developer pages |
+| 🎨 **Design languages** | Material 3 & M3 Expressive · Apple HIG + Liquid Glass (iOS 26) · deep **iOS**, **Android** (Android 16 / M3 Expressive) and **macOS** app‑design guides · **Apple accessibility** (Dynamic Type, VoiceOver, hit regions) and **Apple shipping readiness** (`Info.plist` purpose strings, entitlements, app icon sets, orientation/multitasking restrictions) · **Apple Intelligence design** (AI features: Writing Tools, App Intents, on‑device Foundation Models) · **visionOS / spatial design** (Vision Pro) · Fluent 2 · 2026 web trends · design tokens & theming (W3C DTCG) · Apple WWDC design principles (fluid interfaces) |
 | 🧩 **Components** | Buttons (hierarchy, sizing, states, labels) · forms & inputs · navigation · cards / lists / modals / sheets / empty states |
 | 🧠 **UX** | Nielsen heuristics & behavioral laws · accessibility (WCAG 2.2) · typography · color & dark mode · spacing & grids · motion · mobile UX · conversion / CRO · **data visualization** · **information architecture** · **i18n / localization (RTL)** · **AI product UX** (chat, streaming, agentic) · **onboarding & permission priming** |
 | ✨ **Craft** | Expert polish standards · typographic craft · animation craft (easing, springs, interruptibility) · UX writing & cognitive load · 0–40 critique rubric · **clean/minimal app design** · **design‑engineering** (semantic HTML, CSS architecture, tokens‑in‑code) · **ethical design** (avoiding dark patterns) · **iconography** (choosing & using an icon system) · **the AI‑default aesthetic** (the stock gradient, font, card chrome and copy generated interfaces reach for, cited to each system's own docs) |
@@ -65,6 +65,19 @@ instead of guessing.
 | 🤖 **GEO** | Generative Engine Optimization — visibility in ChatGPT / Perplexity / AI Overviews, llms.txt, citation tactics |
 | 🔐 **Security** | Web security headers & CSP — strict nonce/hash policies, `strict-dynamic`, Trusted Types, HSTS, SRI, cross-origin isolation, and the superseded headers auditors still ask for. Every claim sourced to a spec or vendor doc, re-verified on a 90-day clock. |
 | 🖼️ **Patterns & examples** | Real‑world patterns studied from top apps & sites (incl. **e‑commerce & checkout** and **fintech / trust** flows), plus a curated library of real‑world example screens |
+
+**Which documents' sources are enforced, and which are not.** Of the 96
+documents, **11 have their `sources:` checked by the test suite against a tiered
+allowlist** — the six Apple design‑language guides (`apple-hig-liquid-glass`,
+`ios-app-design`, `macos-app-design`, `apple-accessibility`,
+`apple-shipping-readiness`, `wwdc-design-principles`) and the five `security`
+documents. **The other 85 are curated but not yet checked**, and extending the
+assertion to them is its own piece of work rather than a formality: measured
+today, 66 of the 85 would fail on 282 citations across 134 distinct hosts. Note
+that `apple-intelligence-design` and `visionos-spatial-design` are Apple‑topic
+documents that sit *outside* the enforced set. `get_design_doc` prints which
+side of this line a document is on, next to its sources, so you never have to
+come back here to find out.
 
 ## Workflows (`/` prompts) — "build me a…"
 

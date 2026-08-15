@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { loadKnowledge, findDoc, platformMatches } from "../dist/knowledge.js";
-import { CATEGORIES, PLATFORMS, DESIGN_LANGUAGES, REVIEW_MAP, FOCUS_MAP, ROADMAPS, STALE_DAYS } from "../dist/catalog.js";
+import { CATEGORIES, PLATFORMS, DESIGN_LANGUAGES, REVIEW_MAP, FOCUS_MAP, ROADMAPS, STALE_DAYS, APPLE_DOC_IDS, isSourceEnforced } from "../dist/catalog.js";
 import { loadRecipes } from "../dist/recipes.js";
 import { loadExamples } from "../dist/examples.js";
 import { securityReport, HEADER_SOURCE_TOKENS, HEADER_SOURCES_SENTENCE } from "../dist/security.js";
@@ -423,15 +423,16 @@ describe("the source tiers", () => {
 // system API does — that only Apple can settle. A blog restating Apple is one
 // transcription error away from being wrong, and nothing downstream can tell the
 // difference, so these documents are held to Apple's own pages plus the tiers.
-// Tasks adding further Apple documents add their ids here — and `covers every
-// Apple design-language document` below fails until they do. The list is pinned
-// from both sides: it may only grow (`never enforces fewer Apple documents`), and
-// every id in it must still match the predicate (`keeps every listed document
-// inside the predicate`), so enforcement cannot be dropped by editing frontmatter.
-const APPLE_DOC_IDS = [
-  "macos-app-design", "ios-app-design", "apple-hig-liquid-glass", "wwdc-design-principles",
-  "apple-accessibility", "apple-shipping-readiness",
-];
+// Tasks adding further Apple documents add their ids to that list — and `covers
+// every Apple design-language document` below fails until they do. The list is
+// pinned from both sides: it may only grow (`never enforces fewer Apple
+// documents`), and every id in it must still match the predicate (`keeps every
+// listed document inside the predicate`), so enforcement cannot be dropped by
+// editing frontmatter.
+//
+// It is imported from `src/catalog.ts` rather than declared here because the
+// server prints which side of the boundary each document sits on, and two
+// definitions of "enforced" would drift apart silently.
 
 /**
  * What makes a document Apple's to answer for, derived from the document rather
@@ -801,6 +802,41 @@ describe("the Apple documents state absences in the scoped form", () => {
       offenders,
       "absolute absence claim — say what the search found on the pages named, not what Apple publishes",
     ).toEqual([]);
+  });
+});
+
+// `**Sources:**` used to print identically for all 96 documents, which made a
+// document whose citations are asserted on look exactly like one whose
+// citations are not. Today that is 11 enforced against 85 unenforced, and 66 of
+// the 85 would fail the tiers if the assertion were extended to them — so
+// identical presentation is not a neutral omission, it flatters the majority.
+// The migration is a later package; the disclosure is not.
+describe("the sourcing boundary is disclosed rather than implied", () => {
+  it("enforces exactly the Apple set and the security category", () => {
+    const enforced = docs.filter(isSourceEnforced).map((d) => d.id).sort();
+    const expected = [
+      ...APPLE_DOC_IDS,
+      ...docs.filter((d) => d.category === "security").map((d) => d.id),
+    ].sort();
+    expect(enforced).toEqual(expected);
+  });
+
+  it("leaves most of the base unenforced, which is the fact worth stating", () => {
+    // Not a target to hit — a measurement that keeps the README's claim honest.
+    // When the migration package lands, this flips and the sentence changes.
+    expect(docs.filter((d) => !isSourceEnforced(d)).length).toBeGreaterThan(0);
+  });
+
+  it("prints which side of the boundary a document sits on", () => {
+    const indexSrc = readFileSync(join(root, "src", "index.ts"), "utf8");
+    expect(indexSrc).toContain("isSourceEnforced");
+    expect(indexSrc).toContain("not yet checked against the source allowlist");
+  });
+
+  it("says so in the README too, where the count lives", () => {
+    const readme = readFileSync(join(root, "README.md"), "utf8");
+    expect(readme).toMatch(/not yet/i);
+    expect(readme).toContain("11");
   });
 });
 

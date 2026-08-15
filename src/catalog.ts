@@ -10,6 +10,34 @@ export const CATEGORIES = ["design-language", "component", "ux", "seo", "geo", "
 export const PLATFORMS = ["mobile", "web", "macos"] as const;
 
 /**
+ * The Apple design-language documents whose `sources:` are held to the tiered
+ * allowlist. `tests/integrity.test.ts` pins this list from both sides — it may
+ * only grow, and every id in it must still satisfy the predicate that defines
+ * an Apple document — so enforcement cannot be dropped by editing frontmatter.
+ * A task adding a further Apple document adds its id here.
+ *
+ * It lives in the catalogue rather than in the test because the server has to
+ * be able to say which documents are enforced. Two definitions of "enforced"
+ * would drift, and a reader cannot tell a vetted document from an unvetted one
+ * by looking at it.
+ */
+export const APPLE_DOC_IDS = [
+  "macos-app-design", "ios-app-design", "apple-hig-liquid-glass", "wwdc-design-principles",
+  "apple-accessibility", "apple-shipping-readiness",
+];
+
+/**
+ * Whether a document's `sources:` are checked against the tiers by the test
+ * suite. True for the Apple set above and for every `security` document; false
+ * for the rest of the base, whose sources are curated but not yet asserted on.
+ * The migration that extends this to the remaining documents is its own
+ * package — until it lands, this is the boundary, and `get_design_doc` prints
+ * which side of it a document sits on.
+ */
+export const isSourceEnforced = (d: KnowledgeDoc): boolean =>
+  APPLE_DOC_IDS.includes(d.id) || d.category === "security";
+
+/**
  * The reference systems get_design_language serves. This is an orchestration
  * surface in its own right: a doc listed here is reachable by name even when no
  * project-type roadmap covers its platform (Fluent 2 → Windows, visionOS →
