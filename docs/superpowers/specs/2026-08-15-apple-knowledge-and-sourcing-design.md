@@ -69,7 +69,18 @@ backed is removed.
 research source must attribute it in the prose — "NN/g's research found …", not
 "the rule is …". A usability finding and a specification are different kinds of
 claim, and a reader deciding whether to follow advice needs to know which one
-they are being handed. This is enforced by a test, not left to good intentions.
+they are being handed.
+
+> **Deferred — not shipped in this package.** This was specified as "enforced by
+> a test". It was not built, and the reasoning for deferring it still holds: the
+> assertion runs only over the enforced set, and that set carries **zero**
+> `research` citations (re-measured at the end of the branch — the six Apple
+> documents cite `developer.apple.com`, `apple.com`, `support.apple.com` and
+> `w3.org`; the five `security` documents may cite `standard` and `vendor`
+> only). A test with nothing to range over passes for the wrong reason and reads
+> as a guarantee it does not provide. The attribution obligation stated above
+> stands as a convention for authors; it becomes enforceable when the migration
+> package widens the assertion to the documents that actually cite research.
 
 **Security keeps the stricter line.** Documents in the `security` category may
 cite `standard` and `vendor` only. A security claim resting on research-tier
@@ -150,7 +161,9 @@ or re-sourced ones; myth-checks.
   one-line change.
 - A test that each source's host resolves to exactly one tier, so a host cannot
   be silently promoted by being listed twice.
-- A test that a document citing a `research` host attributes it in the prose.
+- ~~A test that a document citing a `research` host attributes it in the prose.~~
+  **Deferred, did not ship** — the enforced set carries zero `research`
+  citations, so the test would range over nothing. See the note above.
 - A test that `security`-category documents cite `standard` and `vendor` only.
 - A test that every Apple document carries at least one `developer.apple.com`
   source.
