@@ -377,7 +377,7 @@ Each of these is a plausible rule a reviewer would write from memory, and each o
 ## 12. Ship checklist
 
 - [ ] Windows resizable, restorable, multi-window; sensible minimums; unified toolbar (~52pt is convention, not published) with Customize Toolbar…
-- [ ] Controls meet Apple's published macOS floor: 28×28pt default, 20×20pt minimum
+- [ ] Controls meet Apple's published macOS floor: 28×28pt default, 20×20pt minimum — and the **hit region** is the separate, larger measurement: `apple-accessibility` §3 gives "a 20×20 pt control inside a 44×44 pt hit region" as the target on Mac, since HIG › Buttons' general 44×44pt hit-region rule exempts only visionOS. Do not enforce 44pt on the drawn control
 - [ ] Sidebar/inspector follow source-list conventions; 13pt-scale density; real tables with sortable headers
 - [ ] Every feature in the menu bar; verb-first names, ellipsis rules, dynamic Undo/Paste labels, ⌥-alternates
 - [ ] Standard shortcut set + Full Keyboard Access + type-select all pass; core loop is pointer-free
