@@ -69,6 +69,8 @@ Every row below is quoted from that key's own reference page. Copy the key from 
 
 Two keys state it more strongly on their own pages — `NSMotionUsageDescription` ("your app **will** crash when it attempts to access motion data") and `NSUserTrackingUsageDescription` ("your app **may** crash when a user first launches it").
 
+**Xcode will tell you, and name the fix.** "Xcode detects when your app crashes for this reason and reports an issue, telling you to add the purpose string to your app." *(same page)* So a crash-on-first-use of a capability, with an Xcode issue attached, is a diagnosed missing purpose string rather than a mystery.
+
 **Apple does not publish a single rule for which failure mode a given resource produces.** The nearest it comes is describing the denial case: "the access attempt that initiates the prompt, and any further attempts, **fail in a resource-specific way**." *(same page)* So report the observed condition — a protected API reached without its key — and Apple's own range of outcomes. Do not assert a mechanism; Apple states the outcome and stops there.
 
 **2. App Review rejects the upload.** "App Review checks for the use of protected resources, and rejects apps that contain code accessing those resources without a purpose string." The error, verbatim from Apple's page:
@@ -117,6 +119,8 @@ Two more HIG rules that decide when the alert appears, not what it says: "**Requ
 
 If you show a screen before the system alert, the HIG constrains it hard: "**Include only one button and make it clear that it opens the system alert**… Use a term like 'Continue' or 'Next' to title the single button," and "**Don't include additional actions in your custom screen or window**." Apple names the consequence for tracking pre-alerts specifically: "A custom messaging screen, window, or view that takes advantage of such behaviors to influence choices **will lead to rejection by App Store review**."
 
+The App Store Review Guidelines make the same demand of the copy itself, at §5.1.1(ii): "**Ensure your purpose strings clearly and completely describe your use of the data.**" A purpose string is therefore reviewable content, not boilerplate — it is held to the four validity checks above *and* to that standard.
+
 Finally, always check before you reach: "Because a person can change authorization at any time using Settings, always check the authorization status of a feature before accessing it. In cases without a dedicated API, prepare your app to gracefully handle access failures." *(UIKit › Requesting access to protected resources)*
 
 ---
@@ -131,7 +135,7 @@ Finally, always check before you reach: "Because a person can change authorizati
 
 **What:** "The App Sandbox is an access control technology that macOS provides and **enforces at the kernel level**. The sandbox's primary function is to contain damage to the system and the user's data if the user executes a compromised app. While the sandbox doesn't prevent attacks against your app, it does reduce the harm a successful attack can cause by restricting your app to the minimum set of privileges it requires to function properly." *(Xcode › Configuring the macOS App Sandbox)*
 
-**When required — the Mac App Store, and only the Mac App Store.** Apple says it in three places:
+**When required — Mac App Store distribution.** Apple says it in three places, and states no sandbox requirement for any other channel:
 
 - "**To distribute a macOS app through the Mac App Store, you must enable the App Sandbox capability.**" *(Security › App Sandbox)*
 - "App Sandbox — **a requirement for distributing your app on the App Store** — limits the scope for an attacker to abuse platform features via your app." *(Security › Protecting user data with App Sandbox)*
@@ -239,7 +243,7 @@ This is the single most common wrong belief in this area, so state it plainly:
 
 They coincide in exactly one documented case Apple names: "When you use Mac Catalyst to enable your iPad app to run in macOS, Xcode automatically adds the App Sandbox **and** Hardened Runtime capabilities to the macOS target." *(Xcode › Configuring the macOS App Sandbox)*
 
-**A trap for anyone matching identifiers.** The microphone has two different entitlement identifiers depending on which capability you are configuring: `com.apple.security.device.microphone` is reached by "enable the App Sandbox capability in Xcode and under Hardware select Audio Input", while `com.apple.security.device.audio-input` is reached by "first enable the Hardened Runtime capability in Xcode, and then under Resource Access, select Audio Input". Same checkbox label, two identifiers. A rule that knows only one of them will miss half of the real projects.
+**A trap for anyone matching identifiers.** The microphone has two different entitlement identifiers depending on which capability you are configuring: `com.apple.security.device.microphone` is reached by "enable the App Sandbox capability in Xcode and under Hardware select Audio Input", while `com.apple.security.device.audio-input` is reached by "first enable the Hardened Runtime capability in Xcode, and then under Resource Access, select Audio Input". Same checkbox label, two identifiers. A rule that knows only one of them misses every project configured the other way.
 
 **Least privilege is Apple's stated position, and it is checkable.** "Before submitting your app for review, limit entitlements to the minimum required for your application to function. **Remove any unnecessary entitlements that your app isn't using.**" *(Bundle Resources › Diagnosing Issues with Entitlements)*
 

@@ -389,7 +389,10 @@ describe("the source tiers", () => {
 // transcription error away from being wrong, and nothing downstream can tell the
 // difference, so these documents are held to Apple's own pages plus the tiers.
 // Tasks adding further Apple documents add their ids here — and `covers every
-// Apple design-language document` below fails until they do.
+// Apple design-language document` below fails until they do. The list is pinned
+// from both sides: it may only grow (`never enforces fewer Apple documents`), and
+// every id in it must still match the predicate (`keeps every listed document
+// inside the predicate`), so enforcement cannot be dropped by editing frontmatter.
 const APPLE_DOC_IDS = [
   "macos-app-design", "ios-app-design", "apple-hig-liquid-glass", "wwdc-design-principles",
   "apple-accessibility", "apple-shipping-readiness",
@@ -416,6 +419,33 @@ describe("Apple documents are sourced to Apple", () => {
   it("covers every Apple design-language document", () => {
     const unenforced = docs.filter(isAppleDoc).filter((d) => !APPLE_DOC_IDS.includes(d.id));
     expect(unenforced.map((d) => d.id)).toEqual([]);
+  });
+
+  // `covers every Apple design-language document` is one-sided: it walks from the
+  // predicate to the list, so it only notices a document the predicate still
+  // claims. Delete a document's `apple` tag and the predicate stops claiming it,
+  // and that check goes quiet — delete the id too and every check goes quiet,
+  // because both sides of the comparison shrank together. The two assertions
+  // below close each direction.
+  //
+  // Round-trip: every listed id must still satisfy the predicate. This is what
+  // fails when a tag is removed on its own — the id stays, the predicate drops it,
+  // and the disagreement is now visible instead of silent.
+  it("keeps every listed document inside the predicate that defines them", () => {
+    const escaped = APPLE_DOC_IDS
+      .map((id) => docs.find((d) => d.id === id))
+      .filter((d): d is (typeof docs)[number] => Boolean(d))
+      .filter((d) => !isAppleDoc(d))
+      .map((d) => `${d.id} (category: ${d.category}, tags: ${(d.tags ?? []).join("|")})`);
+    expect(escaped).toEqual([]);
+  });
+
+  // Floor: enforcement may grow, never shrink. This is what fails when a tag and
+  // its id are removed together — the only mutation both other checks survive,
+  // since it leaves nothing on either side to disagree about. Raise the number
+  // when a task adds a document; never lower it to make a suite pass.
+  it("never enforces fewer Apple documents than it does today", () => {
+    expect(APPLE_DOC_IDS.length).toBeGreaterThanOrEqual(6);
   });
 
   it("cites no source outside the tiers", () => {
