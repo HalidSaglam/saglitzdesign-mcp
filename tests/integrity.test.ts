@@ -310,15 +310,65 @@ describe("release metadata is in sync", () => {
 // Security guidance is only worth shipping if it is traceable to a standard or a
 // first-party vendor doc. Blog-tier sourcing is how confidently-wrong security
 // advice spreads, so the allowlist is enforced rather than merely documented.
-const PERMITTED_SOURCE_HOSTS = new Set([
-  "w3.org", "www.w3.org", "w3c.github.io", "whatwg.org", "html.spec.whatwg.org",
-  "datatracker.ietf.org", "rfc-editor.org", "developer.mozilla.org",
-  "web.dev", "developer.chrome.com", "developers.google.com", "webkit.org",
-  "hacks.mozilla.org", "owasp.org", "cheatsheetseries.owasp.org", "genai.owasp.org",
-  "fidoalliance.org", "passkeys.dev", "nextjs.org", "docs.astro.build",
-  "svelte.dev", "vite.dev", "edpb.europa.eu", "ico.org.uk", "kvkk.gov.tr",
-  "eur-lex.europa.eu", "caniuse.com",
-]);
+//
+// The allowlist's own comment always said "a standard or a first-party vendor
+// doc". The list never said which a given host was, so a host that is neither
+// could sit in it unnoticed, and hosts that plainly qualified were missing
+// because the list was written for one category. Naming the tiers makes both
+// visible, and lets `security` hold a stricter line than the rest.
+const SOURCE_TIERS = {
+  standard: new Set([
+    "w3.org", "w3c.github.io", "whatwg.org", "html.spec.whatwg.org",
+    "datatracker.ietf.org", "rfc-editor.org", "developer.mozilla.org",
+    "web.dev", "developer.chrome.com", "developers.google.com", "webkit.org",
+    "hacks.mozilla.org", "owasp.org", "cheatsheetseries.owasp.org",
+    "genai.owasp.org", "fidoalliance.org", "passkeys.dev", "caniuse.com",
+    "edpb.europa.eu", "ico.org.uk", "kvkk.gov.tr", "eur-lex.europa.eu",
+    "cppa.ca.gov",
+  ]),
+  vendor: new Set([
+    "developer.apple.com", "apple.com",
+    "nextjs.org", "docs.astro.build", "svelte.dev", "vite.dev",
+  ]),
+  research: new Set([
+    "nngroup.com", "baymard.com", "lawsofux.com",
+  ]),
+} as const;
+
+const tierOf = (host: string): keyof typeof SOURCE_TIERS | null => {
+  const h = host.replace(/^www\./, "");
+  for (const [tier, hosts] of Object.entries(SOURCE_TIERS)) {
+    if (hosts.has(h)) return tier as keyof typeof SOURCE_TIERS;
+  }
+  return null;
+};
+
+describe("the source tiers", () => {
+  it("puts every host in exactly one tier", () => {
+    const seen = new Map<string, string[]>();
+    for (const [tier, hosts] of Object.entries(SOURCE_TIERS)) {
+      for (const h of hosts) seen.set(h, [...(seen.get(h) ?? []), tier]);
+    }
+    expect([...seen].filter(([, tiers]) => tiers.length > 1)).toEqual([]);
+  });
+
+  it("resolves a host with or without its www prefix", () => {
+    expect(tierOf("developer.apple.com")).toBe("vendor");
+    expect(tierOf("www.nngroup.com")).toBe("research");
+    expect(tierOf("example.invalid")).toBeNull();
+  });
+
+  it("keeps security documents on standard and vendor sources only", () => {
+    const offenders: string[] = [];
+    for (const d of docs.filter((x) => x.category === "security")) {
+      for (const url of d.sources ?? []) {
+        const tier = tierOf(new URL(url).hostname);
+        if (tier !== "standard" && tier !== "vendor") offenders.push(`${d.id}: ${url}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
 
 describe("security documents cite permitted sources only", () => {
   it("uses no blog-tier source", () => {
@@ -327,12 +377,13 @@ describe("security documents cite permitted sources only", () => {
       for (const url of d.sources ?? []) {
         let host: string;
         try {
-          host = new URL(url).hostname.replace(/^www\./, "");
+          host = new URL(url).hostname;
         } catch {
           offenders.push(`${d.id}: unparseable source ${url}`);
           continue;
         }
-        if (!PERMITTED_SOURCE_HOSTS.has(host) && !PERMITTED_SOURCE_HOSTS.has(`www.${host}`)) {
+        const tier = tierOf(host);
+        if (tier !== "standard" && tier !== "vendor") {
           offenders.push(`${d.id}: ${host}`);
         }
       }
