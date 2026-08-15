@@ -52,7 +52,7 @@ security category, whose sources are standards bodies.
 So the work is not "fix 57 documents". It is: name the tiers the list always
 implied, admit the vendor docs, and migrate the genuinely blog-tier remainder.
 
-## The tiered allowlist, enforced on every document
+## The tiered allowlist
 
 Three tiers, and the tier carries meaning rather than merely granting passage:
 
@@ -136,9 +136,10 @@ or re-sourced ones; myth-checks.
 
 - **`audit_apple_ui`.** The auditor is package E2. No rule, no tool, no
   `.swift` scanning lands here.
-- **Rewriting non-Apple documents' prose.** Where a non-Apple document cites a
-  source that fails the new tiers, the citation is replaced or the claim it
-  backed is removed — that is source work, not a rewrite.
+- **Non-Apple documents.** Their sources are not migrated and their prose is
+  not touched here. The tiers are built to hold them, and the assertion is
+  written to widen by one line — but it widens in the package that does the
+  migration, not before.
 - **Fetching anything at runtime.** The server stays offline. Sources are
   verified while writing, and the `updated:` date records when.
 
