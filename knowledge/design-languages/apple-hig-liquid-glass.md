@@ -35,7 +35,7 @@ Apple frames Liquid Glass adoption as establishing **hierarchy**, creating **har
 
 ## System behavior to design around
 
-- **Tab bar**: now an inset floating capsule (inset ~21pt from left/right/bottom), 2–5 destinations, with Search often split into its own trailing "island." It can minimize on scroll.
+- **Tab bar**: now an inset floating capsule (inset ~21pt from left/right/bottom), with Search often split into its own trailing island. It can minimize on scroll. **2–5 destinations is a sound working default, not a published count** — the tab-bars page states no number for iPhone, and the figure it does give ("aim for a default list of five or fewer") is scoped to *customizable iPad* tab bars. The enforceable rule is the overflow one: write a rule against a More tab appearing, never against a tab count. See `ios-app-design` §1 and its myth-check 1.
 - **Navigation bar**: large title (34pt) collapses to compact (17pt semibold) on scroll; content scrolls *under* the glass bars with edge blur/fade.
 - **Toolbars**: related actions group into shared glass capsules; icons preferred over text labels; system spacing groups/separates actions.
 - **Sheets & menus**: partial-height sheets are glass and become opaque when expanded; menus/popovers morph out of the buttons that spawn them.
