@@ -73,7 +73,8 @@ allowlist** — the six Apple design‑language guides (`apple-hig-liquid-glass`
 `apple-shipping-readiness`, `wwdc-design-principles`) and the five `security`
 documents. **The other 85 are curated but not yet checked**, and extending the
 assertion to them is its own piece of work rather than a formality: measured
-today, 66 of the 85 would fail on 282 citations across 134 distinct hosts. Note
+today, 66 of the 85 would fail on 282 citations across 133 distinct hosts (plus 55
+sources that are not URLs at all). Note
 that `apple-intelligence-design` and `visionos-spatial-design` are Apple‑topic
 documents that sit *outside* the enforced set. `get_design_doc` prints which
 side of this line a document is on, next to its sources, so you never have to

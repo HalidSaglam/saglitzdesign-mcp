@@ -34,7 +34,14 @@ one from searching exactly one surface fewer than the fact needed.
 `developer.apple.com` renders client-side. A plain fetch of a HIG page returns a
 `<title>` and nothing else, so **the `tutorials/data/*.json` form is not an
 optimisation, it is the only way to read the page.** A path that returns the SPA
-shell instead of JSON is a reliable "this page does not exist" signal.
+shell instead of JSON means *that path* does not exist.
+
+**It does not mean the page does not exist, and reading it that way produced one
+of the five false absences.** `prefersInterfaceOrientationLocked` returns the
+shell under `documentation/uikit/uiwindowscene/` and returns real JSON under
+`documentation/uikit/uiviewcontroller/` — where the document being written had
+itself said the property is overridden. Before concluding a symbol is
+undocumented, try the other parents it could hang from.
 
 Surface 6 is the cheapest and was the last one anyone thought to check. One
 cross-document contradiction in this package — a macOS click-target claim — was
@@ -290,7 +297,8 @@ citation has nowhere to live, fix the tier rather than the sentence.
 documents** have their `sources:` checked against the tiers: the six Apple
 design-language guides plus the five `security` documents. The other 85 are
 curated but unchecked, and 66 of them would fail today across 282 citations and
-134 distinct hosts. That migration is its own package.
+133 distinct hosts plus a bucket for 55 sources that are not URLs at all
+(book titles, mostly). That migration is its own package.
 
 Two things to know before you extend it:
 

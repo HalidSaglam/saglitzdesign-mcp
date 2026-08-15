@@ -100,11 +100,14 @@ function fullDoc(d: KnowledgeDoc): string {
   // an unvetted one look the same to whoever is about to cite one — and today
   // only 11 are vetted, so identical presentation flatters the other 85.
   const vetted = isSourceEnforced(d)
-    ? "checked against the source allowlist (standards bodies, first-party vendor docs, named research)"
+    ? "checked against the source allowlist — standards bodies and first-party vendor docs, with named research permitted outside the security category"
     : "curated, but not yet checked against the source allowlist";
+  // The line sits outside the `sources.length` branch on purpose: the documents
+  // with no sources at all are the least vetted in the base, and printing
+  // nothing for them was the one case where silence read as "nothing to say".
   const src = d.sources.length
     ? `\n\n**Sources:** ${d.sources.join(" · ")}\n\n_Sourcing: ${vetted}._`
-    : "";
+    : `\n\n_Sourcing: no sources recorded; ${vetted}._`;
   return `${docHeader(d)}\n${d.body}${src}`;
 }
 
