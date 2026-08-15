@@ -673,6 +673,54 @@ const ABSENCE_FORMS: { name: string; re: RegExp }[] = [
   },
 ];
 
+// WHAT THIS GUARD DOES NOT CATCH. Read this before concluding from a green
+// suite that the Apple documents contain no false absence claim — they contain
+// none *in the forms below the line*, which is a narrower statement.
+//
+// This project's characteristic defect is a check that reads as a guarantee and
+// is not, and this file spends 80 lines describing the guard's design and its
+// two legitimate exceptions without once saying what it misses. So: the
+// following all pass today, every one of them measured against the patterns
+// above rather than reasoned about.
+//
+//   "no shortcut is assigned by Apple"        passive voice — Apple is the
+//                                             agent, not the grammatical
+//                                             subject, and the patterns key on
+//                                             the subject
+//   "Cupertino publishes no …"                a synonym subject; the APPLE
+//                                             token is literal
+//   "Apple was searched thoroughly. No        an absolute split across two
+//    minimum is published."                   sentences — GAP stops at `\.`
+//   "Apple publishes no minimum."             a *fabricated* quotation in a
+//    (inside quote marks, in a document       document that declares the
+//    that declares the convention)            convention: blanked, and nothing
+//                                             here checks the words are Apple's
+//   "Apple has no published minimum"          `has`/`is` are not publication
+//   "Apple is silent on the minimum"          verbs, and adding them would fire
+//                                             on ordinary prose
+//   "Apple does not appear to publish X"      the hedge separates `does not`
+//                                             from the verb
+//   "apple publishes no minimum"              APPLE is case-sensitive on
+//                                             purpose, so the id
+//                                             `apple-accessibility` is not read
+//                                             as a subject; lowercase prose
+//                                             escapes with it
+//   an absolute inside a fenced code block    fences are skipped by design; the
+//                                             fence-parity assertion only
+//                                             guarantees they are balanced
+//
+// Every historical defect in this package landed in a form the patterns catch,
+// which is why the guard is worth having. It is a regression guard against a
+// good-faith author reaching for a familiar sentence — not an adversarial
+// filter, and not a substitute for reading the source.
+//
+// One known over-match, zero occurrences today: the APPLE token matches the
+// "Apple" in *Apple Watch*, *Apple Music* and *Apple Store*, so
+// "Apple Watch publishes no complication size" would be reported with Apple as
+// its subject. Narrowing the token would cost more than it saves — the sentence
+// is one a person should rewrite anyway — but a future hit that looks spurious
+// is probably this.
+
 /** The declaration that earns a document the quotation exemption, matched in
  *  the document's own text so the exemption cannot be granted from here. */
 const QUOTE_CONVENTION = /^\s*\*?Quotation convention:/m;
