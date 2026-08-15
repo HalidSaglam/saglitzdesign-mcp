@@ -133,7 +133,7 @@ Standard order and contents:
 
 ## 6. Typography, color, and materials
 
-- System font is SF Pro at the 13pt-body scale (table above in §1; macOS minimum is 10pt). **macOS does not support Dynamic Type** — unlike iOS, there is no user text-size dial to design against. Still use the built-in text styles rather than fixed sizes, so weights and leading come from the system.
+- System font is SF Pro at the 13pt-body scale (table above in §1). Apple's *recommended minimum* text size on macOS is **10pt** — a legibility recommendation covering custom and system fonts alike, not a limit the OS enforces. **macOS does not support Dynamic Type** — unlike iOS, there is no user text-size dial to design against. Still use the built-in text styles rather than fixed sizes, so weights and leading come from the system.
 - Semantic colors only: `labelColor`, `secondaryLabelColor`, `tertiaryLabelColor`, `windowBackgroundColor`, `controlBackgroundColor`, `separatorColor`, plus `controlAccentColor` for the user's chosen accent. Hardcoded hex breaks dark mode, accent settings, and increased-contrast mode.
 - **Vibrancy**: text/symbols on sidebar and toolbar materials should use vibrant label colors (automatic with system components) so they modulate with the material — flat gray text on a vibrant sidebar is a port tell.
 - Emphasis hierarchy: one accent-tinted control per context (default button); everything else neutral. Destructive menu/dialog actions in red only when they destroy data.

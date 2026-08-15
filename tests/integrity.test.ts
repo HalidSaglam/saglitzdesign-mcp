@@ -388,14 +388,33 @@ describe("the source tiers", () => {
 // system API does — that only Apple can settle. A blog restating Apple is one
 // transcription error away from being wrong, and nothing downstream can tell the
 // difference, so these documents are held to Apple's own pages plus the tiers.
-// Tasks adding further Apple documents add their ids here.
-const APPLE_DOC_IDS = ["macos-app-design", "ios-app-design", "apple-hig-liquid-glass"];
+// Tasks adding further Apple documents add their ids here — and `covers every
+// Apple design-language document` below fails until they do.
+const APPLE_DOC_IDS = [
+  "macos-app-design", "ios-app-design", "apple-hig-liquid-glass", "wwdc-design-principles",
+];
+
+/**
+ * What makes a document Apple's to answer for, derived from the document rather
+ * than from the list. Anchoring the membership check to this is the whole point:
+ * a check that reads APPLE_DOC_IDS and compares it back to APPLE_DOC_IDS passes
+ * no matter which id you delete, so it cannot notice a document quietly leaving
+ * enforcement — which is exactly the failure the list exists to prevent.
+ */
+const isAppleDoc = (d: (typeof docs)[number]) =>
+  d.category === "design-language" && (d.tags ?? []).includes("apple");
 
 describe("Apple documents are sourced to Apple", () => {
   const appleDocs = () => docs.filter((d) => APPLE_DOC_IDS.includes(d.id));
 
-  it("finds every Apple document", () => {
-    expect(appleDocs().map((d) => d.id).sort()).toEqual([...APPLE_DOC_IDS].sort());
+  it("names an id that exists for every entry", () => {
+    const phantom = APPLE_DOC_IDS.filter((id) => !docs.some((d) => d.id === id));
+    expect(phantom).toEqual([]);
+  });
+
+  it("covers every Apple design-language document", () => {
+    const unenforced = docs.filter(isAppleDoc).filter((d) => !APPLE_DOC_IDS.includes(d.id));
+    expect(unenforced.map((d) => d.id)).toEqual([]);
   });
 
   it("cites no source outside the tiers", () => {

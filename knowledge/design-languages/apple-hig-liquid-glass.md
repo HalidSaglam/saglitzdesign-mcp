@@ -4,7 +4,7 @@ title: "Apple HIG & Liquid Glass (iOS 26)"
 category: design-language
 platform: mobile
 tags: [ios, apple, hig, liquid-glass, swiftui, materials, accessibility]
-sources: ["https://developer.apple.com/documentation/technologyoverviews/liquid-glass", "https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass", "https://developer.apple.com/design/human-interface-guidelines/materials", "https://developer.apple.com/documentation/swiftui/view/glasseffect(_:in:)", "https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views", "https://developer.apple.com/documentation/swiftui/glasseffectcontainer", "https://developer.apple.com/documentation/swiftui/glass", "https://developer.apple.com/design/human-interface-guidelines/typography", "https://developer.apple.com/design/human-interface-guidelines/buttons", "https://developer.apple.com/documentation/bundleresources/information-property-list/uidesignrequirescompatibility", "https://www.apple.com/newsroom/2025/06/apple-introduces-a-delightful-and-elegant-new-software-design/"]
+sources: ["https://developer.apple.com/documentation/technologyoverviews/liquid-glass", "https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass", "https://developer.apple.com/design/human-interface-guidelines/materials", "https://developer.apple.com/documentation/swiftui/view/glasseffect(_:in:)", "https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views", "https://developer.apple.com/documentation/swiftui/glasseffectcontainer", "https://developer.apple.com/documentation/swiftui/glass", "https://developer.apple.com/design/human-interface-guidelines/typography", "https://developer.apple.com/design/human-interface-guidelines/layout", "https://developer.apple.com/design/human-interface-guidelines/buttons", "https://developer.apple.com/documentation/bundleresources/information-property-list/uidesignrequirescompatibility", "https://www.apple.com/newsroom/2025/06/apple-introduces-a-delightful-and-elegant-new-software-design/"]
 updated: 2026-08-15
 ---
 
@@ -52,6 +52,7 @@ Apple frames Liquid Glass adoption as establishing **hierarchy**, creating **har
 | Caption/tertiary | 13pt Regular |
 | Tab bar labels | 11pt Regular |
 | Minimum hit region | 44×44pt (visionOS 60×60pt) |
+| Reference canvas | 390×844pt (iPhone 16e/14/13/12 class); check up to 440×956pt (iPhone 17 Pro Max / 16 Pro Max) |
 
 Sizes above are the iOS/iPadOS Large (default) Dynamic Type step. Use Dynamic Type text styles (LargeTitle…Caption2), never fixed sizes, and SF Pro / SF Symbols throughout — the styles carry weight and leading for every size, and SF Symbols weight-match adjacent text automatically.
 
