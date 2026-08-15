@@ -392,7 +392,7 @@ describe("the source tiers", () => {
 // Apple design-language document` below fails until they do.
 const APPLE_DOC_IDS = [
   "macos-app-design", "ios-app-design", "apple-hig-liquid-glass", "wwdc-design-principles",
-  "apple-accessibility",
+  "apple-accessibility", "apple-shipping-readiness",
 ];
 
 /**
@@ -449,6 +449,17 @@ describe("Apple documents are sourced to Apple", () => {
     const body = d!.body.toLowerCase();
     for (const term of ["dynamic type", "voiceover", "reduce motion", "contrast"]) {
       expect(body, `does not mention ${term}`).toContain(term);
+    }
+  });
+
+  // Same contract for the shipping document: E2's shipping rules will match on
+  // the literal key and entitlement names it publishes, so a rule citing this
+  // doc must be able to find the subject it names.
+  it("apple-shipping-readiness names the plist and entitlement keys E2 will cite", () => {
+    const d = docs.find((x) => x.id === "apple-shipping-readiness");
+    expect(d, "document is missing").toBeDefined();
+    for (const key of ["Info.plist", "entitlement", "sandbox", "icon"]) {
+      expect(d!.body.toLowerCase(), `does not mention ${key}`).toContain(key.toLowerCase());
     }
   });
 });

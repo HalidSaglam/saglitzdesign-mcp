@@ -33,7 +33,7 @@ export const DESIGN_LANGUAGES = [
 export const REVIEW_MAP: Record<string, string[]> = {
   "mobile-app": [
     "mobile-ux", "ios-app-design", "android-app-design", "android-patterns", "apple-intelligence-design",
-    "apple-accessibility",
+    "apple-accessibility", "apple-shipping-readiness",
     "buttons", "forms-inputs", "navigation", "search-design", "mobile-navigation-home", "cards-lists-modals",
     "mobile-empty-states-buttons", "mobile-settings-lists",
     "principles-heuristics", "accessibility", "typography", "color-systems",
@@ -43,7 +43,7 @@ export const REVIEW_MAP: Record<string, string[]> = {
     "ai-feature-security",
   ],
   "macos-app": [
-    "macos-app-design", "apple-hig-liquid-glass", "apple-accessibility", "apple-intelligence-design", "buttons", "forms-inputs",
+    "macos-app-design", "apple-hig-liquid-glass", "apple-accessibility", "apple-shipping-readiness", "apple-intelligence-design", "buttons", "forms-inputs",
     "cards-lists-modals", "principles-heuristics", "accessibility", "typography",
     "color-systems", "spacing-layout", "wwdc-design-principles", "animation-craft", "visual-craft-standards",
     "ux-writing", "i18n-localization",
@@ -135,7 +135,7 @@ export const ROADMAPS: Record<string, Roadmap> = {
       { title: "4. Design system on HIG baseline", goal: "Tokens + core components; Dynamic Type; dark mode", docs: ["apple-hig-liquid-glass", "ios-app-design", "apple-accessibility", "apple-intelligence-design", ...CORE_FOUNDATION] },
       { title: "5. Hi-fi design & craft", goal: "All states, all sizes; clean & calm; motion + haptics; reduced motion", docs: ["mobile-ux", "buttons", "forms-inputs", "cards-lists-modals", "clean-app-design", "brand-on-native-platforms", "ai-product-ux", "motion-microinteractions", ...CORE_CRAFT] },
       { title: "6. Monetization & key flows", goal: "Onboarding/paywall/auth/checkout patterns; pricing & growth loops; honest, non-dark-pattern flows", docs: ["mobile-onboarding-paywall", "onboarding-permission-priming", "paywall-benchmarks", "pricing-strategy", "mobile-auth-patterns", "mobile-checkout-payments", "mobile-settings-lists", "hooked-retention", "growth-frameworks", "ethical-design"] },
-      { title: "7. Validate, list & ship", goal: "5-user tests; a11y audit; App Store listing (ASO) + assets; activation instrumented", docs: [...CORE_VALIDATE, "app-store-optimization", "ad-creative", "analytics-experimentation", "ios-app-design"] },
+      { title: "7. Validate, list & ship", goal: "5-user tests; a11y audit; purpose strings, icon set, orientation/multitasking checked; App Store listing (ASO) + assets; activation instrumented", docs: [...CORE_VALIDATE, "apple-shipping-readiness", "app-store-optimization", "ad-creative", "analytics-experimentation", "ios-app-design"] },
     ],
   },
   "android-app": {
@@ -160,7 +160,7 @@ export const ROADMAPS: Record<string, Roadmap> = {
       { title: "3. Wireframes, copy & edge states", goal: "Real copy; empty/error/loading; resizing behavior per pane", docs: ["ux-writing", "cards-lists-modals", "mobile-empty-states-buttons", "i18n-localization", "dont-make-me-think"] },
       { title: "4. Design system on macOS HIG", goal: "Tokens; density for desktop; dark mode; Liquid Glass adoption", docs: ["macos-app-design", "apple-hig-liquid-glass", "apple-accessibility", "apple-intelligence-design", ...CORE_FOUNDATION] },
       { title: "5. Hi-fi design & craft", goal: "Pointer+keyboard interactions; drag & drop; undo everywhere", docs: ["buttons", "forms-inputs", "motion-microinteractions", ...CORE_CRAFT] },
-      { title: "6. Validate & ship", goal: "Keyboard-only pass; VoiceOver; multi-window/multi-display QA", docs: CORE_VALIDATE },
+      { title: "6. Validate & ship", goal: "Keyboard-only pass; VoiceOver; multi-window/multi-display QA; sandbox/hardened-runtime and icon set checked for the chosen distribution channel", docs: [...CORE_VALIDATE, "apple-shipping-readiness"] },
     ],
   },
   "saas-web-app": {
