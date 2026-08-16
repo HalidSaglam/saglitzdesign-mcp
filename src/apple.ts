@@ -92,10 +92,12 @@ const CANONICAL_FULL_SCREEN_KEY = FULL_SCREEN_KEYS[0];
  * renderer that prints `L0` beside these is printing the truth; one that prints
  * `L1` would be inventing a location.
  *
- * **A consumer must not route these through a rule+line deduper.** `designLint`
- * and `genericVisualRules` both end by keeping one finding per `rule`+`line`
- * pair, which is correct for a scanner walking a file: a rule matching twice on
- * one line is one problem. It is wrong here. Two rules below emit N findings at
+ * **A consumer must not route these through a rule+line deduper.** Three places
+ * in this codebase end that way — `designLint` (`lint.ts`),
+ * `genericVisualRules` and `genericCopyRules` (`generic.ts`) — keeping one
+ * finding per `rule`+`line` pair, which is correct for a scanner walking a
+ * file: a rule matching twice on one line is one problem. It is wrong here.
+ * Two rules below emit N findings at
  * a constant line — one per colorset, one per `UIRequiresFullScreen` spelling —
  * so that filter silently collapses every one of them to a single finding and
  * the reader is told about one colorset out of three. Deduplicate these by
