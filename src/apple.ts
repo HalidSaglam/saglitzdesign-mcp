@@ -715,12 +715,19 @@ const PLIST_PATH = /\.plist$/i;
  * a caller that only called it could not tell a skipped file from a directory
  * holding no colorsets at all.
  *
- * Keys are merged across every plist and every `project.pbxproj` into one
- * flat map, first writer winning. That is a real widening and it is disclosed:
- * a workspace with an app target and a share extension has two `Info.plist`s,
- * and a key declared by either reads here as declared by "this project".
- * Nothing in `ConfigRead` carries a target, so there is no shape in which this
- * function could report which one.
+ * **Every surface is merged across every file of its kind, and neither merge
+ * carries a target.** Keys go into one flat map, first writer winning; the
+ * entitlement identifiers three lines above go into one `Set`. Both are real
+ * widenings and both are disclosed: a workspace with an app target and a share
+ * extension has two `Info.plist`s, and a key declared by either reads here as
+ * declared by "this project". The entitlements `Set` is the half that was
+ * undisclosed until v0.25.0, and two of the four configuration rules read it —
+ * so on the standard macOS shape of an app beside an XPC service or a login
+ * item, `microphone-entitlement-mismatch` fires over a pair split across two
+ * files that are each correct alone, and one target's `app-sandbox` keeps
+ * `sandbox-absent-macos` off the other. Nothing in `ConfigRead` carries a
+ * target, so there is no shape in which this function could report which one;
+ * what it can do, and does, is name every file it merged in `surfaces`.
  */
 export function readAppleConfig(files: Array<{ path: string; source: string }>): ConfigRead {
   const keys = new Map<string, string | boolean | string[]>();
@@ -815,7 +822,7 @@ export const APPLE_NOT_VISIBLE: string[] = [
 
   "**Everything in a `project.pbxproj` other than `INFOPLIST_KEY_*`.** That prefix is the only thing read out of the file; the rest of the build configuration is not parsed. In a `project.pbxproj` carrying `ENABLE_HARDENED_RUNTIME = YES`, `CODE_SIGN_ENTITLEMENTS = App/App.entitlements` and `PRODUCT_NAME = \"Ledger\"` beside three `INFOPLIST_KEY_*` settings, the three prefixed settings were read — `INFOPLIST_KEY_UIRequiresFullScreen` produced both a finding and the iOS verdict — and the other three were outside what was read. The prefix is also stripped literally, so a build setting arrives under whatever name follows it: `INFOPLIST_KEY_UILaunchScreen_Generation` becomes the key `UILaunchScreen_Generation`, and `INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone` becomes `UISupportedInterfaceOrientations_iPhone`. Three suffixed spellings are recognised as iOS signals by name — `UILaunchScreen_Generation`, `UISupportedInterfaceOrientations_iPhone` and `UISupportedInterfaceOrientations_iPad` — because they are what a default project actually writes; only those three, and only as an exact set.",
 
-  "**Which target a key belongs to.** Keys from every plist and every `project.pbxproj` in the tree are merged into one map, because nothing in the four surfaces read here carries a target. An app target with `App/Info.plist` and a share extension with `ShareExtension/Info.plist` produced one `uirequiresfullscreen-deprecated` finding, phrased as a fact about \"this project's configuration\", when the key had been declared by the extension alone. The surfaces list above names every plist that went into that map, which is the only place in this report where the distinction survives.",
+  "**Which target a declaration belongs to — a key or an entitlement alike.** Keys from every plist and every `project.pbxproj` in the tree are merged into one map, and the entitlement identifiers from every `.entitlements` file into one set, because nothing in the four surfaces read here carries a target. An app target with `App/Info.plist` and a share extension with `ShareExtension/Info.plist` produced one `uirequiresfullscreen-deprecated` finding, phrased as a fact about \"this project's configuration\", when the key had been declared by the extension alone. The entitlements set does the same, in both directions, and an app beside an XPC service, a login item, a Sparkle updater or a Safari extension is the ordinary macOS shape for meeting it: a sandboxed app's `Ledger/Ledger.entitlements` beside a hardened helper's `Helper/Helper.entitlements` — each correct alone — drew `microphone-entitlement-mismatch` over a pair that appears in neither file, and in the other direction the app's `com.apple.security.app-sandbox` was enough to keep `sandbox-absent-macos` off a helper file carrying none. The surfaces list above names every plist and every entitlements file that went into them, which is the only place in this report where the distinction survives; two entitlements paths on that line mean two files were unioned.",
 
   "**Localised values, and every localisation surface.** `InfoPlist.xcstrings` — where Xcode puts a localised `NSCameraUsageDescription` — is not among the file shapes this scan opens, and neither is a `.strings` file nor the contents of an `.lproj` directory. A project carrying an `InfoPlist.xcstrings` with an `NSCameraUsageDescription` inside it read two files here, and that was not one of them. A value declared only there is absent from this audit's view of the project rather than from the project.",
 

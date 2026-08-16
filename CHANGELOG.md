@@ -135,10 +135,16 @@ not misread a clean report:
   is not parsed. `ENABLE_HARDENED_RUNTIME` is one of the settings outside it,
   which is why no rule here reports on the Hardened Runtime in either
   direction.
-- **Which target declared a key.** Keys from every plist and every
-  `project.pbxproj` in the tree are merged into one map, because none of the
-  four surfaces read here carries a target. A key declared by a share
-  extension alone was reported as a fact about "this project's configuration".
+- **Which target declared a key, or an entitlement.** Keys from every plist
+  and every `project.pbxproj` in the tree are merged into one map, and the
+  entitlement identifiers from every `.entitlements` file into one set, because
+  none of the four surfaces read here carries a target. A key declared by a
+  share extension alone was reported as a fact about "this project's
+  configuration"; a sandboxed app beside a hardened helper — each file correct
+  alone — drew `microphone-entitlement-mismatch` over a pair that appears in
+  neither, and the app's `com.apple.security.app-sandbox` kept
+  `sandbox-absent-macos` off the helper. The surfaces line names every file
+  that went into both.
 - **The written forms the Swift rules do not match.** Each rule is a presence
   test over one shape: `.system(size:)` is matched and
   `UIFont.systemFont(ofSize:)` is not; `Color(red:green:blue:)` is matched and

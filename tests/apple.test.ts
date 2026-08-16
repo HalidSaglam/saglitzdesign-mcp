@@ -1422,7 +1422,7 @@ const DEMONSTRATED = [
   "A configuration file that could not be parsed.",
   "A plist value outside the small subset this reader covers.",
   "Everything in a `project.pbxproj` other than `INFOPLIST_KEY_*`.",
-  "Which target a key belongs to.",
+  "Which target a declaration belongs to — a key or an entitlement alike.",
   "Localised values, and every localisation surface.",
   "Whether the Hardened Runtime is enabled.",
   "Purpose strings, in both directions.",
@@ -1898,7 +1898,7 @@ describe("9. everything in a project.pbxproj other than INFOPLIST_KEY_*", () => 
   });
 });
 
-describe("10. which target a key belongs to", () => {
+describe("10. which target a declaration belongs to", () => {
   it("reports a key declared by the share extension alone as a fact about the project", () => {
     const root = project({
       "App/Info.plist": plist("<key>CFBundleDisplayName</key>\n<string>Ledger</string>"),
@@ -1909,6 +1909,42 @@ describe("10. which target a key belongs to", () => {
     expect(r.structured.findings[0].message).toContain("this project's configuration");
     // The surfaces list is the only place the distinction survives.
     expect(r.text).toContain("- Information property lists (2): `App/Info.plist`, `ShareExtension/Info.plist`");
+  });
+
+  // The other half of the same merge, undisclosed until v0.25.0: entitlement
+  // identifiers are unioned across every `.entitlements` file too, and two of
+  // the four configuration rules read that set. App + XPC service / login item
+  // / Sparkle updater / Safari extension is a standard macOS shape.
+  const MACOS_APP_AND_HELPER = {
+    "Ledger/Ledger.entitlements": plist(`<key>${"com.apple.security.app-sandbox"}</key>\n<true/>`),
+    "Helper/Helper.entitlements": plist(`<key>${"com.apple.security.device.audio-input"}</key>\n<true/>`),
+    "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_LSMinimumSystemVersion = 14.0;\n",
+    "Ledger/App.swift": "import AppKit\nimport SwiftUI\n",
+  };
+
+  it("draws a mismatch over a pair that appears in neither entitlements file", () => {
+    const root = project(MACOS_APP_AND_HELPER);
+    const r = appleReport(root);
+    expect(rules(root)).toEqual(["microphone-entitlement-mismatch"]);
+    expect(r.structured.findings[0].message).toContain("This project declares");
+    // The remedy is on the surfaces line: both files are named there, and the
+    // count says two went into the union.
+    expect(r.text).toContain("- Entitlements (2): `Helper/Helper.entitlements`, `Ledger/Ledger.entitlements`");
+  });
+
+  it("runs the other way too: one file's app-sandbox covers the file beside it", () => {
+    const root = project(MACOS_APP_AND_HELPER);
+    expect(rules(root)).not.toContain("sandbox-absent-macos");
+
+    // The same helper alone — the sandbox entitlement gone from the tree with
+    // the app that declared it — is what the rule fires on. Without this the
+    // assertion above would pass on a project the rule could never reach.
+    const helperAlone = project({
+      "Helper/Helper.entitlements": plist(`<key>${"com.apple.security.device.audio-input"}</key>\n<true/>`),
+      "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_LSMinimumSystemVersion = 14.0;\n",
+      "Ledger/App.swift": "import AppKit\nimport SwiftUI\n",
+    });
+    expect(rules(helperAlone)).toContain("sandbox-absent-macos");
   });
 });
 
