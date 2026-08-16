@@ -1029,32 +1029,116 @@ describe("the fixture matrix: correct work draws nothing", () => {
   });
 });
 
+/**
+ * The recipes to run under a forced verdict, **derived from the surfaces the
+ * audit says it read** rather than listed again here.
+ *
+ * A second hardcoded list is a second thing to remember: a fifth recipe added
+ * to `recipes/` would make the file-count tripwire below fail with a message
+ * about a number, and bumping that number would leave the new recipe with no
+ * forced-verdict coverage at all. Derived, it picks the fifth one up on its
+ * own, and `EXPECTED_RECIPES` below is the assertion that the two agree —
+ * failing by naming the list rather than a count.
+ *
+ * The surfaces line names at most ten paths before it truncates
+ * (`…and N more`), so this derivation holds while `recipes/` stays under
+ * eleven SwiftUI files; past that the `EXPECTED_RECIPES` check fails first.
+ */
+const RECIPE_PATHS = [...(
+  appleReport(RECIPES).text.split("\n").find((l) => l.startsWith("- Swift source"))!
+).matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+
 describe("the four SwiftUI recipes this repository ships", () => {
-  const RECIPE_PATHS = ["button/swiftui.swift", "card/swiftui.swift", "input/swiftui.swift", "list-row/swiftui.swift"];
+  const EXPECTED_RECIPES = ["button/swiftui.swift", "card/swiftui.swift", "input/swiftui.swift", "list-row/swiftui.swift"];
   const recipeSource = (path: string) => ({ path, source: readFileSync(join(RECIPES, path), "utf8") });
 
   it("audits all four in place, and draws nothing against any of them", () => {
-    const r = fixture("recipes-swiftui");
-    const surfaceLine = r.text.split("\n").find((l) => l.startsWith("- Swift source"))!;
-    for (const path of RECIPE_PATHS) expect(surfaceLine, path).toContain(`\`${path}\``);
-    expect(r.structured.findings).toEqual([]);
+    expect(RECIPE_PATHS).toEqual(EXPECTED_RECIPES);
+    expect(fixture("recipes-swiftui").structured.findings).toEqual([]);
   });
 
   // Pointed at `recipes/`, the verdict is null: four SwiftUI files with no
   // configuration between them settle nothing, so `fixed-font-size` was never
   // allowed to run in the assertion above. That would make "the recipes are
-  // clean" a weaker claim than it sounds. Running each recipe under both
-  // verdicts closes the gap — a recipe counts as correct work only if it is
-  // clean with every platform-scoped rule live, on either platform.
+  // clean" a weaker claim than it sounds, and running each recipe under both
+  // verdicts closes that particular gap.
+  //
+  // What it closes is exactly one rule wide. These runs call `appleSwiftRules`,
+  // whose only platform-gated rule is `fixed-font-size`; the other gated rule,
+  // `sandbox-absent-macos`, is a configuration rule and is never reached from
+  // here. Nothing below is evidence about it — a macOS verdict over a
+  // configuration-less tree is precisely where it *does* fire, as the
+  // `ambiguous` fixture demonstrates further down.
   it.each(RECIPE_PATHS)("%s is clean under an iOS verdict and under a macOS one", (path) => {
     expect(appleSwiftRules([recipeSource(path)], IOS)).toEqual([]);
     expect(appleSwiftRules([recipeSource(path)], MACOS)).toEqual([]);
+  });
+
+  // How much of `symbol-as-only-button-label` the correct-work half of the
+  // matrix actually exercises, asserted rather than assumed — because the
+  // review of this task found the report claiming four on-merit declines where
+  // the code affords one.
+  //
+  // `list-row` and `input` contain no `Button` token at all, so the rule never
+  // looks at them; `card`'s `Button(action: action) { content }` has a label
+  // this reader cannot resolve, so it declines without inspecting a symbol.
+  // `button/swiftui.swift` is the one recipe whose label the rule reads and
+  // passes on merit. The two clean fixtures carry an icon-only button each to
+  // widen that.
+  it("is exercised by one recipe, not four — the other three carry no label it can read", () => {
+    const source = (p: string) => readFileSync(join(RECIPES, p), "utf8");
+    for (const p of ["list-row/swiftui.swift", "input/swiftui.swift"]) {
+      expect(source(p), p).not.toMatch(/\bButton\b/);
+    }
+    expect(source("card/swiftui.swift")).toContain("Button(action: action) { content }");
+    expect(appleSwiftRules([{ path: "C.swift", source: "Button(action: {}) { content }" }], IOS)).toEqual([]);
+    // The one label the rule does read: a `ZStack` of `Text` and a
+    // `ProgressView`, written inline in the closure. It declines because the
+    // label holds more than a symbol — the same reason the constructed control
+    // beside it declines, and the reason the rule exists to distinguish.
+    expect(source("button/swiftui.swift")).toMatch(/Button\(action: action\) \{\n\s+ZStack \{/);
+    expect(appleSwiftRules(
+      [{ path: "C.swift", source: 'Button(action: {}) { ZStack { Text(title); Image(systemName: "gear") } }' }],
+      IOS,
+    )).toEqual([]);
   });
 
   // Stated rather than left implicit, so nobody reads the clean run above as
   // evidence that the iOS-scoped rule ran during it.
   it("names the verdict the in-place run actually had, which is none", () => {
     expect(fixture("recipes-swiftui").text).toContain("**Platform: not determined**. Signals seen: none.");
+  });
+});
+
+// The correct-work half of the matrix would otherwise rest one recipe deep on
+// `symbol-as-only-button-label` (see the test above). Each clean fixture
+// carries an icon-only button the rule genuinely inspects — a label that is one
+// SF Symbol and nothing else — and declines on merit because the spoken name is
+// written rather than derived. The two fixtures use the two positions the rule
+// accepts the written name in: on the `Image` inside the closure, and on the
+// whole `Button` after it.
+describe("the clean fixtures each carry an icon-only button the rule inspects", () => {
+  const CLEAN_BUTTONS = [
+    ["ios-clean", join("Sources", "ContentView.swift"), IOS],
+    ["macos-clean", join("Ledger", "ContentView.swift"), MACOS],
+  ] as const;
+
+  it.each(CLEAN_BUTTONS)("%s writes a lone symbol label and still draws nothing", (name, file) => {
+    const source = readFileSync(join(FIXTURES, name, file), "utf8");
+    expect(source).toContain('Image(systemName: "arrow.clockwise")');
+    expect(source).toContain('.accessibilityLabel("Refresh receipts")');
+    expect(fixture(name).structured.findings).toEqual([]);
+  });
+
+  // …and the decline is the written label rather than a label the rule could
+  // not read: strike the `.accessibilityLabel` out of the same bytes and the
+  // finding appears, at the line the fixture's button sits on.
+  it.each(CLEAN_BUTTONS)("%s draws the finding the moment the written label goes", (name, file, verdict) => {
+    const source = readFileSync(join(FIXTURES, name, file), "utf8");
+    const stripped = source.replace(/\n\s+\.accessibilityLabel\("Refresh receipts"\)/, "");
+    expect(stripped, "the strip must actually change the source").not.toBe(source);
+    expect(appleSwiftRules([{ path: file, source: stripped }], verdict).map((f) => f.rule))
+      .toEqual(["symbol-as-only-button-label"]);
   });
 });
 
@@ -1229,8 +1313,15 @@ describe("finds keys that live only in build settings, and reports no false abse
     expect(config.surfaces.plist).toEqual([]);
   });
 
+  // The load-bearing half of this guard is positive and exact: **one** finding,
+  // named, and no other. A denylist of words and rule-id fragments cannot be the
+  // guard — a future rule worded "is not declared", or named
+  // `purpose-string-undeclared`, matches neither pattern below and would still
+  // be a false absence on a correct project. Exactness catches it whatever it
+  // calls itself. The regexes stay as a second signal, no longer as the only one.
   it("states no absence anywhere in the report body", () => {
     const r = fixture("no-plist");
+    expect(r.structured.findings.map((f) => f.rule)).toEqual(["uirequiresfullscreen-deprecated"]);
     const body = r.text.slice(0, r.text.indexOf("## Not visible to this audit"));
     expect(body).not.toMatch(/declares no|was among the surfaces read|no Info\.plist|missing/i);
     expect(r.structured.findings.filter((f) => /absent|missing/i.test(f.rule))).toEqual([]);
@@ -1862,7 +1953,7 @@ describe("16. a Swift file whose comment masking went wrong", () => {
 });
 
 describe("17. the shapes the Swift rules do not match", () => {
-  it("draws nothing from an iOS file carrying all four of them", () => {
+  it("draws nothing from an iOS file carrying all five of them", () => {
     const root = project({
       "Info.plist": plist("<key>UILaunchStoryboardName</key>\n<string>LaunchScreen</string>"),
       "Sources/V.swift": [
@@ -1873,10 +1964,29 @@ describe("17. the shapes the Swift rules do not match", () => {
         'let c = Color(hex: "#FF3B30")',
         'let symbol = isOn ? "pause.fill" : "play.fill"',
         "let b = Button(action: toggle) { Image(systemName: symbol) }",
+        "let d = Button(action: toggle) { content }",
       ].join("\n"),
     });
     expect(appleReport(root).text).toContain("**Platform: iOS**");
     expect(rules(root)).toEqual([]);
+  });
+
+  // The fifth shape on its own, against the control that separates it from a
+  // rule that simply never matches anything: the identical symbol written
+  // inline in the label closure is reported, and reaching it through a
+  // `content` property is not. This is the shape `recipes/card/swiftui.swift`
+  // uses, which is why the recipes exercise this rule once rather than twice.
+  it("reads a label closure written inline and not one reached through an identifier", () => {
+    const view = (label: string) => [
+      "import SwiftUI",
+      "struct V: View {",
+      "  var body: some View { Button(action: {}) { " + label + " } }",
+      '  private var content: some View { Image(systemName: "gear") }',
+      "}",
+    ].join("\n");
+    expect(appleSwiftRules([{ path: "V.swift", source: view("content") }], IOS)).toEqual([]);
+    expect(appleSwiftRules([{ path: "V.swift", source: view('Image(systemName: "gear")') }], IOS)
+      .map((f) => `${f.rule}@${f.line}`)).toEqual(["symbol-as-only-button-label@3"]);
   });
 });
 

@@ -20,5 +20,19 @@ struct ContentView: View {
             Text("Pick a receipt")
                 .foregroundStyle(Color(nsColor: .secondaryLabelColor))
         }
+        .toolbar {
+            // The same correctly-written icon-only button as `ios-clean`, with
+            // the spoken name written on the `Button` instead of on the symbol
+            // — the other position the rule accepts. Remove the
+            // `.accessibilityLabel` and `symbol-as-only-button-label` fires.
+            Button {
+                refresh()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .accessibilityLabel("Refresh receipts")
+        }
     }
+
+    private func refresh() {}
 }
