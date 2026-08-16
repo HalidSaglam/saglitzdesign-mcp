@@ -2,6 +2,7 @@ import { describe, it, expect, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   appleConfigRules, appleSwiftRules, appleReport, readAppleConfig,
   APPLE_NOT_VISIBLE, APPLE_PREAMBLE, APPLE_CLOSING,
@@ -1445,6 +1446,20 @@ describe("every notVisible entry has a demonstration", () => {
     expect(unmatched).toEqual([]);
   });
 
+  // The excerpt pairing above ties each *sentence* to a run. It says nothing
+  // about the headings the runs sit under, and those drifted: five blocks were
+  // numbered one behind the entry they demonstrate and `describe("19. …")`
+  // demonstrated entry 23. Nothing was unenforced — the headings just pointed a
+  // reader at the wrong sentence. This ties the number to the position too.
+  it("numbers each demonstration block with the entry it demonstrates", () => {
+    const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
+    const block = src.slice(src.indexOf("── one demonstration per disclosure sentence ──"));
+    const numbered = [...block.matchAll(/^describe\("(\d+)[a-z]?\. /gm)].map((m) => Number(m[1]));
+
+    expect(numbered).toEqual([...numbered].sort((a, b) => a - b));
+    expect([...new Set(numbered)]).toEqual(APPLE_NOT_VISIBLE.map((_, i) => i + 1));
+  });
+
   it("keeps the list the longest disclosure this server ships", () => {
     // Not a vanity number: this audit reads four configuration surfaces and a
     // language it can only read one line at a time, and each of those is its
@@ -1570,7 +1585,7 @@ describe("3. a directory the walk never enters", () => {
   });
 });
 
-describe("3c. the skip list is a name test, not a provenance test", () => {
+describe("3b. the skip list is a name test, not a provenance test", () => {
   // The direction entry 3 previously asserted in prose with no run behind it:
   // a user who keeps their own code under one of those names loses it, and
   // nothing in the report body marks the loss.
@@ -1600,7 +1615,7 @@ describe("3c. the skip list is a name test, not a provenance test", () => {
   });
 });
 
-describe("3b. vendored source under a directory name that is not on that list", () => {
+describe("4. vendored source under a directory name that is not on that list", () => {
   // The remedy this entry offers has to hold on the projects big enough to have
   // vendored code beside their own. An earlier wording said "the surfaces list
   // above prints every Swift file that was read"; the list caps at ten names per
@@ -1639,7 +1654,7 @@ describe("3b. vendored source under a directory name that is not on that list", 
   });
 });
 
-describe("4. whatever the scan stopped short of", () => {
+describe("5. whatever the scan stopped short of", () => {
   it("reads 400 of 406 Swift files and misses the NavigationView in the last of them", () => {
     const files: Record<string, string> = { "Info.plist": plist("<key>CFBundleName</key>\n<string>Big</string>") };
     for (let i = 0; i < 405; i++) files[`Sources/a${String(i).padStart(4, "0")}.swift`] = "import SwiftUI\nlet x = 1\n";
@@ -1737,7 +1752,7 @@ describe("an asset catalog cannot starve the Swift half of the scan", () => {
   });
 });
 
-describe("5. a file over the per-file cap", () => {
+describe("6. a file over the per-file cap", () => {
   it("skips it whole, names it, and reads the small file beside it", () => {
     const root = project({
       "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
@@ -1765,7 +1780,7 @@ describe("5. a file over the per-file cap", () => {
   });
 });
 
-describe("6. anything reached through a symbolic link", () => {
+describe("7. anything reached through a symbolic link", () => {
   it("steps over a linked directory and a linked file, recording neither", () => {
     const linked = project({ "Deep/V.swift": 'import SwiftUI\nNavigationView { Text("x") }\n' });
     const root = project({
@@ -1782,7 +1797,7 @@ describe("6. anything reached through a symbolic link", () => {
   });
 });
 
-describe("7. a configuration file that could not be parsed", () => {
+describe("8. a configuration file that could not be parsed", () => {
   it("takes the platform verdict to null when the plist that would have settled it is binary", () => {
     const swift = 'import SwiftUI\nText("Hi").font(.system(size: 17))\nNavigationView { Text("x") }\n';
     const binary = project({ "Info.plist": "bplist00 binary garbage", "Sources/V.swift": swift });
@@ -1801,7 +1816,7 @@ describe("7. a configuration file that could not be parsed", () => {
   });
 });
 
-describe("8. a plist value outside the reader's subset", () => {
+describe("9. a plist value outside the reader's subset", () => {
   it("drops a dict-valued, an integer-valued and an array-of-dicts key, and never sees a key nested inside one", () => {
     const config = readAppleConfig([{
       path: "Info.plist",
@@ -1855,7 +1870,7 @@ describe("8. a plist value outside the reader's subset", () => {
   });
 });
 
-describe("9. everything in a project.pbxproj other than INFOPLIST_KEY_*", () => {
+describe("10. everything in a project.pbxproj other than INFOPLIST_KEY_*", () => {
   const pbxproj = [
     "// !$*UTF8*$!",
     "{ buildSettings = {",
@@ -1898,7 +1913,7 @@ describe("9. everything in a project.pbxproj other than INFOPLIST_KEY_*", () => 
   });
 });
 
-describe("10. which target a declaration belongs to", () => {
+describe("11. which target a declaration belongs to", () => {
   it("reports a key declared by the share extension alone as a fact about the project", () => {
     const root = project({
       "App/Info.plist": plist("<key>CFBundleDisplayName</key>\n<string>Ledger</string>"),
@@ -1948,7 +1963,7 @@ describe("10. which target a declaration belongs to", () => {
   });
 });
 
-describe("11. localised values, and every localisation surface", () => {
+describe("12. localised values, and every localisation surface", () => {
   it("does not open InfoPlist.xcstrings, a .strings file, or an .lproj directory's contents", () => {
     const root = project({
       "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
@@ -1969,7 +1984,7 @@ describe("11. localised values, and every localisation surface", () => {
   });
 });
 
-describe("12. whether the Hardened Runtime is enabled", () => {
+describe("13. whether the Hardened Runtime is enabled", () => {
   it("says nothing about the runtime on a macOS project that enables it in its build settings", () => {
     const root = project({
       "Ledger.xcodeproj/project.pbxproj": "ENABLE_HARDENED_RUNTIME = YES;\n",
@@ -1993,7 +2008,7 @@ describe("12. whether the Hardened Runtime is enabled", () => {
   });
 });
 
-describe("13. purpose strings, in both directions", () => {
+describe("14. purpose strings, in both directions", () => {
   it("reports nothing on an iOS project that opens the camera and declares no usage description anywhere", () => {
     const root = project({
       "Info.plist": plist("<key>UILaunchStoryboardName</key>\n<string>LaunchScreen</string>"),
@@ -2022,7 +2037,7 @@ describe("13. purpose strings, in both directions", () => {
   });
 });
 
-describe("14. every platform-scoped rule when the verdict names no platform", () => {
+describe("15. every platform-scoped rule when the verdict names no platform", () => {
   const swift = 'import SwiftUI\nText("Hi").font(.system(size: 17))\nNavigationView { Text("x") }\n';
 
   it("runs fixed-font-size on an iOS verdict", () => {
@@ -2049,7 +2064,7 @@ describe("14. every platform-scoped rule when the verdict names no platform", ()
   });
 });
 
-describe("15. whether a Swift file is missing something", () => {
+describe("16. whether a Swift file is missing something", () => {
   it("fires symbol-as-only-button-label on a Button whose parent VStack carries the label", () => {
     const root = project({
       "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
@@ -2087,7 +2102,7 @@ describe("15. whether a Swift file is missing something", () => {
   });
 });
 
-describe("16. a Swift file whose comment masking went wrong", () => {
+describe("17. a Swift file whose comment masking went wrong", () => {
   it("finds nothing in a file whose live NavigationView was masked by an interpolated comment marker", () => {
     const root = project({
       "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
@@ -2124,7 +2139,7 @@ describe("16. a Swift file whose comment masking went wrong", () => {
   });
 });
 
-describe("17. the shapes the Swift rules do not match", () => {
+describe("18. the shapes the Swift rules do not match", () => {
   it("draws nothing from an iOS file carrying all five of them", () => {
     const root = project({
       "Info.plist": plist("<key>UILaunchStoryboardName</key>\n<string>LaunchScreen</string>"),
@@ -2162,28 +2177,13 @@ describe("17. the shapes the Swift rules do not match", () => {
   });
 });
 
-describe("18. the difference between code and a string that looks like code", () => {
+describe("19. the difference between code and a string that looks like code", () => {
   it("reports NavigationView written inside a string literal", () => {
     const root = project({
       "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
       "Sources/V.swift": 'import SwiftUI\nText("NavigationView is deprecated")\n',
     });
     expect(ruleLines(root)).toEqual(["navigationview-deprecated@2"]);
-  });
-});
-
-describe("19. what a colorset resolves to", () => {
-  it("passes a colorset whose declared dark value is identical to its light one", () => {
-    const components = { red: "0.900", green: "0.900", blue: "0.900", alpha: "1.000" };
-    const root = project({
-      "Assets.xcassets/Brand.colorset/Contents.json": JSON.stringify({
-        colors: [
-          { idiom: "universal", color: { "color-space": "srgb", components } },
-          { idiom: "universal", appearances: [{ appearance: "luminosity", value: "dark" }], color: { "color-space": "srgb", components } },
-        ],
-      }),
-    });
-    expect(rules(root)).toEqual([]);
   });
 });
 
@@ -2310,6 +2310,21 @@ describe("23. a file that is not UTF-8 text", () => {
   });
 });
 
+describe("24. what a colorset resolves to", () => {
+  it("passes a colorset whose declared dark value is identical to its light one", () => {
+    const components = { red: "0.900", green: "0.900", blue: "0.900", alpha: "1.000" };
+    const root = project({
+      "Assets.xcassets/Brand.colorset/Contents.json": JSON.stringify({
+        colors: [
+          { idiom: "universal", color: { "color-space": "srgb", components } },
+          { idiom: "universal", appearances: [{ appearance: "luminosity", value: "dark" }], color: { "color-space": "srgb", components } },
+        ],
+      }),
+    });
+    expect(rules(root)).toEqual([]);
+  });
+});
+
 // The form, not the effort. v0.24.0 shipped six false absence claims and every
 // round that corrected them by hand wrote more; the sentence form is what is
 // enforced. These are the patterns `tests/integrity.test.ts` applies to the
@@ -2340,6 +2355,13 @@ describe("the disclosure list never states an absence in the unbounded form", ()
     { name: "Apple does not <publication verb>", re: new RegExp(`${APPLE}${GAP}\\b(?:does\\s+not|doesn't|do\\s+not|don't)\\s+(?:${ABSENCE_VERBS})\\b`, "g") },
     { name: "<subject> never <publication verb>", re: new RegExp(`\\b\\w+\\s+never\\s+(?:${ABSENCE_VERBS})\\b`, "gi") },
     { name: "<publication verb> nowhere", re: new RegExp(`\\b(?:${ABSENCE_VERBS})\\s+(?:it\\s+|them\\s+)?nowhere\\b`, "gi") },
+    // Two shapes the shared patterns miss, found by M3 in this module's own
+    // comments and added here because both are one preposition away from a
+    // form already banned. "…and stated for no other" moves the quantifier
+    // behind a preposition; "nowhere states it is exclusive" moves `nowhere`
+    // in front of the verb, where the pattern above expects it behind.
+    { name: "<publication verb> for/on/in no <thing>", re: new RegExp(`\\b(?:${ABSENCE_VERBS})\\s+(?:for|on|in|of|about|to)\\s+(?:no|none|nothing)\\b`, "gi") },
+    { name: "nowhere <publication verb>", re: new RegExp(`\\bnowhere\\s+(?:${ABSENCE_VERBS})\\b`, "gi") },
     { name: "any/every/no Apple page", re: /\b(?:any|every|no|all)\s+Apple\s+(?:page|pages|surface|surfaces|document|documents|documentation|source|sources)\b(?!\s+(?:searched|checked|read|fetched|listed))/gi },
     // Specific to this list: an absence claim whose subject is the audited
     // project rather than the files that were read. "The project does not
@@ -2360,10 +2382,103 @@ describe("the disclosure list never states an absence in the unbounded form", ()
     expect(offenders).toEqual([]);
   });
 
+  const body = (r: { text: string }) =>
+    r.text.slice(0, r.text.indexOf("## Not visible to this audit")).replace(/\*\*/g, "").replace(/\*/g, "");
+
   it("holds the preamble, the closing and the report's own prose to the same forms", () => {
     const r = appleReport(join(FIXTURES, "ios-findings"));
-    const prose = [APPLE_PREAMBLE, APPLE_CLOSING, r.text.slice(0, r.text.indexOf("## Not visible to this audit"))]
-      .join("\n").replace(/\*\*/g, "").replace(/\*/g, "");
+    const prose = [APPLE_PREAMBLE, APPLE_CLOSING, body(r)].join("\n");
+    const offenders: string[] = [];
+    for (const { re } of FORMS) for (const m of prose.matchAll(re)) offenders.push(m[0]);
+    expect(offenders).toEqual([]);
+  });
+
+  // `ios-findings` reaches neither macOS-only rule, so the message and fix
+  // strings of `sandbox-absent-macos` — the one rule on this server whose whole
+  // subject is a requirement Apple scopes to a channel — went through the body
+  // guard on no input at all. This runs it on a macOS project firing every
+  // macOS-reachable rule, and on the null-verdict prose beside it.
+  const MACOS_EVERY_RULE = {
+    "Ledger/Info.plist": plist("<key>LSMinimumSystemVersion</key>\n<string>14.0</string>"),
+    "Ledger/Ledger.entitlements": plist("<key>com.apple.security.device.microphone</key>\n<true/>"),
+    "Ledger/Assets.xcassets/Brand.colorset/Contents.json": JSON.stringify({
+      colors: [{ idiom: "universal", color: { "color-space": "srgb", components: { red: "0.1", green: "0.2", blue: "0.3", alpha: "1" } } }],
+    }),
+    "Ledger/App.swift":
+      'import AppKit\nimport SwiftUI\nlet brand = Color(red: 0.1, green: 0.2, blue: 0.3)\nNavigationView { Text("x") }\nButton(action: go) { Image(systemName: "gear") }\n',
+  };
+
+  it("holds a macOS report firing every macOS-reachable rule to the same forms", () => {
+    const root = project(MACOS_EVERY_RULE);
+    const r = appleReport(root);
+
+    // Non-vacuity first: the guard below is worthless if the macOS-only rule's
+    // prose is not in the text it reads.
+    expect(r.text).toContain("**Platform: macOS**");
+    expect([...new Set(rules(root))].sort()).toEqual([
+      "colorset-no-dark-variant",
+      "hardcoded-color-literal",
+      "microphone-entitlement-mismatch",
+      "navigationview-deprecated",
+      "sandbox-absent-macos",
+      "symbol-as-only-button-label",
+    ]);
+
+    const offenders: string[] = [];
+    for (const { re } of FORMS) for (const m of body(r).matchAll(re)) offenders.push(m[0]);
+    expect(offenders).toEqual([]);
+  });
+
+  it("holds the null-verdict prose, and uirequiresfullscreen's, to the same forms", () => {
+    // The branch that says every platform-scoped rule stayed silent, which the
+    // iOS and macOS reports never print. `UIRequiresFullScreen` is itself an
+    // iOS signal, so the one rule left out of the macOS set above is reachable
+    // from exactly here.
+    const root = project({
+      "Ledger/Info.plist": plist("<key>UIRequiresFullScreen</key>\n<true/>"),
+      "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_LSMinimumSystemVersion = 14.0;\n",
+      "Ledger/App.swift": 'import AppKit\nimport SwiftUI\nNavigationView { Text("x") }\n',
+    });
+    const r = appleReport(root);
+    expect(r.text).toContain("**Every platform-scoped rule stayed silent**");
+    expect(rules(root)).toContain("uirequiresfullscreen-deprecated");
+
+    const offenders: string[] = [];
+    for (const { re } of FORMS) for (const m of body(r).matchAll(re)) offenders.push(m[0]);
+    expect(offenders).toEqual([]);
+  });
+
+  // The doctrine's own comments were the one door nobody was watching. Two
+  // sentences in `apple.ts` — the header paragraph that forbids the unbounded
+  // form, and the doc comment on `appleConfigRules` — were written in it:
+  // "Apple's requirement is scoped to one channel and stated for no other" and
+  // "…and nowhere states it is exclusive to that channel". Both are the exact
+  // shape the paragraph beside them rejects.
+  //
+  // A quoted specimen is exempt, because this list quotes the banned form in
+  // order to name it: `never "Apple does not publish X"` is a mention, not a
+  // use, which is the same distinction the doctrine draws.
+  it.each([
+    ["apple.ts", "Absent from the project"],
+    ["appleconfig.ts", "Reads colorsets out of an already-collected list"],
+  ])("holds %s's own comments to the same forms", (file, anchor) => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", file), "utf8");
+    const prose = [...src.matchAll(/\/\*[\s\S]*?\*\/|(?:^[ \t]*\/\/.*$\n?)+/gm)]
+      .map((m) => m[0].replace(/^[ \t]*(?:\/\*+|\*+\/|\*|\/\/)[ \t]?/gm, ""))
+      // Quoted spans are removed one comment block at a time, and only where
+      // the block's quotes pair. A quote may wrap across comment lines, so the
+      // span must not stop at a newline — but stripping across the whole file
+      // pairs a quote opened in one block with one opened in the next and
+      // swallows every sentence in between, which is a guard that has quietly
+      // stopped checking. An odd block is left whole: a false positive is
+      // visible, a silent gap is not.
+      .map((b) => ((b.match(/"/g) ?? []).length % 2 === 0 ? b.replace(/"[^"]*"/g, " — ") : b))
+      .join("\n")
+      .replace(/\*\*/g, "").replace(/\*/g, "");
+
+    // Non-vacuity: the comments really were read, and they really are prose.
+    expect(prose).toContain(anchor);
+
     const offenders: string[] = [];
     for (const { re } of FORMS) for (const m of prose.matchAll(re)) offenders.push(m[0]);
     expect(offenders).toEqual([]);

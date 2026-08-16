@@ -22,12 +22,17 @@
 //     directions are wrong in the direction that costs a reader their trust,
 //     so it is disclosed rather than reported.
 //  2. **Absent from the project** is not **not required by Apple.** Two rules
-//     below concern macOS distribution, where Apple's requirement is scoped to
-//     one channel and stated for no other. They name that channel. A message
-//     of the form "Apple requires no X" is a claim about every Apple surface
-//     at once, and one fetch has falsified that form five times in this
-//     project's history; the scoped form is a claim about a named page and is
-//     correctable by adding a page rather than reversing an assertion.
+//     below concern macOS distribution, where Apple scopes the requirement to
+//     one channel on the two pages read for them and states it for no other
+//     channel on either. They name that channel, and they name the pages. A
+//     message of the form "Apple requires no X" is a claim about all of
+//     Apple's surfaces at once, and one fetch has falsified that form five
+//     times in this project's history; the scoped form is a claim about a page
+//     and is correctable by adding a page rather than reversing an assertion.
+//     That standard binds these comments as much as the strings they explain —
+//     two sentences here were written in the unbounded form the paragraph
+//     rejects, which is the failure mode arriving through the one door nobody
+//     was watching.
 //  3. **Nothing inferred inherits the licence.** The Hardened Runtime is the
 //     case that proves it, and it is why there is no `hardened-runtime-absent-macos`
 //     rule here. The capability has no entitlement of its own — it is a build
@@ -133,13 +138,15 @@ const NO_LINE = 0;
  *   the four surfaces read here. There is deliberately no rule for it in
  *   either direction — see limit 3 in the header comment — and the fact is
  *   handed to the disclosure list instead.
- * - **The distribution channel.** Nothing in a project's configuration states
- *   whether it ships through the Mac App Store, with Developer ID, or not at
- *   all. In particular an entitlement does not name a channel: Apple requires
- *   the sandbox *for* Mac App Store distribution and nowhere states it is
- *   exclusive *to* that channel, and sandboxed Developer ID apps are
- *   documented. `sandbox-absent-macos` is conditional on a channel and says
- *   so; it does not claim to know which one applies.
+ * - **The distribution channel.** Nothing in the four surfaces read here
+ *   states whether a project ships through the Mac App Store, with Developer
+ *   ID, or not at all. In particular an entitlement does not name a channel:
+ *   the two pages this rule cites — the App Sandbox capability page and
+ *   Review Guideline 2.4.5(i) — require the sandbox *for* Mac App Store
+ *   distribution, and neither of them states it is exclusive *to* that
+ *   channel, while sandboxed Developer ID apps are documented.
+ *   `sandbox-absent-macos` is conditional on a channel and says so; it does
+ *   not claim to know which one applies.
  * - **What a colorset resolves to.** `hasDarkVariant` is a declaration, not a
  *   colour. No contrast verdict is reachable from it.
  * - **A surface that could not be read.** `config.unparsed` — a binary plist,
