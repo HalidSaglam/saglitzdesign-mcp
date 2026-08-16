@@ -518,6 +518,41 @@ describe("symbol-as-only-button-label", () => {
     expect(swiftIds(`Button(action: go) { Image(systemName: symbolName) }`)).toEqual([]);
   });
 
+  // The rule's sentence is that the spoken name is *derived* rather than
+  // written. A modifier on the same line that writes it, or that takes the
+  // element out of VoiceOver, falsifies that sentence — and it is a presence in
+  // the characters the rule already has, not a parent it cannot see.
+  it("stays quiet when the symbol carries a written label, a value, or is hidden", () => {
+    expect(swiftIds(`Button(action: go) { Image(systemName: "gear").accessibilityLabel("Settings") }`)).toEqual([]);
+    expect(swiftIds(`Button(action: go) { Image(systemName: "gear").accessibilityHidden(true) }`)).toEqual([]);
+    expect(swiftIds(`Button(action: go) { Image(systemName: "gear").accessibilityValue("3") }`)).toEqual([]);
+    expect(swiftIds(`Button(action: go) { Image(systemName: "gear").font(.title2).accessibilityLabel("Settings") }`)).toEqual([]);
+  });
+
+  it("stays quiet when the label is written on the Button rather than the symbol", () => {
+    expect(swiftIds(`Button(action: go) { Image(systemName: "gear") }.accessibilityLabel("Settings")`)).toEqual([]);
+    expect(swiftIds(`Button { go() } label: { Image(systemName: "gear") }.accessibilityLabel("Settings")`)).toEqual([]);
+    expect(swiftIds(`Button(action: go) { Image(systemName: "gear") }.padding(8).accessibilityLabel("Settings")`)).toEqual([]);
+  });
+
+  // Combining the children of a button whose only child is the symbol still
+  // yields the symbol's derived label, so this one changes nothing.
+  it("still fires under accessibilityElement(children:), which writes no name", () => {
+    expect(swiftIds(`Button(action: go) { Image(systemName: "gear") }.accessibilityElement(children: .combine)`))
+      .toContain("symbol-as-only-button-label");
+  });
+
+  // Taking the rule's own advice has to end the finding. Before the override
+  // check, the fix advised `.accessibilityLabel(…)` and the identical finding
+  // came straight back — a loop the reader could not exit.
+  it("goes quiet once the reader applies the fix it printed", () => {
+    const before = `Button(action: go) { Image(systemName: "gear") }`;
+    expect(swiftIds(before)).toContain("symbol-as-only-button-label");
+    const advice = swift(before)[0].fix;
+    expect(advice).toContain(".accessibilityLabel");
+    expect(swiftIds(`Button(action: go) { Image(systemName: "gear").accessibilityLabel("Settings") }`)).toEqual([]);
+  });
+
   it("is info, and names the risk rather than asserting a defect", () => {
     const f = swift(`Button(action: go) { Image(systemName: "slider.vertical.3") }`)[0];
     expect(f.severity).toBe("info");
@@ -656,6 +691,29 @@ describe("the shape every Swift finding leaves in", () => {
     for (const f of everything) {
       expect(forbidden.test(`${f.message} ${f.fix}`), `${f.rule}: ${f.message} ${f.fix}`).toBe(false);
     }
+  });
+
+  // A shipped sentence here once asserted that `NavigationView`'s deprecation is
+  // "invisible in the rendered documentation page's prose" and lives only in the
+  // JSON. The rendered page carries an H1 reading "NavigationView Deprecated",
+  // a seven-row Availability strip and a deprecated aside — the claim was false,
+  // and it was false because the deprecation was fetched and the claim about how
+  // it renders was not. Provenance ("read from `metadata.platforms[]`") is true
+  // and stays; a claim about what a page shows a human is not this module's to
+  // make from a JSON fetch.
+  it("describes where it read a fact, never how Apple's page renders it", () => {
+    const forbidden = /\binvisible in the rendered\b|\bdoes not appear in the (?:rendered|page's) (?:page|prose)\b|\blives only in\b|\bonly in the (?:page's )?JSON\b|\bnot (?:shown|visible) (?:in|on) the (?:rendered )?page\b/i;
+    for (const f of everything) {
+      expect(forbidden.test(`${f.message} ${f.fix}`), `${f.rule}: ${f.message} ${f.fix}`).toBe(false);
+    }
+  });
+
+  // `deprecated: false` on every row: the deprecation lands *at* 27.0, and
+  // nothing this module reads is the project's deployment target.
+  it("does not present a future deprecation as one already in force", () => {
+    const f = everything.find((x) => x.rule === "navigationview-deprecated")!;
+    expect(f.message).toContain("deprecated: false");
+    expect(f.message).toMatch(/deployment target/i);
   });
 
   // §3.2 of the sourcing note: `Mac Catalyst` and `macOS` are distinct strings

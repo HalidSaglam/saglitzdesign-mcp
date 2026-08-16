@@ -364,32 +364,68 @@ function matchBalanced(src: string, from: number, open: string, close: string): 
 }
 
 /**
- * The literal symbol name when `body` is nothing but one `Image(systemName:)`
- * expression, or null.
+ * Walks a chain of `.name(…)` / `.name` modifier segments from `from`, greedily,
+ * returning the names in order and the index just past the last one it could
+ * read. Stops — rather than fails — at the first text that is not a segment, so
+ * a caller that needs the chain to cover everything checks `end` itself.
+ */
+function modifierChain(src: string, from: number): { names: string[]; end: number } {
+  const names: string[] = [];
+  let i = from;
+  for (;;) {
+    const segment = /^\s*\.([A-Za-z_][A-Za-z0-9_]*)\s*/.exec(src.slice(i));
+    if (!segment) return { names, end: i };
+    let next = i + segment[0].length;
+    if (src[next] === "(") {
+      const after = matchBalanced(src, next, "(", ")");
+      if (after === -1) return { names, end: i };
+      next = after;
+    }
+    names.push(segment[1]);
+    i = next;
+  }
+}
+
+/**
+ * The modifiers whose presence falsifies `symbol-as-only-button-label` outright,
+ * on the very line the rule is reading.
  *
- * A trailing chain of modifiers is allowed — `Image(systemName: "gear")
- * .font(.title2).foregroundStyle(.tint)` is still a label consisting of one
- * symbol and nothing else. A second view, a container, or a symbol name that is
- * an identifier rather than a string literal all return null: in the last case
- * this file cannot name the symbol, and a finding that cannot quote the
- * identifier it is warning about is not worth reading.
+ * The rule's sentence is that the name VoiceOver speaks is *derived from the
+ * symbol rather than written*. Each of these writes it, or removes the element
+ * from VoiceOver entirely, so the sentence is false wherever one appears — and
+ * unlike the parent-modifier and other-file cases this module refuses to guess
+ * at, this one is a **presence** in the characters the rule already has in hand.
+ * Not checking it would also have made the rule's own `fix` a loop: it advises
+ * `.accessibilityLabel(…)`, and before this the identical finding came back
+ * unchanged after the reader took the advice.
+ *
+ * `accessibilityElement(children:)` is deliberately **not** here. Combining the
+ * children of a button whose only child is the symbol still yields the symbol's
+ * derived label, so it does not falsify anything.
+ */
+const ACCESSIBILITY_OVERRIDES = new Set(["accessibilityLabel", "accessibilityHidden", "accessibilityValue"]);
+
+/**
+ * The literal symbol name when `body` is nothing but one `Image(systemName:)`
+ * expression whose modifiers leave the spoken name derived, or null.
+ *
+ * A trailing chain of presentation modifiers is allowed — `Image(systemName:
+ * "gear").font(.title2).foregroundStyle(.tint)` is still a label consisting of
+ * one symbol and nothing else. A second view, a container, a chain carrying an
+ * `ACCESSIBILITY_OVERRIDES` member, or a symbol name that is an identifier
+ * rather than a string literal all return null. In the last case this file
+ * cannot name the symbol, and a finding that cannot quote the identifier it is
+ * warning about is not worth reading.
  */
 function loneSymbolName(body: string): string | null {
   const trimmed = body.trim();
   const named = /^Image\(\s*systemName\s*:\s*"([^"\\]*)"/.exec(trimmed);
   if (!named) return null;
-  let i = matchBalanced(trimmed, trimmed.indexOf("("), "(", ")");
-  if (i === -1) return null;
-  while (i < trimmed.length) {
-    const modifier = /^\s*\.[A-Za-z_][A-Za-z0-9_]*\s*/.exec(trimmed.slice(i));
-    if (!modifier) return null;
-    i += modifier[0].length;
-    if (trimmed[i] === "(") {
-      const after = matchBalanced(trimmed, i, "(", ")");
-      if (after === -1) return null;
-      i = after;
-    }
-  }
+  const afterInit = matchBalanced(trimmed, trimmed.indexOf("("), "(", ")");
+  if (afterInit === -1) return null;
+  const chain = modifierChain(trimmed, afterInit);
+  if (chain.end !== trimmed.length) return null;
+  if (chain.names.some((name) => ACCESSIBILITY_OVERRIDES.has(name))) return null;
   return named[1];
 }
 
@@ -468,7 +504,7 @@ export function appleSwiftRules(
           line: lineOf(m.index),
           severity: "warning",
           rule: "fixed-font-size",
-          message: `\`.font(.system(size: ${m[1]}))\` sets a point size directly: it takes a bare \`CGFloat\`, with no text style behind it to scale against. Apple's rule is stated plainly — "To add support for Dynamic Type in your app, you use text styles" — and Dynamic Type is a system-level feature on iOS and iPadOS. This line is reported because the platform signals for this project resolved to iOS; the identical line on a macOS target is not, since "macOS doesn't support Dynamic Type" and the built-in macOS text styles resolve to fixed points themselves.`,
+          message: `\`.font(.system(size: ${m[1]}))\` appears on this line. That form takes a bare \`CGFloat\` and has no text style behind it to scale against. Apple's rule is stated plainly — "To add support for Dynamic Type in your app, you use text styles" — and Dynamic Type is a system-level feature on iOS and iPadOS. This line is reported because the platform signals for this project resolved to iOS; the identical line on a macOS target is not, since "macOS doesn't support Dynamic Type" and the built-in macOS text styles resolve to fixed points themselves.`,
           fix: `Use a text style — \`.font(.body)\`, \`.font(.headline)\`, \`.font(.caption)\` — so the size follows the reader's setting. Where a specific face is required, \`Font.custom(_:size:relativeTo:)\` scales relative to a named text style, and \`@ScaledMetric(relativeTo:)\` scales the padding and frames around it so the container grows too. If this size is deliberate and the view has been checked at the AX5 size, nothing needs to change.`,
           doc: "apple-accessibility",
         });
@@ -482,8 +518,8 @@ export function appleSwiftRules(
         line: lineOf(m.index),
         severity: "warning",
         rule: "navigationview-deprecated",
-        message: `\`NavigationView\` appears on this line. Apple's reference page for it carries \`deprecatedAt: 27.0\` on every platform it lists — iOS, iPadOS, Mac Catalyst, macOS, tvOS, visionOS and watchOS — with a deprecation summary reading "Use \`NavigationStack\` and \`NavigationSplitView\` instead." The deprecation is invisible in the rendered documentation page's prose; it lives in that page's own JSON metadata, which is where this was read from.`,
-        fix: `Replace it with \`NavigationStack\` for a push hierarchy, or \`NavigationSplitView\` for a sidebar-and-detail layout; Apple's "Migrating to New Navigation Types" article covers the conversion, including replacing \`NavigationLink(destination:)\` with a value-plus-\`navigationDestination(for:)\` pair. \`NavigationStack\` is also one of the standard containers that adopts Liquid Glass automatically on a rebuild against the latest SDKs, so the migration and the redesign are the same piece of work.`,
+        message: `\`NavigationView\` appears on this line. All seven platform rows on Apple's reference page for it — iOS, iPadOS, Mac Catalyst, macOS, tvOS, visionOS and watchOS — carry \`deprecatedAt: 27.0\`, and the page's deprecation summary names \`NavigationStack\` and \`NavigationSplitView\` as the replacements; read from that page's \`metadata.platforms[]\` and \`deprecationSummary\`. Every row also carries \`deprecated: false\`, so the deprecation lands *at* 27.0 — and nothing read here is this project's deployment target, so how soon that matters is a question this finding does not answer.`,
+        fix: `Replace it with \`NavigationStack\` for a push hierarchy, or \`NavigationSplitView\` for a sidebar-and-detail layout; Apple's "Migrating to new navigation types" article covers the conversion. \`NavigationStack\` is also one of the standard containers that adopts Liquid Glass automatically on a rebuild against the latest SDKs, so the migration and the redesign are the same piece of work.`,
         doc: "apple-hig-liquid-glass",
       });
     }
@@ -496,7 +532,7 @@ export function appleSwiftRules(
         line: lineOf(m.index),
         severity: "info",
         rule: "hardcoded-color-literal",
-        message: `\`${written}\` writes a colour as numbers on this line. A colour in an Apple app is normally a resource rather than a literal: \`Color(_:bundle:)\` loads "a color from a color set stored in an Asset Catalog", and "the system determines which color within the set to use based on the environment at render time". A literal has no light, dark or increased-contrast variant to resolve to, so it renders the same value in every appearance and under Increase Contrast. This says nothing about the colour's contrast ratio — that depends on what it is drawn against, which this line does not carry.`,
+        message: `\`${written}\` appears on this line. That form writes a colour as numbers rather than resolving one from a resource, and a colour in an Apple app is normally a resource: \`Color(_:bundle:)\` loads "a color from a color set stored in an Asset Catalog", and "the system determines which color within the set to use based on the environment at render time". A literal has no light, dark or increased-contrast variant to resolve to, so it renders the same value in every appearance and under Increase Contrast. This says nothing about the colour's contrast ratio — that depends on what it is drawn against, which this line does not carry.`,
         fix: `Move the value into a colorset in \`Assets.xcassets\` and reference it as \`Color("Name")\`, giving it light, dark and increased-contrast variants — or reach for a system semantic colour (\`.primary\`, \`.secondary\`, \`labelColor\`, \`windowBackgroundColor\`, \`controlAccentColor\`), which carries those variants already and follows the user's accent. If this literal is deliberately fixed — a brand swatch reproduced exactly, a chart series, a value that must not adapt — it is doing what it was written to do.`,
         doc: "apple-accessibility",
       });
@@ -508,6 +544,13 @@ export function appleSwiftRules(
     // trailing closure is the label, and `Button { action } label: { label }`,
     // where it is the second. Anything else — an unbalanced brace, a label
     // holding more than one view, a symbol named by a variable — emits nothing.
+    //
+    // An `ACCESSIBILITY_OVERRIDES` modifier suppresses the finding from either
+    // of two positions, because the spoken name can be written in either: on the
+    // symbol inside the closure (handled in `loneSymbolName`) or on the whole
+    // `Button` expression after it (handled here). Both are characters on the
+    // line the rule already read — this is not the module guessing at a parent
+    // it cannot see, it is the module declining to ignore what it can.
     BUTTON.lastIndex = 0;
     for (let m = BUTTON.exec(masked); m; m = BUTTON.exec(masked)) {
       let i = m.index + "Button".length;
@@ -525,6 +568,7 @@ export function appleSwiftRules(
       const afterFirst = matchBalanced(masked, i, "{", "}");
       if (afterFirst === -1) continue;
       let body = masked.slice(i + 1, afterFirst - 1);
+      let buttonEnd = afterFirst;
 
       let j = afterFirst;
       while (j < masked.length && /\s/.test(masked[j])) j++;
@@ -535,10 +579,13 @@ export function appleSwiftRules(
         const afterLabel = matchBalanced(masked, j, "{", "}");
         if (afterLabel === -1) continue;
         body = masked.slice(j + 1, afterLabel - 1);
+        buttonEnd = afterLabel;
       }
 
       const symbol = loneSymbolName(body);
       if (symbol === null) continue;
+      const outer = modifierChain(masked, buttonEnd);
+      if (outer.names.some((name) => ACCESSIBILITY_OVERRIDES.has(name))) continue;
       found.push({
         line: lineOf(m.index),
         severity: "info",
