@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { join } from "node:path";
-import { appleConfigRules } from "../dist/apple.js";
+import { appleConfigRules, appleSwiftRules } from "../dist/apple.js";
 import { inferPlatform } from "../dist/appleconfig.js";
 import { loadKnowledge, findDoc } from "../dist/knowledge.js";
 
@@ -395,6 +395,284 @@ describe("the spelling divergence between inferPlatform and the rules", () => {
   });
 });
 
+// ── the Swift rules ─────────────────────────────────────────────────────────
+//
+// Everything below states a presence. There is deliberately no test asserting
+// that a rule fires on "a control with no accessibility label" or "a file that
+// never respects Reduce Motion", because a line-based reader cannot see either:
+// a modifier on a parent covers its children, and the check may live in another
+// file entirely. What a line can prove is what it itself writes.
+
+const IOS_SWIFT: Verdict = { platform: "ios", signals: ["import UIKit in any Swift file"], conflicted: false };
+const swift = (source: string, platform: Verdict = IOS_SWIFT, path = "V.swift") =>
+  appleSwiftRules([{ path, source }], platform);
+const swiftIds = (source: string, platform: Verdict = IOS_SWIFT, path = "V.swift") =>
+  swift(source, platform, path).map((f) => f.rule);
+
+describe("fixed-font-size", () => {
+  it("reports a fixed point size on iOS", () => {
+    expect(swiftIds(`Text("Hi").font(.system(size: 17))`)).toContain("fixed-font-size");
+  });
+
+  it("stays silent on macOS, which has no Dynamic Type", () => {
+    expect(swiftIds(`Text("Hi").font(.system(size: 17))`, MACOS)).not.toContain("fixed-font-size");
+  });
+
+  it("stays silent when the platform is unknown", () => {
+    expect(swiftIds(`Text("Hi").font(.system(size: 17))`, { platform: null, signals: [], conflicted: false })).not.toContain("fixed-font-size");
+  });
+
+  it("stays silent when the signals conflicted, even though one of them was iOS", () => {
+    expect(swiftIds(`Text("Hi").font(.system(size: 17))`, CONFLICTED)).not.toContain("fixed-font-size");
+  });
+
+  it("leaves a text style alone", () => {
+    expect(swiftIds(`Text("Hi").font(.body)`)).toEqual([]);
+  });
+
+  it("reports the size it found, and reports a fractional one too", () => {
+    expect(swift(`Text("Hi").font(.system(size: 17.5, weight: .semibold))`)[0].message).toContain("17.5");
+  });
+
+  it("names iOS as the reason it spoke, so a reader can see the gate", () => {
+    expect(swift(`Text("Hi").font(.system(size: 17))`)[0].message).toMatch(/macOS doesn't support Dynamic Type/);
+  });
+});
+
+describe("navigationview-deprecated", () => {
+  it("reports NavigationView on any platform", () => {
+    expect(swiftIds(`NavigationView { List { } }`, { platform: null, signals: [], conflicted: false })).toContain("navigationview-deprecated");
+    expect(swiftIds(`NavigationView { List { } }`, MACOS)).toContain("navigationview-deprecated");
+  });
+
+  it("leaves NavigationStack alone", () => {
+    expect(swiftIds(`NavigationStack { List { } }`, { platform: null, signals: [], conflicted: false })).toEqual([]);
+  });
+
+  it("leaves NavigationSplitView and the view modifier alone", () => {
+    expect(swiftIds(`NavigationSplitView { S() } detail: { D() }.navigationViewStyle(.stack)`)).toEqual([]);
+  });
+
+  it("quotes the deprecation summary Apple ships in the page's JSON metadata", () => {
+    const f = swift(`NavigationView { List { } }`)[0];
+    expect(f.message).toContain("27.0");
+    expect(f.fix).toContain("NavigationStack");
+    expect(f.fix).toContain("NavigationSplitView");
+  });
+});
+
+describe("hardcoded-color-literal", () => {
+  it("reports the SwiftUI component initialiser", () => {
+    expect(swiftIds(`let brand = Color(red: 0.1, green: 0.2, blue: 0.3)`)).toEqual(["hardcoded-color-literal"]);
+  });
+
+  it("reports the UIKit and AppKit initialisers, and Xcode's colour literal", () => {
+    expect(swiftIds(`let a = UIColor(red: 1, green: 0, blue: 0, alpha: 1)`)).toEqual(["hardcoded-color-literal"]);
+    expect(swiftIds(`let b = NSColor(red: 1, green: 0, blue: 0, alpha: 1)`)).toEqual(["hardcoded-color-literal"]);
+    expect(swiftIds(`let c = #colorLiteral(red: 1, green: 0, blue: 0, alpha: 1)`)).toEqual(["hardcoded-color-literal"]);
+  });
+
+  it("reports `UIColor(red:` once, not twice — the name ends in `Color(`", () => {
+    expect(swiftIds(`let a = UIColor(red: 1, green: 0, blue: 0, alpha: 1)`)).toHaveLength(1);
+  });
+
+  it("leaves an asset-catalog colour and a semantic colour alone", () => {
+    expect(swiftIds(`Text("Hi").foregroundStyle(Color("Brand")).background(Color.secondary)`)).toEqual([]);
+    expect(swiftIds(`view.backgroundColor = .systemBackground`)).toEqual([]);
+  });
+
+  it("names the initialiser it matched, so the reader knows which one fired", () => {
+    expect(swift(`let a = #colorLiteral(red: 1, green: 0, blue: 0, alpha: 1)`)[0].message).toContain("#colorLiteral");
+  });
+});
+
+describe("symbol-as-only-button-label", () => {
+  it("reports a lone system symbol as a button's label", () => {
+    expect(swiftIds(`Button(action: go) { Image(systemName: "slider.vertical.3") }`)).toContain("symbol-as-only-button-label");
+  });
+
+  it("leaves a button with a text label alone", () => {
+    expect(swiftIds(`Button(action: go) { Text("Edit Budgets") }`)).toEqual([]);
+  });
+
+  it("leaves a Label alone, whose title still speaks under .iconOnly", () => {
+    expect(swiftIds(`Button(action: go) { Label("Edit Budgets", systemImage: "slider.vertical.3").labelStyle(.iconOnly) }`)).toEqual([]);
+  });
+
+  it("reads the trailing `label:` closure, not the action closure", () => {
+    expect(swiftIds(`Button { go() } label: { Image(systemName: "gear") }`)).toContain("symbol-as-only-button-label");
+    expect(swiftIds(`Button { Image(systemName: "gear").renderingMode(.template) } label: { Text("Settings") }`)).toEqual([]);
+  });
+
+  it("still fires when the symbol carries modifiers — it is still the whole label", () => {
+    expect(swiftIds(`Button(action: go) { Image(systemName: "gear").font(.title2).foregroundStyle(.tint) }`))
+      .toContain("symbol-as-only-button-label");
+  });
+
+  it("stays quiet when the label holds more than the symbol", () => {
+    expect(swiftIds(`Button(action: go) { Image(systemName: "gear"); Text("Settings") }`)).toEqual([]);
+    expect(swiftIds(`Button(action: go) { HStack { Image(systemName: "gear") } }`)).toEqual([]);
+  });
+
+  it("stays quiet when the symbol name is not a literal this file can read", () => {
+    expect(swiftIds(`Button(action: go) { Image(systemName: symbolName) }`)).toEqual([]);
+  });
+
+  it("is info, and names the risk rather than asserting a defect", () => {
+    const f = swift(`Button(action: go) { Image(systemName: "slider.vertical.3") }`)[0];
+    expect(f.severity).toBe("info");
+    expect(f.message).toContain("slider.vertical.3");
+    expect(f.message).toMatch(/derived from the SF Symbol/);
+    // Apple documents automatic labels, so the message may not say there is none.
+    expect(f.message).not.toMatch(/\b(no|missing|without an?) accessibility label\b|\bunlabell?ed\b/i);
+  });
+});
+
+describe("what the Swift rules read, and what they refuse to read", () => {
+  it("never fires on commented-out code", () => {
+    expect(swiftIds(`// Text("Hi").font(.system(size: 17))`)).toEqual([]);
+    expect(swiftIds(`/* NavigationView { } */`)).toEqual([]);
+    expect(swiftIds(`let a = 1 // #colorLiteral(red: 1, green: 0, blue: 0, alpha: 1)`)).toEqual([]);
+  });
+
+  // Swift block comments nest; a flat scanner stops at the first `*/` and lets
+  // the rest of the commented-out region back in as live code.
+  it("honours Swift's nested block comments", () => {
+    expect(swiftIds(`/* outer /* inner */ NavigationView { } */`)).toEqual([]);
+  });
+
+  // The masker's extension gate is `.swift`, case-insensitively. A path that
+  // does not end there is never masked, so this module does not read it at all
+  // rather than reading it unmasked.
+  it("reads only paths that end in .swift, in any case", () => {
+    expect(swiftIds(`NavigationView { }`, IOS_SWIFT, "V.SWIFT")).toEqual(["navigationview-deprecated"]);
+    expect(swiftIds(`NavigationView { }`, IOS_SWIFT, "V.swift.txt")).toEqual([]);
+    expect(swiftIds(`NavigationView { }`, IOS_SWIFT, "Package.resolved")).toEqual([]);
+  });
+
+  it("carries a real 1-based line, never the configuration rules' line 0", () => {
+    const src = ["import SwiftUI", "", "NavigationView {", "  Text(\"Hi\").font(.system(size: 17))", "}"].join("\n");
+    const f = swift(src);
+    expect(f.find((x) => x.rule === "navigationview-deprecated")!.line).toBe(3);
+    expect(f.find((x) => x.rule === "fixed-font-size")!.line).toBe(4);
+    expect(f.every((x) => x.line > 0)).toBe(true);
+  });
+
+  it("emits one finding per occurrence, at its own line", () => {
+    const src = ["NavigationView {", "  NavigationView { }", "}"].join("\n");
+    const f = swift(src);
+    expect(f).toHaveLength(2);
+    expect(f.map((x) => x.line)).toEqual([1, 2]);
+    // Distinct lines, so the codebase's `rule:line` dedupe idiom is safe here —
+    // unlike the configuration rules above, which all sit at line 0.
+    expect(new Set(f.map((x) => `${x.rule}:${x.line}`)).size).toBe(2);
+  });
+
+  it("walks every file it is handed, and says nothing about an empty list", () => {
+    const many = appleSwiftRules([
+      { path: "A.swift", source: `NavigationView { }` },
+      { path: "B.swift", source: `Text("Hi").font(.system(size: 12))` },
+    ], IOS_SWIFT);
+    expect(many.map((f) => f.rule).sort()).toEqual(["fixed-font-size", "navigationview-deprecated"]);
+    expect(appleSwiftRules([], IOS_SWIFT)).toEqual([]);
+  });
+
+  // `maskComments` mishandles nested Swift string interpolation: the inner
+  // literal's opening quote closes what its per-line tracker believes is the
+  // outer string, exposing the interpolated text as live code. It is disclosed
+  // in `src/scan.ts` and pinned there; this records the consequence a rule here
+  // sees, so a silent rule on such a file is recognised rather than debugged.
+  it("meets the known string-interpolation gap in the masker rather than working around it", () => {
+    const src = `let s = "a\\(f("open /*")) still"\nNavigationView { }\n/* a real comment */`;
+    expect(swiftIds(src)).toEqual([]);
+    // The same file without the interpolation reports the container it contains.
+    expect(swiftIds(`let s = "plain"\nNavigationView { }\n/* a real comment */`)).toEqual(["navigationview-deprecated"]);
+  });
+});
+
+describe("the shape every Swift finding leaves in", () => {
+  const FIXTURE = [
+    `import UIKit`,
+    `NavigationView {`,
+    `  Text("Hi").font(.system(size: 17))`,
+    `  Button(action: go) { Image(systemName: "slider.vertical.3") }`,
+    `  Rectangle().fill(Color(red: 0.1, green: 0.2, blue: 0.3))`,
+    `}`,
+  ].join("\n");
+  const everything = swift(FIXTURE);
+
+  it("fires every rule in the table at once, so the checks below are not vacuous", () => {
+    expect([...new Set(everything.map((f) => f.rule))].sort()).toEqual([
+      "fixed-font-size",
+      "hardcoded-color-literal",
+      "navigationview-deprecated",
+      "symbol-as-only-button-label",
+    ]);
+  });
+
+  it("gives every finding a message, a fix and a doc", () => {
+    for (const f of everything) {
+      expect(f.message, f.rule).toBeTruthy();
+      expect(f.fix, f.rule).toBeTruthy();
+      expect(f.doc, f.rule).toBeTruthy();
+    }
+  });
+
+  it("uses only the three declared severities, and the two the brief assigns", () => {
+    for (const f of everything) expect(["error", "warning", "info"]).toContain(f.severity);
+    const sev = Object.fromEntries(everything.map((f) => [f.rule, f.severity]));
+    expect(sev).toEqual({
+      "fixed-font-size": "warning",
+      "navigationview-deprecated": "warning",
+      "hardcoded-color-literal": "info",
+      "symbol-as-only-button-label": "info",
+    });
+  });
+
+  it("returns findings in line order", () => {
+    expect(everything.map((f) => f.line)).toEqual([...everything.map((f) => f.line)].sort((a, b) => a - b));
+  });
+
+  // The licence these rules do not have. A modifier on a parent covers its
+  // children and a check may live in another file, so no message here may claim
+  // that something is absent from a control, a view, a file or a project.
+  it("claims no absence a line cannot prove", () => {
+    const forbidden =
+      /\b(?:no|without an?|missing|lacks?|lacking) (?:an? )?accessibility ?label\b|\bunlabell?ed\b|\bnever (?:respects?|checks?|supports?|handles?|calls?)\b|\bdoes not (?:respect|check|support|handle)\b|\bthis (?:file|project|view|app) (?:has|declares|contains|does) no\b/i;
+    for (const f of everything) {
+      expect(forbidden.test(`${f.message} ${f.fix}`), `${f.rule}: ${f.message} ${f.fix}`).toBe(false);
+    }
+  });
+
+  it("never states an absence in the unbounded form", () => {
+    const forbidden = /\bapple (?:publishes|states|specifies|documents|has|assigns|requires) no\b|\bapple is silent\b|\bapple does not (?:publish|state|specify|document)\b/i;
+    for (const f of everything) {
+      expect(forbidden.test(`${f.message} ${f.fix}`), `${f.rule}: ${f.message} ${f.fix}`).toBe(false);
+    }
+  });
+
+  it("never claims a shipped, signed or reviewed outcome", () => {
+    const forbidden = /\b(will be rejected|app review will|fails notarization|will fail notarization|guarantee|will crash)\b/i;
+    for (const f of everything) {
+      expect(forbidden.test(`${f.message} ${f.fix}`), `${f.rule}: ${f.message} ${f.fix}`).toBe(false);
+    }
+  });
+
+  // §3.2 of the sourcing note: `Mac Catalyst` and `macOS` are distinct strings
+  // in Apple's availability data, and a matcher built on the substring `Mac`
+  // marks every iOS-only symbol as macOS-available while looking clean. No rule
+  // here reads a platform *string* at all — the gate is the typed verdict — so
+  // the failure this pins is the one that would reintroduce string matching:
+  // a verdict of `macos` must never satisfy an iOS-scoped rule, and no verdict
+  // outside the two the type admits may reach one.
+  it("gates on the typed verdict, never on a platform substring", () => {
+    const line = `Text("Hi").font(.system(size: 17))`;
+    expect(swiftIds(line, IOS_SWIFT)).toContain("fixed-font-size");
+    expect(swiftIds(line, MACOS)).not.toContain("fixed-font-size");
+    expect(swiftIds(line, { platform: null, signals: ["Mac Catalyst"], conflicted: false })).not.toContain("fixed-font-size");
+  });
+});
+
 // Carried over from the generic-design and SEO packages, where a rule cited a
 // real document that never made its claim. Resolution alone is not enough: the
 // cited document has to actually carry the sentence the reader was just told.
@@ -410,6 +688,14 @@ describe("every doc a rule cites resolves and makes the rule's claim", () => {
       }),
       platform: MACOS,
     }),
+    ...swift([
+      `import UIKit`,
+      `NavigationView {`,
+      `  Text("Hi").font(.system(size: 17))`,
+      `  Button(action: go) { Image(systemName: "slider.vertical.3") }`,
+      `  Rectangle().fill(Color(red: 0.1, green: 0.2, blue: 0.3))`,
+      `}`,
+    ].join("\n")),
   ];
 
   it("loads the knowledge base, so the checks below are not vacuous", () => {
@@ -426,6 +712,13 @@ describe("every doc a rule cites resolves and makes the rule's claim", () => {
     "uirequiresfullscreen-deprecated": /remove `UIRequiresFullScreen` from your information property list/i,
     "sandbox-absent-macos": /To distribute a macOS app through the Mac App Store, you must enable the App Sandbox capability/i,
     "microphone-entitlement-mismatch": /Same checkbox label, two identifiers/i,
+    // The Swift rules. Each pattern is the clause in the cited document that
+    // carries the claim the finding makes, not a word the document happens to
+    // contain — /Dynamic Type/i would match half of `apple-accessibility`.
+    "fixed-font-size": /versus `\.font\(\.system\(size: 17\)\)`, which takes a bare `CGFloat` and no style to scale against/i,
+    "navigationview-deprecated": /`NavigationView` is deprecated at 27\.0 on every platform Apple lists it for/i,
+    "hardcoded-color-literal": /What source \*can\* show is a hardcoded literal — `Color\(red:green:blue:\)`, a hex initialiser — which is a legitimate finding/i,
+    "symbol-as-only-button-label": /If you're relying on a symbol's default label, it's important to check that it accurately describes your interface/i,
   };
 
   it("fires every rule in the table, so no rule escapes the citation check", () => {

@@ -53,6 +53,7 @@
 
 import type { LintFinding } from "./lint.js";
 import type { ConfigRead, PlatformVerdict } from "./appleconfig.js";
+import { maskComments } from "./scan.js";
 
 /**
  * Entitlement identifiers this file matches on, named once so the rule and its
@@ -232,6 +233,324 @@ export function appleConfigRules(input: { config: ConfigRead; platform: Platform
       fix: `If this app is destined for the Mac App Store, add the App Sandbox capability in Xcode's Signing & Capabilities tab — Xcode writes \`${ENTITLEMENT.appSandbox}\` into the entitlements file for you, then add only the resource entitlements the app actually uses. If it ships outside the store, no change is needed on the strength of this finding.`,
       doc: "apple-shipping-readiness",
     });
+  }
+
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The Swift rules
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// **Every rule below states a presence. None of them may claim an absence, and
+// the licence `appleConfigRules` has above does not extend here.**
+//
+// The difference is not one of confidence, it is one of structure.
+// Configuration is a key/value surface: a plist either carries
+// `UIRequiresFullScreen` or it does not, and both answers are readable from the
+// file. Swift is a tree read here one line at a time, and two properties of the
+// language make every absence claim unprovable from that vantage point:
+//
+//  1. **A modifier on a parent covers its children.** `.accessibilityLabel`,
+//     `.accessibilityElement(children: .combine)`, `.dynamicTypeSize`,
+//     `.accessibilityHidden` and `.font` all apply down the tree. So "this
+//     control has no accessibility label" is not a fact about the control's
+//     line — the label may be seven lines above it on an enclosing `VStack`, or
+//     on the `NavigationStack` that wraps the whole screen. A line-based reader
+//     never sees it, and a rule keyed on that reports correct code.
+//  2. **The check may be in another file.** "This file never respects Reduce
+//     Motion" is unprovable because `@Environment(\.accessibilityReduceMotion)`
+//     may be read in a view model, a design-system package, or a
+//     `.transaction { $0.animation = nil }` helper the view imports. A per-file
+//     reader that has not read the other file has no evidence either way.
+//
+// What a line *does* prove is what it itself writes. `.font(.system(size: 17))`
+// passes a bare `CGFloat`; `Color(red:green:blue:)` writes three numbers;
+// `NavigationView` names a deprecated type; a `Button` whose entire label
+// closure is one `Image(systemName:)` has a label derived from a symbol. Each
+// of those is a fact about the text on that line, and each is what the
+// corresponding rule says — nothing wider.
+//
+// **What these rules deliberately do not check, in the place their rules are
+// read.** The silence is not a verdict in any of these cases:
+//
+// - **Accessibility labels.** No rule reports a missing one, for reason 1 above
+//   and because Apple documents that SF Symbols and `Image(_:)` carry automatic
+//   labels — so "icon in a button ⇒ unlabelled" false-positives on correct
+//   code. `symbol-as-only-button-label` reports the *derivation*, at `info`.
+// - **Reduce Motion, Reduce Transparency, `@ScaledMetric`, `dynamicTypeSize`.**
+//   Nothing here reports their absence, for reason 2 above.
+// - **Contrast.** `Color("Brand")` in Swift carries no ratio: the resolved
+//   values live in the asset catalog and the one that renders depends on
+//   appearance and the Increase Contrast setting at draw time.
+// - **UIKit's fixed fonts.** `fixed-font-size` matches the SwiftUI form only.
+//   `UIFont.systemFont(ofSize:)` and `Font.custom(_:fixedSize:)` carry the same
+//   documented warning and are **not** matched here, so a clean run is not
+//   evidence that a UIKit target scales.
+// - **Anything inside a string literal.** `maskComments` blanks comments and
+//   leaves string contents in place, so `Text("NavigationView")` is matched by
+//   `navigationview-deprecated`. Rare in practice; stated so it is not a
+//   surprise.
+// - **A file whose path does not end in `.swift`.** Skipped entirely rather
+//   than read unmasked — see `SWIFT_PATH` below.
+//
+// Findings here carry a **real 1-based line**, unlike the configuration rules
+// above, which all sit at the sentinel `NO_LINE`. Two findings of one rule land
+// at different lines, so the codebase's `${rule}:${line}` dedupe idiom — used by
+// `designLint`, `genericVisualRules` and `genericCopyRules` — is safe for these
+// and is not safe for those.
+
+/**
+ * The extension gate, matching `maskComments`' own — case-insensitively, and
+ * anchored at the end of the path.
+ *
+ * A file this does not match is **not read at all**, rather than read with its
+ * comments left live. `maskComments` masks Swift comments only for a path
+ * ending in `.swift`; hand it `App` or `App.swift.txt` and it returns the
+ * source untouched, so every rule below would then be matching inside comments
+ * — the exact defect the security package shipped and took a review round to
+ * find. Skipping is the honest failure: a caller that passes a Swift file under
+ * a path this does not recognise gets silence, not fabricated findings.
+ */
+const SWIFT_PATH = /\.swift$/i;
+
+/**
+ * A 1-based line lookup over one file, built once per file rather than counted
+ * per match — a file with many matches would otherwise be quadratic.
+ */
+function lineLookup(source: string): (index: number) => number {
+  const starts = [0];
+  for (let i = 0; i < source.length; i++) if (source[i] === "\n") starts.push(i + 1);
+  return (index) => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (starts[mid] <= index) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo + 1;
+  };
+}
+
+/**
+ * The index just past the `close` that matches the `open` at `from`, or -1 when
+ * it never balances.
+ *
+ * String-aware to the same degree as the rest of this codebase's Swift reading
+ * and no further: a `"` opens a literal in which brackets do not count, and a
+ * backslash escapes the next character. Swift's interpolation (`\(...)`), its
+ * `"""` multi-line form and its raw (`#"..."#`) form are not modelled — the
+ * same approximation `maskComments` documents on itself. An unbalanced result
+ * returns -1 and the caller emits nothing, so the failure direction is silence
+ * rather than a finding about a span this function guessed at.
+ */
+function matchBalanced(src: string, from: number, open: string, close: string): number {
+  if (src[from] !== open) return -1;
+  let depth = 0;
+  let inString = false;
+  for (let i = from; i < src.length; i++) {
+    const ch = src[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === open) depth++;
+    else if (ch === close && --depth === 0) return i + 1;
+  }
+  return -1;
+}
+
+/**
+ * The literal symbol name when `body` is nothing but one `Image(systemName:)`
+ * expression, or null.
+ *
+ * A trailing chain of modifiers is allowed — `Image(systemName: "gear")
+ * .font(.title2).foregroundStyle(.tint)` is still a label consisting of one
+ * symbol and nothing else. A second view, a container, or a symbol name that is
+ * an identifier rather than a string literal all return null: in the last case
+ * this file cannot name the symbol, and a finding that cannot quote the
+ * identifier it is warning about is not worth reading.
+ */
+function loneSymbolName(body: string): string | null {
+  const trimmed = body.trim();
+  const named = /^Image\(\s*systemName\s*:\s*"([^"\\]*)"/.exec(trimmed);
+  if (!named) return null;
+  let i = matchBalanced(trimmed, trimmed.indexOf("("), "(", ")");
+  if (i === -1) return null;
+  while (i < trimmed.length) {
+    const modifier = /^\s*\.[A-Za-z_][A-Za-z0-9_]*\s*/.exec(trimmed.slice(i));
+    if (!modifier) return null;
+    i += modifier[0].length;
+    if (trimmed[i] === "(") {
+      const after = matchBalanced(trimmed, i, "(", ")");
+      if (after === -1) return null;
+      i = after;
+    }
+  }
+  return named[1];
+}
+
+/**
+ * `.font(.system(size: N))` and `Font.system(size: N, …)` — a bare point size
+ * with no text style behind it. The capture is the number, so the message can
+ * quote the size the file actually wrote.
+ */
+const FIXED_FONT_SIZE = /\.system\(\s*size\s*:\s*(\d+(?:\.\d+)?)/g;
+
+/**
+ * `NavigationView` as a type name. `\b` on both sides is what keeps
+ * `NavigationViewStyle` and `.navigationViewStyle(_:)` out — the trailing
+ * boundary fails on the first, and the leading capital fails on the second.
+ */
+const NAVIGATION_VIEW = /\bNavigationView\b/g;
+
+/**
+ * A colour written as numbers rather than resolved from a resource:
+ * SwiftUI's `Color(red:green:blue:)`, UIKit's `UIColor(red:…)`, AppKit's
+ * `NSColor(red:…)` and Xcode's `#colorLiteral(…)`.
+ *
+ * The optional `(?:UI|NS)` prefix sits inside the alternation rather than
+ * beside it so `UIColor(red:` is one match, not two: `UIColor` ends in the
+ * seven characters `Color(`, and a bare `\bColor\(` would have matched the tail
+ * of it as well — except that `\b` fails between `I` and `C`, which is what
+ * makes this correct rather than lucky. AppKit's `NSColor` is matched alongside
+ * UIKit's because this rule is not platform-scoped and a macOS target writes
+ * the AppKit spelling; every initialiser the brief names still matches exactly
+ * as specified.
+ */
+const COLOR_LITERAL = /#colorLiteral\s*\(|\b(?:UI|NS)?Color\(\s*red\s*:/g;
+
+/** `Button` as a type name — never `ButtonStyle`, never `MyButton`. */
+const BUTTON = /\bButton\b/g;
+
+/**
+ * The Swift half of `audit_apple_ui`.
+ *
+ * Reads each file's source with its comments masked and returns one finding per
+ * matching line. Reads nothing from disk, fetches nothing; `files` is whatever
+ * the caller already gathered.
+ *
+ * `platform` gates one rule and one rule only. `fixed-font-size` is iOS-family
+ * scoped because Apple states verbatim that "macOS doesn't support Dynamic
+ * Type" — a fixed point size on a Mac target is not a Dynamic Type failure, it
+ * is how the built-in macOS text styles themselves resolve. A null verdict
+ * (signals absent, or conflicting) does not run it either: a Dynamic Type
+ * finding on a project that turns out to be macOS is a confident wrong answer
+ * about code that is correct for the platform it targets. The other three rules
+ * are platform-agnostic, and the gate is the typed verdict — nothing here
+ * matches a platform *string*, which is what keeps `Mac Catalyst` from ever
+ * being read as `macOS`.
+ *
+ * Read the block comment above this function before adding a rule: the licence
+ * to report an absence stops at the configuration half of this file.
+ */
+export function appleSwiftRules(
+  files: Array<{ path: string; source: string }>,
+  platform: PlatformVerdict,
+): LintFinding[] {
+  const out: LintFinding[] = [];
+  const dynamicType = platform.platform === "ios";
+
+  for (const file of files) {
+    if (!SWIFT_PATH.test(file.path)) continue;
+    const masked = maskComments(file.source, file.path);
+    const lineOf = lineLookup(masked);
+    const found: LintFinding[] = [];
+
+    // ── fixed-font-size ─────────────────────────────────────────────────────
+    if (dynamicType) {
+      FIXED_FONT_SIZE.lastIndex = 0;
+      for (let m = FIXED_FONT_SIZE.exec(masked); m; m = FIXED_FONT_SIZE.exec(masked)) {
+        found.push({
+          line: lineOf(m.index),
+          severity: "warning",
+          rule: "fixed-font-size",
+          message: `\`.font(.system(size: ${m[1]}))\` sets a point size directly: it takes a bare \`CGFloat\`, with no text style behind it to scale against. Apple's rule is stated plainly — "To add support for Dynamic Type in your app, you use text styles" — and Dynamic Type is a system-level feature on iOS and iPadOS. This line is reported because the platform signals for this project resolved to iOS; the identical line on a macOS target is not, since "macOS doesn't support Dynamic Type" and the built-in macOS text styles resolve to fixed points themselves.`,
+          fix: `Use a text style — \`.font(.body)\`, \`.font(.headline)\`, \`.font(.caption)\` — so the size follows the reader's setting. Where a specific face is required, \`Font.custom(_:size:relativeTo:)\` scales relative to a named text style, and \`@ScaledMetric(relativeTo:)\` scales the padding and frames around it so the container grows too. If this size is deliberate and the view has been checked at the AX5 size, nothing needs to change.`,
+          doc: "apple-accessibility",
+        });
+      }
+    }
+
+    // ── navigationview-deprecated ───────────────────────────────────────────
+    NAVIGATION_VIEW.lastIndex = 0;
+    for (let m = NAVIGATION_VIEW.exec(masked); m; m = NAVIGATION_VIEW.exec(masked)) {
+      found.push({
+        line: lineOf(m.index),
+        severity: "warning",
+        rule: "navigationview-deprecated",
+        message: `\`NavigationView\` appears on this line. Apple's reference page for it carries \`deprecatedAt: 27.0\` on every platform it lists — iOS, iPadOS, Mac Catalyst, macOS, tvOS, visionOS and watchOS — with a deprecation summary reading "Use \`NavigationStack\` and \`NavigationSplitView\` instead." The deprecation is invisible in the rendered documentation page's prose; it lives in that page's own JSON metadata, which is where this was read from.`,
+        fix: `Replace it with \`NavigationStack\` for a push hierarchy, or \`NavigationSplitView\` for a sidebar-and-detail layout; Apple's "Migrating to New Navigation Types" article covers the conversion, including replacing \`NavigationLink(destination:)\` with a value-plus-\`navigationDestination(for:)\` pair. \`NavigationStack\` is also one of the standard containers that adopts Liquid Glass automatically on a rebuild against the latest SDKs, so the migration and the redesign are the same piece of work.`,
+        doc: "apple-hig-liquid-glass",
+      });
+    }
+
+    // ── hardcoded-color-literal ─────────────────────────────────────────────
+    COLOR_LITERAL.lastIndex = 0;
+    for (let m = COLOR_LITERAL.exec(masked); m; m = COLOR_LITERAL.exec(masked)) {
+      const written = m[0].startsWith("#") ? "#colorLiteral(…)" : `${m[0].replace(/\s*$/, "")}…)`;
+      found.push({
+        line: lineOf(m.index),
+        severity: "info",
+        rule: "hardcoded-color-literal",
+        message: `\`${written}\` writes a colour as numbers on this line. A colour in an Apple app is normally a resource rather than a literal: \`Color(_:bundle:)\` loads "a color from a color set stored in an Asset Catalog", and "the system determines which color within the set to use based on the environment at render time". A literal has no light, dark or increased-contrast variant to resolve to, so it renders the same value in every appearance and under Increase Contrast. This says nothing about the colour's contrast ratio — that depends on what it is drawn against, which this line does not carry.`,
+        fix: `Move the value into a colorset in \`Assets.xcassets\` and reference it as \`Color("Name")\`, giving it light, dark and increased-contrast variants — or reach for a system semantic colour (\`.primary\`, \`.secondary\`, \`labelColor\`, \`windowBackgroundColor\`, \`controlAccentColor\`), which carries those variants already and follows the user's accent. If this literal is deliberately fixed — a brand swatch reproduced exactly, a chart series, a value that must not adapt — it is doing what it was written to do.`,
+        doc: "apple-accessibility",
+      });
+    }
+
+    // ── symbol-as-only-button-label ─────────────────────────────────────────
+    //
+    // Two shapes reach the label closure: `Button(action:) { label }`, where the
+    // trailing closure is the label, and `Button { action } label: { label }`,
+    // where it is the second. Anything else — an unbalanced brace, a label
+    // holding more than one view, a symbol named by a variable — emits nothing.
+    BUTTON.lastIndex = 0;
+    for (let m = BUTTON.exec(masked); m; m = BUTTON.exec(masked)) {
+      let i = m.index + "Button".length;
+      const skipSpace = () => {
+        while (i < masked.length && /\s/.test(masked[i])) i++;
+      };
+      skipSpace();
+      if (masked[i] === "(") {
+        const afterArgs = matchBalanced(masked, i, "(", ")");
+        if (afterArgs === -1) continue;
+        i = afterArgs;
+        skipSpace();
+      }
+      if (masked[i] !== "{") continue;
+      const afterFirst = matchBalanced(masked, i, "{", "}");
+      if (afterFirst === -1) continue;
+      let body = masked.slice(i + 1, afterFirst - 1);
+
+      let j = afterFirst;
+      while (j < masked.length && /\s/.test(masked[j])) j++;
+      if (masked.startsWith("label:", j)) {
+        j += "label:".length;
+        while (j < masked.length && /\s/.test(masked[j])) j++;
+        if (masked[j] !== "{") continue;
+        const afterLabel = matchBalanced(masked, j, "{", "}");
+        if (afterLabel === -1) continue;
+        body = masked.slice(j + 1, afterLabel - 1);
+      }
+
+      const symbol = loneSymbolName(body);
+      if (symbol === null) continue;
+      found.push({
+        line: lineOf(m.index),
+        severity: "info",
+        rule: "symbol-as-only-button-label",
+        message: `This \`Button\`'s entire label is one \`Image(systemName: "${symbol}")\`, so the name VoiceOver speaks for it is derived from the symbol rather than written for a listener. SF Symbols do carry automatic labels — "the \`checkmark.seal.fill\` symbol is labeled 'Verified' by default" — but in Apple's own worked example that derivation produced the raw identifier \`slider.vertical.3\` on a button initialised with the title "Edit Budgets", and Apple's explanation was simply that "the accessibility label is being derived from the SF Symbol". The defect to look for is a wrong label rather than a missing one, and a well-chosen symbol may speak perfectly well — so this is a risk to check, not a fault found.`,
+        fix: `Turn VoiceOver on and listen to this control; Apple's instruction is "if you're relying on a symbol's default label, it's important to check that it accurately describes your interface". If what it speaks is not what the button does, name it: \`Label("…", systemImage: "${symbol}").labelStyle(.iconOnly)\` keeps the icon-only appearance while the title still speaks, and \`.accessibilityLabel("…")\` on the \`Image\` or the \`Button\` does the same. If it already reads correctly, nothing needs to change.`,
+        doc: "apple-accessibility",
+      });
+    }
+
+    found.sort((a, b) => a.line - b.line);
+    out.push(...found);
   }
 
   return out;
