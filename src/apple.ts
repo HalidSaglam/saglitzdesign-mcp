@@ -28,12 +28,22 @@
 //     at once, and one fetch has falsified that form five times in this
 //     project's history; the scoped form is a claim about a named page and is
 //     correctable by adding a page rather than reversing an assertion.
-//  3. **Nothing inferred inherits the licence.** `hardened-runtime-absent-macos`
-//     is the case that proves it: the Hardened Runtime has no entitlement of
-//     its own — it is a build capability, and only its *exception* entitlements
-//     (`com.apple.security.cs.*`) appear in an entitlements file. So that rule
-//     may not say the capability is off. It says what it read, names the
-//     channel that needs it, and says the capability itself was not visible.
+//  3. **Nothing inferred inherits the licence.** The Hardened Runtime is the
+//     case that proves it, and it is why there is no `hardened-runtime-absent-macos`
+//     rule here. The capability has no entitlement of its own — it is a build
+//     setting, `ENABLE_HARDENED_RUNTIME`, and none of the four surfaces read
+//     here carries it. Two further facts close the door on every substitute:
+//     Xcode "automatically adds the Hardened Runtime capability" to a new
+//     macOS app from a template, and the capability "doesn't affect the
+//     operation of most apps", so most correct projects declare no exception
+//     entitlement at all — which makes "macOS, no exceptions declared" the
+//     shape of a *correctly configured* hardened app, not of a missing one.
+//     A rule keyed on that fires where it has no evidence and stays silent
+//     where it has some. The fact still matters to a reader, so it belongs in
+//     the disclosure list beside these findings, phrased as what was not
+//     checked. What *is* readable, if a rule is ever wanted here, is a
+//     *declared* `com.apple.security.cs.*` exception — present, and therefore
+//     citable — never the absence of one.
 //
 // Every platform-scoped rule checks `platform` first and returns nothing when
 // it is null. `inferPlatform` returns null whenever the signals do not settle
@@ -54,8 +64,6 @@ const ENTITLEMENT = {
   microphone: "com.apple.security.device.microphone",
   /** Reached by enabling Hardened Runtime › Resource Access › Audio Input. */
   audioInput: "com.apple.security.device.audio-input",
-  /** Prefix of the Hardened Runtime's exception entitlements. */
-  hardenedRuntimeExceptionPrefix: "com.apple.security.cs.",
 } as const;
 
 /**
@@ -83,6 +91,15 @@ const CANONICAL_FULL_SCREEN_KEY = FULL_SCREEN_KEYS[0];
  * because a real plist line is 1-based and so can never collide with it. A
  * renderer that prints `L0` beside these is printing the truth; one that prints
  * `L1` would be inventing a location.
+ *
+ * **A consumer must not route these through a rule+line deduper.** `designLint`
+ * and `genericVisualRules` both end by keeping one finding per `rule`+`line`
+ * pair, which is correct for a scanner walking a file: a rule matching twice on
+ * one line is one problem. It is wrong here. Two rules below emit N findings at
+ * a constant line — one per colorset, one per `UIRequiresFullScreen` spelling —
+ * so that filter silently collapses every one of them to a single finding and
+ * the reader is told about one colorset out of three. Deduplicate these by
+ * message, or not at all. Pinned by a test in `tests/apple.test.ts`.
  */
 const NO_LINE = 0;
 
@@ -101,12 +118,18 @@ const NO_LINE = 0;
  *   complete".
  * - **Orientation.** A single-orientation app is explicitly permitted by the
  *   HIG, so a narrow `UISupportedInterfaceOrientations` is not a finding.
- * - **Whether the Hardened Runtime is enabled.** Not in any surface read here;
- *   see `hardened-runtime-absent-macos` below.
+ * - **Whether the Hardened Runtime is enabled.** It is a build capability
+ *   (`ENABLE_HARDENED_RUNTIME`), not an entitlement, so it appears in none of
+ *   the four surfaces read here. There is deliberately no rule for it in
+ *   either direction — see limit 3 in the header comment — and the fact is
+ *   handed to the disclosure list instead.
  * - **The distribution channel.** Nothing in a project's configuration states
  *   whether it ships through the Mac App Store, with Developer ID, or not at
- *   all. Both macOS rules below are conditional on a channel and say so; they
- *   do not know which one applies.
+ *   all. In particular an entitlement does not name a channel: Apple requires
+ *   the sandbox *for* Mac App Store distribution and nowhere states it is
+ *   exclusive *to* that channel, and sandboxed Developer ID apps are
+ *   documented. `sandbox-absent-macos` is conditional on a channel and says
+ *   so; it does not claim to know which one applies.
  * - **What a colorset resolves to.** `hasDarkVariant` is a declaration, not a
  *   colour. No contrast verdict is reachable from it.
  * - **A surface that could not be read.** `config.unparsed` — a binary plist,
@@ -182,44 +205,29 @@ export function appleConfigRules(input: { config: ConfigRead; platform: Platform
 
   // ── macOS-only, from here down ────────────────────────────────────────────
   //
-  // The platform check comes before either rule, once. A null verdict — the
-  // signals were absent, or they conflicted — means neither runs. Firing a
+  // The platform check comes first, once. A null verdict — the signals were
+  // absent, or they conflicted — means the rule below does not run. Firing a
   // macOS distribution rule at an iOS project is not a slightly wrong finding;
   // it is a finding about a requirement that does not exist for that project.
   if (platform.platform !== "macos") return out;
 
   if (!config.entitlements.has(ENTITLEMENT.appSandbox)) {
+    // Which surface was read is part of the finding, not decoration. "The
+    // entitlements file declares no sandbox entitlement" and "no entitlements
+    // file was found at all" are different facts with different next actions,
+    // and a message that reads the same for both leaves the reader unable to
+    // tell whether the audit looked and found nothing or never looked.
+    const read = config.surfaces.entitlements;
+    const surface = read.length
+      ? read.length === 1
+        ? `The entitlements file read here — \`${read[0]}\` — declares no \`${ENTITLEMENT.appSandbox}\`.`
+        : `The entitlements files read here — ${read.map((p) => `\`${p}\``).join(", ")} — declare no \`${ENTITLEMENT.appSandbox}\`.`
+      : `No entitlements file was among the surfaces read here, so there is nowhere in this input for \`${ENTITLEMENT.appSandbox}\` to have been declared.`;
     push({
       severity: "info",
       rule: "sandbox-absent-macos",
-      message: `No \`${ENTITLEMENT.appSandbox}\` entitlement was found in this macOS project's entitlements. Apple's sandbox requirement is scoped to one channel — "To distribute a macOS app through the Mac App Store, you must enable the App Sandbox capability" — and the Review Guidelines repeat it at 2.4.5(i) for apps distributed via the Mac App Store. For other distribution channels Apple states the requirement on neither of those pages, so this is a fact about the Mac App Store channel rather than a defect in the project.`,
+      message: `${surface} Apple's sandbox requirement is scoped to one channel — "To distribute a macOS app through the Mac App Store, you must enable the App Sandbox capability" — and the Review Guidelines repeat it at 2.4.5(i) for apps distributed via the Mac App Store. For other distribution channels Apple states the requirement on neither of those pages, so this is a fact about the Mac App Store channel rather than a defect in the project.`,
       fix: `If this app is destined for the Mac App Store, add the App Sandbox capability in Xcode's Signing & Capabilities tab — Xcode writes \`${ENTITLEMENT.appSandbox}\` into the entitlements file for you, then add only the resource entitlements the app actually uses. If it ships outside the store, no change is needed on the strength of this finding.`,
-      doc: "apple-shipping-readiness",
-    });
-  }
-
-  // The Hardened Runtime is a build capability, not an entitlement, so its
-  // presence cannot be read from anything this function receives. What *can* be
-  // read is a `com.apple.security.cs.*` exception, which is meaningless unless
-  // the capability is on and so is positive evidence of it — and the App
-  // Sandbox entitlement, which points at the one channel Apple names as not
-  // needing notarization at all: "you aren't required to notarize software that
-  // you distribute through the Mac App Store". Both are reasons to stay silent.
-  // Neither their absence nor this finding says the capability is off; the
-  // message says so in as many words, because a reader who takes this for "the
-  // Hardened Runtime is disabled" has been told something nothing here checked.
-  //
-  // Known miss, in the direction of silence: a Developer ID app that is *also*
-  // sandboxed still needs notarization, and this rule says nothing about it.
-  // That is the trade for not firing on every correctly configured Mac App
-  // Store app, and silence is the safer side of it for an `info`.
-  const hasHardenedRuntimeException = [...config.entitlements].some((e) => e.startsWith(ENTITLEMENT.hardenedRuntimeExceptionPrefix));
-  if (!hasHardenedRuntimeException && !config.entitlements.has(ENTITLEMENT.appSandbox)) {
-    push({
-      severity: "info",
-      rule: "hardened-runtime-absent-macos",
-      message: `Nothing in this macOS project's entitlements indicates the Hardened Runtime: there is no \`${ENTITLEMENT.hardenedRuntimeExceptionPrefix}*\` exception entitlement, and no \`${ENTITLEMENT.appSandbox}\` pointing at the Mac App Store instead. The capability is a build setting, not an entitlement, so whether it is enabled is not visible in the surfaces read here — this is a note about the channel, not a reading of the target. It matters because "To upload a macOS app to be notarized, you must enable the Hardened Runtime capability", and Developer ID distribution requires notarization.`,
-      fix: `If this app ships with Developer ID, confirm the Hardened Runtime capability is enabled on the app and command-line targets in Xcode's Signing & Capabilities tab, and add exception entitlements only where a specific capability needs one. If it ships through the Mac App Store, notarization does not apply and neither does this note.`,
       doc: "apple-shipping-readiness",
     });
   }

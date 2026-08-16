@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { join } from "node:path";
 import { appleConfigRules } from "../dist/apple.js";
+import { inferPlatform } from "../dist/appleconfig.js";
 import { loadKnowledge, findDoc } from "../dist/knowledge.js";
 
 type Config = Parameters<typeof appleConfigRules>[0]["config"];
@@ -126,44 +127,81 @@ describe("sandbox-absent-macos", () => {
     // And the remedy is conditional on a channel the audit cannot see.
     expect(r.fix).toMatch(/^If /);
   });
+
+  // "We read the entitlements file and the key was not in it" and "there was no
+  // entitlements file to read" are different facts with different next actions.
+  // A message that reads the same for both leaves the reader unable to tell
+  // whether the audit looked and found nothing, or never looked.
+  it("names the entitlements file it read, when there was one", () => {
+    const cfg = withConfig({
+      surfaces: { plist: [], buildSettings: [], entitlements: ["Receipts/Receipts.entitlements"], assetCatalogs: [] },
+    });
+    const r = appleConfigRules({ ...cfg, platform: MACOS }).find((f) => f.rule === "sandbox-absent-macos")!;
+    expect(r.message).toContain("Receipts/Receipts.entitlements");
+    expect(r.message).not.toContain("No entitlements file was among the surfaces read");
+  });
+
+  it("says so instead when no entitlements file was read at all", () => {
+    const r = appleConfigRules({ ...base, platform: MACOS }).find((f) => f.rule === "sandbox-absent-macos")!;
+    expect(r.message).toContain("No entitlements file was among the surfaces read");
+  });
+
+  it("names every entitlements file when a project has more than one", () => {
+    const cfg = withConfig({
+      surfaces: { plist: [], buildSettings: [], entitlements: ["App/App.entitlements", "Helper/Helper.entitlements"], assetCatalogs: [] },
+    });
+    const r = appleConfigRules({ ...cfg, platform: MACOS }).find((f) => f.rule === "sandbox-absent-macos")!;
+    expect(r.message).toContain("App/App.entitlements");
+    expect(r.message).toContain("Helper/Helper.entitlements");
+    expect(r.message).toContain("files read here");
+  });
 });
 
-describe("hardened-runtime-absent-macos", () => {
-  it("stays silent when the platform is unknown", () => {
-    expect(ids(appleConfigRules(base))).not.toContain("hardened-runtime-absent-macos");
+// The Hardened Runtime is a build capability (`ENABLE_HARDENED_RUNTIME`), not
+// an entitlement, and it is in none of the four surfaces read here. Two further
+// facts kill every substitute keyed on absence: Xcode "automatically adds the
+// Hardened Runtime capability" to a new macOS app from a template, and the
+// capability "doesn't affect the operation of most apps" — so "macOS, no
+// `com.apple.security.cs.*` exception declared" is the shape of a correctly
+// configured hardened app, not of a missing capability. A rule on that fires
+// where it has no evidence and is silent where it has some. The fact goes to
+// the disclosure list; these tests keep it out of `findings`.
+describe("no rule claims the Hardened Runtime is absent", () => {
+  it("emits nothing at all for a macOS project with no entitlements", () => {
+    expect(appleConfigRules({ ...base, platform: MACOS }).filter((f) => /hardened/i.test(f.rule))).toEqual([]);
   });
 
-  it("stays silent on iOS", () => {
-    expect(ids(appleConfigRules({ ...base, platform: IOS }))).not.toContain("hardened-runtime-absent-macos");
-  });
-
-  it("fires on a macOS project with neither the sandbox nor any hardened-runtime exception", () => {
-    expect(ids(appleConfigRules({ ...base, platform: MACOS }))).toContain("hardened-runtime-absent-macos");
-  });
-
-  // A `com.apple.security.cs.*` entitlement is meaningless unless the Hardened
-  // Runtime is on, so its presence is positive evidence of the capability —
-  // the one thing about the capability this input can actually show.
-  it("stays silent when a hardened-runtime exception entitlement is present", () => {
+  it("emits nothing for a macOS project that declares an exception entitlement either", () => {
     const cfg = withConfig({ entitlements: new Set(["com.apple.security.cs.allow-jit"]) });
-    expect(ids(appleConfigRules({ ...cfg, platform: MACOS }))).not.toContain("hardened-runtime-absent-macos");
+    expect(appleConfigRules({ ...cfg, platform: MACOS }).filter((f) => /hardened/i.test(f.rule))).toEqual([]);
   });
 
-  // Apple: "you aren't required to notarize software that you distribute
-  // through the Mac App Store" — and the Hardened Runtime is a notarization
-  // prerequisite, so a sandboxed project has a documented reason for silence.
-  it("stays silent when the App Sandbox entitlement points at the Mac App Store channel", () => {
-    const cfg = withConfig({ entitlements: new Set(["com.apple.security.app-sandbox"]) });
-    expect(ids(appleConfigRules({ ...cfg, platform: MACOS }))).not.toContain("hardened-runtime-absent-macos");
+  // The contradiction that proved the substitute wrong: `device.audio-input` is
+  // itself a Hardened Runtime entitlement (Resource Access › Audio Input), so a
+  // rule keying only on `cs.*` would have called this project's Hardened
+  // Runtime invisible in the same breath as another rule naming it.
+  it("never calls the Hardened Runtime invisible on a project that declares one of its Resource Access entitlements", () => {
+    const cfg = withConfig({ entitlements: new Set(["com.apple.security.device.audio-input"]) });
+    const r = appleConfigRules({ ...cfg, platform: MACOS });
+    expect(ids(r)).toEqual(["microphone-entitlement-mismatch", "sandbox-absent-macos"]);
+    expect(r.some((f) => /Nothing .* indicates the Hardened Runtime/i.test(f.message))).toBe(false);
   });
 
-  // The Hardened Runtime has no entitlement of its own — it is a build
-  // capability. The finding must not claim to have read whether it is enabled.
-  it("states that the capability itself is not visible in this input", () => {
-    const r = appleConfigRules({ ...base, platform: MACOS }).find((f) => f.rule === "hardened-runtime-absent-macos")!;
-    expect(r.severity).toBe("info");
-    expect(r.message).toContain("not an entitlement");
-    expect(r.message).toContain("notariz");
+  // The words "Hardened Runtime" are allowed and correct where they name an
+  // Xcode path — the microphone rule does exactly that. What no message may do
+  // is state anything about whether the capability is *enabled*, in either
+  // direction, since nothing here read it.
+  it("makes no claim about whether the capability is enabled, in any message it does emit", () => {
+    const claims = /\bhardened runtime\b[^.]{0,80}\b(is|isn't|is not|was|wasn't|not) (?:not )?(?:enabled|disabled|on|off|absent|missing|present)|\b(?:no|not) .{0,40}\bhardened runtime\b/i;
+    const everyMessage = [
+      ...appleConfigRules({ ...base, platform: MACOS }),
+      ...appleConfigRules({ ...withConfig({ entitlements: new Set(["com.apple.security.device.audio-input"]) }), platform: MACOS }),
+      ...appleConfigRules({ ...withConfig({ entitlements: new Set(["com.apple.security.cs.allow-jit"]) }), platform: MACOS }),
+    ];
+    expect(everyMessage.length).toBeGreaterThan(0);
+    for (const f of everyMessage) {
+      expect(claims.test(`${f.message} ${f.fix}`), `${f.rule}: ${f.message} ${f.fix}`).toBe(false);
+    }
   });
 });
 
@@ -248,7 +286,6 @@ describe("the shape every finding leaves in", () => {
   it("fires every rule in the table at once, so the checks below are not vacuous", () => {
     expect(ids(everything)).toEqual([
       "colorset-no-dark-variant",
-      "hardened-runtime-absent-macos",
       "microphone-entitlement-mismatch",
       "sandbox-absent-macos",
       "uirequiresfullscreen-deprecated",
@@ -274,6 +311,40 @@ describe("the shape every finding leaves in", () => {
     for (const f of everything) expect(["error", "warning", "info"]).toContain(f.severity);
   });
 
+  // `designLint` (src/lint.ts) and `genericVisualRules` (src/generic.ts) both
+  // end by keeping one finding per `rule`+`line` pair. That is correct for a
+  // scanner walking a file and wrong for these rules, which emit N findings per
+  // rule at the constant line 0 — one per colorset, one per spelling. Routing
+  // these through that filter silently collapses them and tells the reader
+  // about one colorset out of three. This pins the multi-instance contract so
+  // the hazard is a visible fact of the module rather than a surprise in Task 5.
+  it("emits several findings of one rule at the same line, which a rule+line deduper would eat", () => {
+    const many = appleConfigRules(withConfig({
+      colorSets: [
+        { path: "A.colorset/Contents.json", hasDarkVariant: false },
+        { path: "B.colorset/Contents.json", hasDarkVariant: false },
+        { path: "C.colorset/Contents.json", hasDarkVariant: false },
+      ],
+      keys: new Map<string, string | boolean | string[]>([["UIRequiresFullScreen", true], ["UIRequiresFullscreen", true]]),
+    }));
+    expect(many).toHaveLength(5);
+    expect(new Set(many.map((f) => f.rule)).size).toBe(2);
+    expect(new Set(many.map((f) => f.line))).toEqual(new Set([0]));
+
+    // The house idiom, applied here, would lose three of the five.
+    const seen = new Set<string>();
+    const deduped = many.filter((f) => {
+      const key = `${f.rule}:${f.line}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    expect(deduped).toHaveLength(2);
+
+    // Deduplicating by message is safe: every finding here is distinct.
+    expect(new Set(many.map((f) => f.message)).size).toBe(5);
+  });
+
   // The absence licence is bounded: these rules may say a key or an entitlement
   // is not declared, because a plist either carries it or does not. They may
   // not say Apple publishes no requirement — that is a claim about every Apple
@@ -292,6 +363,35 @@ describe("the shape every finding leaves in", () => {
     for (const f of everything) {
       expect(forbidden.test(`${f.message} ${f.fix}`), `${f.rule}: ${f.message} ${f.fix}`).toBe(false);
     }
+  });
+});
+
+// Both files are individually right about `UIRequiresFullScreen` — the platform
+// verdict rests only on the capital-`S` key the system actually reads, while
+// the rule matches the lowercase form too so a plist copied from TN3192's
+// `codeVoice` node is not passed over. The divergence has an observable
+// consequence on one input, so it is pinned here rather than described in prose.
+describe("the spelling divergence between inferPlatform and the rules", () => {
+  const swiftSources: Array<{ path: string; source: string }> = [];
+  const keys = (k: string) => new Map<string, string | boolean | string[]>([[k, true], ["LSMinimumSystemVersion", "14.0"]]);
+
+  it("lets the lowercase spelling through to a macOS verdict, because the platform reader ignores it", () => {
+    const v = inferPlatform({ keys: keys("UIRequiresFullscreen"), entitlements: new Set(), swiftSources });
+    expect(v.platform).toBe("macos");
+    expect(v.conflicted).toBe(false);
+    // …and the rules still report the key, so nothing is lost by that silence.
+    const r = appleConfigRules({ ...withConfig({ keys: keys("UIRequiresFullscreen") }), platform: v });
+    expect(ids(r)).toEqual(["sandbox-absent-macos", "uirequiresfullscreen-deprecated"]);
+  });
+
+  it("conflicts on the canonical spelling, which the platform reader does count as an iOS signal", () => {
+    const v = inferPlatform({ keys: keys("UIRequiresFullScreen"), entitlements: new Set(), swiftSources });
+    expect(v.platform).toBeNull();
+    expect(v.conflicted).toBe(true);
+    // The same project, spelled correctly, gets no macOS-scoped finding — the
+    // platform gate holds, and only the platform-agnostic rule fires.
+    const r = appleConfigRules({ ...withConfig({ keys: keys("UIRequiresFullScreen") }), platform: v });
+    expect(ids(r)).toEqual(["uirequiresfullscreen-deprecated"]);
   });
 });
 
@@ -325,7 +425,6 @@ describe("every doc a rule cites resolves and makes the rule's claim", () => {
     "colorset-no-dark-variant": /make sure to supply light and dark variants/i,
     "uirequiresfullscreen-deprecated": /remove `UIRequiresFullScreen` from your information property list/i,
     "sandbox-absent-macos": /To distribute a macOS app through the Mac App Store, you must enable the App Sandbox capability/i,
-    "hardened-runtime-absent-macos": /To upload a macOS app to be notarized, you must enable the Hardened Runtime capability/i,
     "microphone-entitlement-mismatch": /Same checkbox label, two identifiers/i,
   };
 
