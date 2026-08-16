@@ -185,4 +185,34 @@ describe("inferPlatform", () => {
   it("does not read `import SwiftUI` as either platform", () => {
     expect(inferPlatform({ ...none, swiftSources: swift("import SwiftUI\nimport Foundation\n") }).signals).toEqual([]);
   });
+
+  it("does not let a commented-out import decide the platform (was I1)", () => {
+    const blockCommented = inferPlatform({ ...none, swiftSources: swift("/*\nimport AppKit\n*/\n") });
+    expect(blockCommented.platform).toBeNull();
+    expect(blockCommented.conflicted).toBe(false);
+    expect(blockCommented.signals).toEqual([]);
+
+    const lineCommented = inferPlatform({ ...none, swiftSources: swift("// import AppKit\n") });
+    expect(lineCommented.signals).toEqual([]);
+
+    const lineCommentedNoSpace = inferPlatform({ ...none, swiftSources: swift("//import AppKit\n") });
+    expect(lineCommentedNoSpace.signals).toEqual([]);
+  });
+
+  it("still reads a live import once a commented-out one has been masked out", () => {
+    const v = inferPlatform({ ...none, swiftSources: swift("// import AppKit\nimport UIKit\n") });
+    expect(v.platform).toBe("ios");
+    expect(v.signals).toEqual(["import UIKit in any Swift file"]);
+  });
+
+  it("reads an `@testable import` the same as a plain one", () => {
+    expect(inferPlatform({ ...none, swiftSources: swift("@testable import UIKit\n") }).platform).toBe("ios");
+  });
+
+  it("reads both frameworks imported directly in one file as conflicted", () => {
+    const v = inferPlatform({ ...none, swiftSources: swift("import AppKit\nimport UIKit\n") });
+    expect(v.platform).toBeNull();
+    expect(v.conflicted).toBe(true);
+    expect(v.signals).toEqual(["import AppKit in any Swift file", "import UIKit in any Swift file"]);
+  });
 });

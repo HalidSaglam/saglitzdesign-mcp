@@ -12,6 +12,8 @@
 // plist's permissions as "none declared", which is a false guarantee, not a
 // gap — so null is the deliberate, load-bearing case, not a fallback.
 
+import { maskComments } from "./scan.js";
+
 export interface PlistValue {
   key: string;
   value: string | boolean | string[];
@@ -391,6 +393,13 @@ const SIGNAL = {
  * question this function is asking does not have one answer for this
  * project — so it is recorded as its own signal, pointing straight at
  * `conflicted`, rather than being folded into the macOS/iOS tally.
+ *
+ * Every Swift source is run through `maskComments` before any of the above
+ * is scanned for. Without it, an `import AppKit` line sitting inside a
+ * block comment reads exactly like a live import — the platform verdict
+ * would then rest on dead code, and every platform-scoped rule downstream
+ * would run on that wrong assumption with nothing in the output to explain
+ * why.
  */
 export function inferPlatform(input: {
   keys: Map<string, string | boolean | string[]>;
@@ -427,10 +436,11 @@ export function inferPlatform(input: {
   let sawOsMacOS = false;
   let sawOsIOS = false;
   for (const file of input.swiftSources) {
-    if (/(^|\n)\s*(@testable\s+)?import\s+AppKit\b/.test(file.source)) sawAppKit = true;
-    if (/(^|\n)\s*(@testable\s+)?import\s+UIKit\b/.test(file.source)) sawUIKit = true;
-    if (/#if\s+os\(macOS\)/.test(file.source)) sawOsMacOS = true;
-    if (/#if\s+os\(iOS\)/.test(file.source)) sawOsIOS = true;
+    const masked = maskComments(file.source, file.path);
+    if (/(^|\n)\s*(@testable\s+)?import\s+AppKit\b/.test(masked)) sawAppKit = true;
+    if (/(^|\n)\s*(@testable\s+)?import\s+UIKit\b/.test(masked)) sawUIKit = true;
+    if (/#if\s+os\(macOS\)/.test(masked)) sawOsMacOS = true;
+    if (/#if\s+os\(iOS\)/.test(masked)) sawOsIOS = true;
   }
   if (sawAppKit) {
     signals.push(SIGNAL.importAppKit);

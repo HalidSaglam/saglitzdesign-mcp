@@ -31,6 +31,16 @@
  *     treating that as an unterminated block comment would blank out every
  *     header declaration that follows it in the file, so `_headers` is
  *     deliberately excluded from this group.
+ *   - the same two forms in `.swift` files, too — Swift's line comment and
+ *     its slash-star block comment are the identical syntax, and
+ *     `appleconfig.ts`/`apple.ts` need the same "don't let a comment decide
+ *     anything" guarantee an Apple audit rule gets for free elsewhere. One
+ *     real gap: Swift block comments nest (a block comment opened inside
+ *     another is closed by its own matching close, not the outer one) and
+ *     this scanner does not track that depth — it closes on the first
+ *     closing marker it meets, same as it does for JS, where nesting isn't
+ *     legal syntax to begin with. Untested against nested Swift block
+ *     comments; not a case any of this module's current callers construct.
  *   - `#` only in `.toml` and `_headers` files, where it is their actual
  *     comment syntax. JSON has no comment syntax, so nothing is masked
  *     there — a `//` inside a URL string in vercel.json must survive.
@@ -52,11 +62,18 @@
  * commented-out-header case, which just stays a live finding) and
  * over-masking real code (fabricates `csp-missing` on a correct policy),
  * this errs toward the former wherever the two heuristics would disagree.
+ * The same per-line string tracking applies to `.swift` source even though
+ * Swift's own quoting rules differ in places this scanner does not model
+ * (no `'`-delimited literal exists in Swift; multi-line and raw
+ * (`#"..."#`) string forms are out of scope, same as multi-line template
+ * literals already are for JS) — the existing approximation, not a
+ * Swift-specific one.
  *
  * Exported because `generic.ts` needs the same "don't flag commented-out
  * markup" guarantee for its visual rules — the same judgement Task 6 of the
- * security plan made for `scanTags`. Two consumers is a coincidence; three
- * would make this a shared module instead of a security.ts export.
+ * security plan made for `scanTags` — and `appleconfig.ts` needs it so a
+ * commented-out `import` cannot decide which platform an Apple project
+ * targets.
  */
 export function maskComments(source: string, path: string): string {
   // `.astro` is two languages in one file with a hard, unambiguous boundary:
@@ -78,7 +95,7 @@ export function maskComments(source: string, path: string): string {
   }
 
   const isHeadersFile = /(^|\/)_headers$/.test(path);
-  const isJsLike = /\.(?:jsx?|tsx?|mjs|cjs|mts|cts|vue|svelte)$/i.test(path);
+  const isJsLike = /\.(?:jsx?|tsx?|mjs|cjs|mts|cts|vue|svelte|swift)$/i.test(path);
   const isHashComment = isHeadersFile || /\.toml$/i.test(path);
 
   let out = "";
