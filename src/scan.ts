@@ -48,9 +48,11 @@
  *    comment for the reproduction that first found this.
  *
  * Both fallbacks keep the nesting win on every comment that actually
- * balances without crossing a string boundary, while never letting depth
- * tracking mask further into the file's real code than a flat scan already
- * would.
+ * balances without crossing a string boundary. Neither is a general fix for
+ * the quote tracker's own approximations — see the residual paragraph on
+ * `maskComments`'s doc comment for the mechanism this function's fallbacks
+ * do *not* cover, and why chasing it here would trade one rare failure for
+ * a common one.
  *
  * Kept as its own function, ahead of `maskComments`'s own doc comment
  * below, so that doc comment stays attached to the function it documents —
@@ -143,43 +145,64 @@ function findNestedBlockCommentEnd(source: string, from: number): number {
  * (no `'`-delimited literal exists in Swift; raw (`#"..."#`) string forms
  * are out of scope) — the existing approximation, not a Swift-specific one.
  *
- * **A residual over-masking risk in `.swift`'s multi-line `"""`-delimited
- * strings, deliberately left unhandled rather than half-fixed, with a
- * provable bound rather than an assumed one:** quote tracking resets at
- * every newline, so text inside a `"""` string is only protected from
- * being read as code on the line it opens on — a later line inside such a
- * string can contain text that only looks like block-comment markers and
- * this scanner has no way to know it's inside a string. The bound after
- * `findNestedBlockCommentEnd`'s two fallbacks (the unbalanced one, and the
- * one added for a balanced span that crosses a `"""`): masking triggered
- * inside an untracked multi-line string can never reach further into the
- * file's real, live code than a flat, non-nesting scan already would — the
- * same known blind spot every other `isJsLike` extension already lives
- * with for its own multi-line-string/template-literal gap, no worse. This
- * is provable directly from the fallback condition: the only way a
- * balanced span could extend past the string's own closing `"""` into
- * subsequent live code is for that span to contain the `"""` characters
- * themselves, which is exactly the condition that routes it to the flat
- * answer instead. Two concrete cases, both pinned by name in
- * `tests/scan.test.ts`:
- *   - A balanced span that crosses a `"""` — depth returned to zero, but
- *     only by counting markers on both sides of a string boundary as one
- *     comment, which they are not — falls back to the flat answer. This is
- *     the case a six-scanner differential run against real Swift source
- *     first reproduced as a *fabricated* `null` platform verdict on a file
- *     that compiles and genuinely targets macOS; fixed by this fallback.
- *   - A balanced span that stays entirely inside a string, never touching
- *     its `"""` boundary, still masks by the nesting rule rather than the
- *     flat one — which can mask more of that string's own content than a
- *     flat scan would, but, per the proof above, cannot on its own reach
- *     the live code after the string closes.
- * Not fixed further because doing so correctly needs the file read
- * top-to-bottom as one string-aware pass instead of the current
- * per-character scan with per-line quote reset — a larger change than
- * either this fix or the nesting fix it belongs to. `appleconfig.ts` is
- * the caller this can reach today, through arbitrary user Swift source —
- * noted on `inferPlatform`'s own doc comment as well, since that is where
- * a caller of *this* function would look first.
+ * **A residual over-masking risk in `.swift` source, deliberately left
+ * unhandled rather than chased through a fourth special case, with the
+ * bound stated precisely enough to say which mechanism it covers and which
+ * it does not — the distinction that matters here, because a bound that
+ * merely survived every case someone tried is not the same thing as a
+ * bound proven from the code, and this module has now shipped the former
+ * mislabelled as the latter more than once.**
+ *
+ * What `findNestedBlockCommentEnd`'s two fallbacks (see its own doc
+ * comment) actually close, provably: a balanced nesting count that only
+ * balances by crossing a `"""` multi-line string's own boundary. That is
+ * proven directly from the fallback condition — the only way a balanced
+ * span could extend past a string's closing `"""` into real code after it
+ * is for the span to contain the `"""` characters themselves, which is
+ * exactly what routes it to the flat, non-nesting answer instead. Pinned
+ * by name in `tests/scan.test.ts`, including the case a six-scanner
+ * differential against real Swift source first reproduced as a fabricated
+ * `null` platform verdict on a file that compiles and genuinely targets
+ * macOS.
+ *
+ * What it does *not* close: the quote tracker itself is a per-line,
+ * per-character toggle, not a real tokenizer, and does not understand
+ * Swift string interpolation (`\(...)`). A nested, unescaped `"` inside an
+ * interpolation — `"a\(f("open /*")) still"` — closes what the tracker
+ * believes is the outer string right there, exposing `open /*` as live
+ * code even though it is still, to the actual Swift compiler, inside a
+ * string literal. No `"""` is involved at all, so `findNestedBlockCommentEnd`'s
+ * fallback has no signal to catch it on. From that spurious opening the
+ * depth scan can walk into a later *genuine*, well-formed block comment,
+ * count it as real nesting, and keep going past whatever live code sits
+ * inside — including an `import` — until a second spurious closer
+ * (produced by the same quote-tracker mishandling, e.g. inside a later
+ * interpolated string containing the same close-marker text as a plain
+ * quoted literal) balances the count. Pinned by name in
+ * `tests/scan.test.ts` as a known, unfixed gap: the assertion there
+ * records what this scanner currently does, not what it should do.
+ *
+ * The shape is the same as the pre-existing gap documented on
+ * `stripNestedContainers` in `appleconfig.ts`: more than one thing has to
+ * line up — a spurious quote-tracker exit *and* a later genuine comment
+ * for the exposed scan to walk into — and it is a known limit, not one
+ * either function guards against. It is not fixed here, or by another
+ * targeted check, because it is not really a comment-masking defect at
+ * all: it is the quote tracker's per-line, per-character approximation of
+ * string literals leaking into whatever reads its output next, and that
+ * predates `.swift` entirely (the same approximation is what already made
+ * a multi-line template literal out of scope for JS, noted above). Nesting
+ * did not create this gap — it only gives a spurious opening somewhere to
+ * reach, the same way the `"""` case gave one before its own fallback.
+ * Closing it for real needs the file read top-to-bottom as one
+ * string-aware, interpolation-aware tokenizing pass instead of the current
+ * per-character scan with per-line quote reset; a further special case
+ * would only trade this rare, compound failure for breaking the common,
+ * legitimate one — a comment genuinely commenting out code that itself
+ * contains string literals — which is not a trade worth making.
+ * `appleconfig.ts` is the caller this can reach today, through arbitrary
+ * user Swift source — noted on `inferPlatform`'s own doc comment as well,
+ * since that is where a caller of *this* function would look first.
  *
  * Exported because `generic.ts` needs the same "don't flag commented-out
  * markup" guarantee for its visual rules — the same judgement Task 6 of the

@@ -414,20 +414,31 @@ const SIGNAL = {
  *   raw source, which reopens the exact commented-out-import defect this
  *   comment describes. There is no error or signal for that fallback; it
  *   just happens.
- * - `maskComments` has a residual over-masking risk for `.swift` source
- *   containing a multi-line `"""`-delimited string: text inside such a
- *   string that only looks like block-comment markers can still get masked
- *   as if it were a real comment. The provable bound is that this can never
- *   mask further into the file's real code than a flat, non-nesting scan
- *   already would — the same gap every other `isJsLike` extension already
- *   lives with for its own multi-line-string/template-literal blind spot,
- *   no worse. Two differential runs against real Swift source each caught
- *   a case where an earlier version of this bound did not hold (a live
- *   `import` right after such a string was masked away, fabricating a
- *   `null` verdict on a file that compiles and targets a real platform);
- *   both are fixed and pinned by name in `tests/scan.test.ts`. See the
- *   over-masking paragraph on `maskComments`'s own doc comment in
- *   `src/scan.ts` for the full mechanism and the proof of the bound.
+ * - `maskComments` has residual over-masking risk in `.swift` source, not
+ *   fully closed and not claimed to be. What is fixed and proven: a nested
+ *   comment count that only balances by crossing a `"""` multi-line
+ *   string's own boundary falls back to a flat, non-nesting answer instead
+ *   — a six-scanner differential against real Swift source first caught
+ *   this as a fabricated `null` verdict on a file that compiles and
+ *   targets a real platform. What is *not* closed: the quote tracker is a
+ *   per-line, per-character toggle, not a real tokenizer, and mishandles
+ *   Swift string interpolation — a nested, unescaped `"` inside an
+ *   interpolated call can close what the tracker thinks is the outer
+ *   string early, exposing text that is really still inside a string
+ *   literal as live code, with no `"""` involved at all. If a genuine,
+ *   well-formed comment appears later in the file, nesting can walk
+ *   through both spurious points and mask real code — including an
+ *   `import` — in between. This is the same "more than one thing has to
+ *   line up" shape as `stripNestedContainers`'s known gap above, and is
+ *   deliberately not chased with a further special case: doing that
+ *   correctly needs a real string-aware, interpolation-aware tokenizer, not
+ *   another targeted check, which would only trade this rare, compound
+ *   failure for breaking the common, legitimate case of a comment that
+ *   genuinely comments out code containing string literals. Pinned by name
+ *   in `tests/scan.test.ts` as a known, unfixed gap. See the over-masking
+ *   paragraph on `maskComments`'s own doc comment in `src/scan.ts` for the
+ *   full mechanism, including exactly what its fallbacks do and do not
+ *   cover.
  * - The import/`#if` recognisers above are text patterns, not a parser:
  *   `@testable import Foo` is recognised, but `@_exported import Foo` and a
  *   submodule import like `import struct AppKit.NSRect` are not — neither

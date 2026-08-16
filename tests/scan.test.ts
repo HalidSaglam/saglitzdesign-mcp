@@ -190,6 +190,31 @@ describe("maskComments — Swift block comments nest, unlike every other isJsLik
     const masked = maskComments(source, "App.swift");
     expect(masked).not.toContain("import AppKit");
   });
+
+  // Known gap, pinned not fixed. The `"""` fallback above only catches a
+  // balanced span that crosses a multi-line string's own boundary; it has
+  // nothing to do with the quote tracker itself, which is a per-line,
+  // per-character toggle rather than a real tokenizer and does not
+  // understand Swift string interpolation. A nested, unescaped `"` inside
+  // an interpolated call — `f("open /*")` — closes what the tracker thinks
+  // is the outer string right there, exposing `open /*` as live code even
+  // though the real Swift compiler still sees it as string content. No
+  // `"""` is involved, so the existing fallback has no signal to catch it
+  // on. From that spurious opening, nesting walks into the genuine,
+  // well-formed `/* actual comment */` below it, counts it as real
+  // nesting, and keeps going past the real `import AppKit` until a second
+  // interpolated string supplies a spurious closer. This is the same "more
+  // than one thing has to line up" shape as `stripNestedContainers`'s known
+  // gap in `appleconfig.ts`, and is not fixed here for the same reason: a
+  // real fix needs a string-aware, interpolation-aware tokenizing pass, and
+  // a further targeted check would only trade this rare, compound failure
+  // for breaking the common, legitimate case of a comment that genuinely
+  // comments out code containing string literals.
+  it("known gap, not fixed here: a nested quote inside Swift string interpolation can expose a spurious comment marker that later swallows real code", () => {
+    const source = 'let s1 = "a\\(f("open /*")) still"\n/* actual comment */\nimport AppKit\nlet s2 = "b\\(f("close */")) done"\n';
+    const masked = maskComments(source, "App.swift");
+    expect(masked).not.toContain("import AppKit");
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
