@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import {
@@ -924,9 +924,9 @@ describe("appleReport returns both registers", () => {
   it("routes nothing through a rule+line deduper", () => {
     const root = project({
       "Info.plist": plist("<key>UIRequiresFullScreen</key>\n<true/>\n<key>UIRequiresFullscreen</key>\n<true/>"),
-      "Assets.xcassets/A.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal" }] }),
-      "Assets.xcassets/B.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal" }] }),
-      "Assets.xcassets/C.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal" }] }),
+      "Assets.xcassets/A.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal", color: { components: { red: "0.1", green: "0.2", blue: "0.3", alpha: "1" } } }] }),
+      "Assets.xcassets/B.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal", color: { components: { red: "0.1", green: "0.2", blue: "0.3", alpha: "1" } } }] }),
+      "Assets.xcassets/C.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal", color: { components: { red: "0.1", green: "0.2", blue: "0.3", alpha: "1" } } }] }),
     });
     const findings = appleReport(root).structured.findings;
     expect(findings).toHaveLength(5);
@@ -999,7 +999,7 @@ describe("an unparsed surface never reaches the surfaces list", () => {
   it("keeps a malformed colorset out of surfaces.assetCatalogs and rules on the readable one beside it", () => {
     const root = project({
       "Assets.xcassets/Broken.colorset/Contents.json": "{ colors: [ }",
-      "Assets.xcassets/Flat.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal" }] }),
+      "Assets.xcassets/Flat.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal", color: { components: { red: "0.1", green: "0.2", blue: "0.3", alpha: "1" } } }] }),
     });
     const r = appleReport(root);
     expect(rules(root)).toEqual(["colorset-no-dark-variant"]);
@@ -1020,6 +1020,7 @@ const DEMONSTRATED = [
   "Nothing here is measured, and nothing is rendered.",
   "A file this scan never opened.",
   "A directory the walk never enters",
+  "Vendored source under a directory name that is not on that list.",
   "Whatever the scan stopped short of.",
   "which is skipped whole rather than truncated.",
   "Anything reached through a symbolic link.",
@@ -1035,6 +1036,10 @@ const DEMONSTRATED = [
   "A Swift file whose comment masking went wrong",
   "The shapes the Swift rules do not match",
   "The difference between code and a string that looks like code.",
+  "A key spelling this reader has not been taught.",
+  "A colorset that declares no colour value.",
+  "A path this process could not open.",
+  "A file that is not UTF-8 text.",
   "What a colorset resolves to.",
 ];
 
@@ -1050,7 +1055,7 @@ describe("every notVisible entry has a demonstration", () => {
     // language it can only read one line at a time, and each of those is its
     // own class of blind spot. A shrinking list here means a limit stopped
     // being disclosed, not that one stopped existing.
-    expect(APPLE_NOT_VISIBLE.length).toBeGreaterThanOrEqual(19);
+    expect(APPLE_NOT_VISIBLE.length).toBeGreaterThanOrEqual(24);
   });
 });
 
@@ -1095,17 +1100,72 @@ describe("2. a file this scan never opened", () => {
 });
 
 describe("3. a directory the walk never enters", () => {
-  it("reads the plist under Pods/ and neither the one under build/ nor the one under .build/", () => {
+  it("reads none of build/, .build/, Pods/, Carthage/ or DerivedData/", () => {
     const body = plist("<key>UIRequiresFullScreen</key>\n<true/>");
     const root = project({
       "build/Info.plist": body,
       ".build/Info.plist": body,
       "Pods/Info.plist": body,
+      "Carthage/Info.plist": body,
+      "DerivedData/Info.plist": body,
       "Sources/V.swift": "import SwiftUI\nimport UIKit\n",
     });
     const r = appleReport(root);
-    expect(r.text).toContain("- Information property lists (1): `Pods/Info.plist`");
-    expect(rules(root)).toEqual(["uirequiresfullscreen-deprecated"]);
+    expect(rules(root)).toEqual([]);
+    expect(r.text).toContain("- Information property lists: none read");
+    expect(r.structured.scan.filesRead).toBe(1);
+  });
+
+  // The three failures the exclusion exists to prevent, on one clean app with
+  // its dependencies checked in beside it. Before it, five of five findings
+  // came from vendored code and neither platform-scoped rule could run.
+  it("reports the app's own findings and nothing from Pods/, Carthage/ or DerivedData/", () => {
+    const root = project({
+      "Ledger.xcodeproj/project.pbxproj":
+        "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\nINFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = \"UIInterfaceOrientationPortrait\";\n",
+      "Ledger/ContentView.swift": 'import SwiftUI\nNavigationView {\n  Text("Hi").font(.system(size: 17))\n}\n',
+      "Pods/Target Support Files/Alamofire/Info.plist": plist("<key>UIRequiresFullScreen</key>\n<true/>"),
+      "Pods/Alamofire/Source/Session.swift": 'import SwiftUI\nNavigationView { Text("pod") }\n',
+      // A pod's own macOS build setting, which used to collide with the app's
+      // iOS signals and take the verdict to `conflicted`.
+      "Pods/Pods.xcodeproj/project.pbxproj": "INFOPLIST_KEY_LSMinimumSystemVersion = 10.15;\n",
+      "Carthage/Checkouts/Kingfisher/Sources/View.swift": 'import SwiftUI\nNavigationView { Text("carthage") }\n',
+      "DerivedData/Build/Info.plist": plist("<key>UIRequiresFullScreen</key>\n<true/>"),
+    });
+    const r = appleReport(root);
+    expect(ruleLines(root)).toEqual(["navigationview-deprecated@2", "fixed-font-size@3"]);
+    for (const f of r.structured.findings) expect(f.file).toBe("Ledger/ContentView.swift");
+    // The verdict survived the pod's macOS signal, so both rules could run.
+    expect(r.text).toContain("**Platform: iOS**");
+  });
+
+  // The starvation case: vendored source sorts before the app's own directory,
+  // so without the exclusion it exhausts the file cap first.
+  it("does not let 420 vendored Swift files spend the file cap", () => {
+    const files: Record<string, string> = {
+      "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\n",
+      "Ledger/ContentView.swift": 'import SwiftUI\nNavigationView {\n  Text("Hi").font(.system(size: 17))\n}\n',
+    };
+    for (let i = 0; i < 420; i++) files[`Carthage/Checkouts/Lib/S${String(i).padStart(4, "0")}.swift`] = "import SwiftUI\nlet x = 1\n";
+    const root = project(files);
+    const r = appleReport(root);
+    expect(r.structured.scan.hitFileCap).toBe(false);
+    expect(r.structured.scan.filesRead).toBe(2);
+    expect(ruleLines(root)).toEqual(["navigationview-deprecated@2", "fixed-font-size@3"]);
+  });
+});
+
+describe("3b. vendored source under a directory name that is not on that list", () => {
+  it("audits a library checked into Vendor/ as though a person on the team wrote it", () => {
+    const root = project({
+      "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\n",
+      "Vendor/Lib/View.swift": 'import SwiftUI\nNavigationView { Text("vendored") }\n',
+      "Ledger/ContentView.swift": "import SwiftUI\nimport UIKit\n",
+    });
+    const r = appleReport(root);
+    expect(rules(root)).toEqual(["navigationview-deprecated"]);
+    expect(r.structured.findings[0].file).toBe("Vendor/Lib/View.swift");
+    expect(r.text).toContain("`Vendor/Lib/View.swift`");
   });
 });
 
@@ -1138,6 +1198,17 @@ describe("5. a file over the per-file cap", () => {
     expect(r.structured.findings).toEqual([]);
     expect(r.text).toContain("**Skipped 1 file(s) over 500 KB**, unopened: `Sources/Huge.swift`.");
     expect(r.text).toContain("- Swift source (1): `Sources/Small.swift`");
+  });
+
+  it("names at most five of them, so a sixth appears nowhere in the prose", () => {
+    const files: Record<string, string> = { "Info.plist": plist("<key>CFBundleName</key>\n<string>Big</string>") };
+    for (let i = 0; i < 6; i++) files[`Sources/Huge${i}.swift`] = 'import SwiftUI\nNavigationView { Text("x") }\n' + "// ".repeat(300 * 1024);
+    const root = project(files);
+    const r = appleReport(root);
+    expect(r.structured.scan.skippedLarge).toHaveLength(6);
+    expect(r.text).toContain("**Skipped 6 file(s) over 500 KB**");
+    expect(r.text).toContain("`Sources/Huge4.swift`");
+    expect(r.text).not.toContain("Sources/Huge5.swift");
   });
 });
 
@@ -1210,6 +1281,25 @@ describe("8. a plist value outside the reader's subset", () => {
     expect(appleReport(asString).text).toContain("**Platform: iOS**");
     expect(rules(asString)).toEqual(["fixed-font-size"]);
   });
+
+  // …and the loss is usually covered rather than fatal. The Xcode 12-14
+  // template writes UILaunchScreen as a dict *and* UISupportedInterfaceOrientations
+  // as an array of strings, so the verdict survives on the second signal. The
+  // sentence says so, because a reader who took the dict case for the common
+  // one would expect this template to come back undetermined. It does not.
+  it("still reads the Xcode 12-14 template as iOS, off the sibling signal the dict case does not cost", () => {
+    const root = project({
+      "Info.plist": plist([
+        "<key>UILaunchScreen</key>",
+        "<dict/>",
+        "<key>UISupportedInterfaceOrientations</key>",
+        "<array><string>UIInterfaceOrientationPortrait</string></array>",
+      ].join("\n")),
+      "Sources/V.swift": 'import SwiftUI\nText("Hi").font(.system(size: 17))\n',
+    });
+    expect(appleReport(root).text).toContain("**Platform: iOS**");
+    expect(rules(root)).toEqual(["fixed-font-size"]);
+  });
 });
 
 describe("9. everything in a project.pbxproj other than INFOPLIST_KEY_*", () => {
@@ -1242,13 +1332,16 @@ describe("9. everything in a project.pbxproj other than INFOPLIST_KEY_*", () => 
     expect(appleReport(root).text).toContain("**Platform: iOS**");
   });
 
-  // The prefix is stripped literally, so a build setting whose name merely
-  // starts with a key this audit knows does not become that key.
-  it("reads INFOPLIST_KEY_UILaunchScreen_Generation as a key no rule and no signal looks for", () => {
+  // The prefix is stripped literally, so a build setting arrives under whatever
+  // name follows it — never under the unsuffixed key it resembles.
+  it("reads INFOPLIST_KEY_UILaunchScreen_Generation under its own suffixed name", () => {
     const config = readAppleConfig([{ path: "project.pbxproj", source: "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\n" }]);
     expect(config.keys.has("UILaunchScreen")).toBe(false);
+    expect(config.keys.has("UILaunchScreen_Generation")).toBe(true);
+    // …and that suffixed name is one of the three recognised as an iOS signal,
+    // because it is what a default project actually writes.
     const root = project({ "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\n" });
-    expect(appleReport(root).text).toContain("**Platform: not determined**");
+    expect(appleReport(root).text).toContain("**Platform: iOS**");
   });
 });
 
@@ -1483,6 +1576,122 @@ describe("19. what a colorset resolves to", () => {
       }),
     });
     expect(rules(root)).toEqual([]);
+  });
+});
+
+describe("20. a key spelling this reader has not been taught", () => {
+  // GENERATE_INFOPLIST_FILE = YES has been Xcode's default since 13, so this is
+  // the commonest input this audit will ever be pointed at: no Info.plist at
+  // all, every key suffixed, and a SwiftUI-lifecycle app with no import UIKit
+  // to fall back on. Before the suffixed families were matched it came back
+  // `signals: []` and silenced every platform-scoped rule.
+  const DEFAULT_PBXPROJ = [
+    "// !$*UTF8*$!",
+    "{ buildSettings = {",
+    "    GENERATE_INFOPLIST_FILE = YES;",
+    "    INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;",
+    "    INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;",
+    "    INFOPLIST_KEY_UILaunchScreen_Generation = YES;",
+    '    INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft";',
+    '    INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait";',
+    "  };",
+    "}",
+  ].join("\n");
+
+  it("reads a default Xcode iOS project as iOS, with no Info.plist and no import UIKit anywhere", () => {
+    const root = project({
+      "Ledger.xcodeproj/project.pbxproj": DEFAULT_PBXPROJ,
+      "Ledger/LedgerApp.swift": "import SwiftUI\n@main struct LedgerApp: App {\n  var body: some Scene { WindowGroup { ContentView() } }\n}\n",
+      "Ledger/ContentView.swift": 'import SwiftUI\nstruct ContentView: View {\n  var body: some View { Text("Hi").font(.system(size: 17)) }\n}\n',
+      "Ledger/Assets.xcassets/AccentColor.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal" }], info: { author: "xcode", version: 1 } }),
+    });
+    const r = appleReport(root);
+    expect(r.text).toContain("**Platform: iOS**");
+    expect(rules(root)).toEqual(["fixed-font-size"]);
+    // Both suffixed families reached the verdict, not just one.
+    expect(r.text).toContain("`UIRequiresFullScreen or UISupportedInterfaceOrientations key present`");
+    expect(r.text).toContain("`UILaunchScreen / UILaunchStoryboardName key present`");
+  });
+
+  it("produces no signal at all from an iOS-shaped key outside that set", () => {
+    const root = project({
+      "Ledger.xcodeproj/project.pbxproj":
+        "INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;\nINFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;\n",
+      "Ledger/ContentView.swift": 'import SwiftUI\nText("Hi").font(.system(size: 17))\n',
+    });
+    expect(appleReport(root).text).toContain("**Platform: not determined**");
+    expect(rules(root)).toEqual([]);
+  });
+
+  // The asymmetry a reader would otherwise guess backwards: the macOS template
+  // writes a real .entitlements, so macOS was never the silent one.
+  it("reads a default macOS project as macOS off its template entitlements", () => {
+    const root = project({
+      "Ledger/Ledger.entitlements": plist("<key>com.apple.security.app-sandbox</key>\n<true/>\n<key>com.apple.security.files.user-selected.read-only</key>\n<true/>"),
+      "Ledger/LedgerApp.swift": "import SwiftUI\n@main struct LedgerApp: App {\n  var body: some Scene { WindowGroup { ContentView() } }\n}\n",
+    });
+    expect(appleReport(root).text).toContain("**Platform: macOS**");
+  });
+});
+
+describe("21. a colorset that declares no colour value", () => {
+  it("draws nothing on Xcode's default AccentColor placeholder", () => {
+    const root = project({
+      "Assets.xcassets/AccentColor.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal" }], info: { author: "xcode", version: 1 } }),
+    });
+    expect(rules(root)).toEqual([]);
+    // It was read, and says so — it simply contributed no colorset.
+    expect(appleReport(root).text).toContain("- Asset catalog colorsets (1): `Assets.xcassets/AccentColor.colorset/Contents.json`");
+  });
+
+  it("still reports a colorset beside it that does declare one", () => {
+    const root = project({
+      "Assets.xcassets/AccentColor.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal" }] }),
+      "Assets.xcassets/Brand.colorset/Contents.json": JSON.stringify({
+        colors: [{ idiom: "universal", color: { components: { red: "0.1", green: "0.2", blue: "0.3", alpha: "1" } } }],
+      }),
+    });
+    const r = appleReport(root);
+    expect(rules(root)).toEqual(["colorset-no-dark-variant"]);
+    expect(r.structured.findings[0].message).toContain("Brand.colorset");
+  });
+});
+
+describe("22. a path this process could not open", () => {
+  it("names the directory it could not list, and audits nothing under it", () => {
+    const root = project({
+      "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\n",
+      "Ledger/ContentView.swift": "import SwiftUI\nimport UIKit\n",
+      "Secret/Hidden.swift": 'import SwiftUI\nNavigationView { Text("x") }\n',
+    });
+    chmodSync(join(root, "Secret"), 0o000);
+    try {
+      const r = appleReport(root);
+      expect(r.structured.scan.unreadable).toEqual(["Secret"]);
+      expect(r.structured.findings).toEqual([]);
+      expect(r.text).toContain("**Could not be opened at all:** `Secret`");
+      expect(r.text).toContain("`scan.unreadable` carries all 1.");
+    } finally {
+      chmodSync(join(root, "Secret"), 0o755);
+    }
+  });
+});
+
+describe("23. a file that is not UTF-8 text", () => {
+  it("reads a UTF-16 Swift file, finds nothing in it, and records the skip nowhere", () => {
+    const root = project({
+      "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\n",
+      "Sources/Utf8.swift": 'import SwiftUI\nNavigationView { Text("y") }\n',
+    });
+    writeFileSync(join(root, "Sources", "Utf16.swift"), Buffer.from('import SwiftUI\nNavigationView { Text("x") }\n', "utf16le"));
+    const r = appleReport(root);
+    expect(r.structured.findings.map((f) => f.file)).toEqual(["Sources/Utf8.swift"]);
+    // Read in every register, invisible in every register but the finding it
+    // did not produce.
+    expect(r.text).toContain("`Sources/Utf16.swift`");
+    expect(r.structured.scan.filesRead).toBe(3);
+    expect(r.structured.scan.unreadable).toEqual([]);
+    expect(r.structured.scan.skippedLarge).toEqual([]);
   });
 });
 

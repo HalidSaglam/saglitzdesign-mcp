@@ -639,6 +639,36 @@ export const APPLE_EXTENSIONS = [".swift", ".plist", ".entitlements"];
  */
 export const APPLE_FILENAMES = ["Info.plist", "Contents.json", "project.pbxproj"];
 
+/**
+ * Where an Xcode project's *dependencies* live, added to `scanProject`'s own
+ * skip list for this audit only.
+ *
+ * `SKIP_DIRS` already carries `node_modules` and `vendor` for the same reason,
+ * and these are the Apple analogues; leaving them in produced three separate
+ * failures on one clean app with `Pods/` and `Carthage/` beside it, none of
+ * which a disclosure sentence would have fixed:
+ *
+ *  1. **Every finding was about somebody else's code.** Five of five came from
+ *     vendored source — `uirequiresfullscreen-deprecated` attributed to "this
+ *     project's configuration" from a pod's `Info.plist`, and
+ *     `navigationview-deprecated` twice inside two vendored libraries.
+ *  2. **A dependency decided the app had no platform.** A pod's
+ *     `INFOPLIST_KEY_LSMinimumSystemVersion` is a macOS signal; against the
+ *     app's own iOS signals it made the verdict `conflicted`, and both
+ *     platform-scoped rules then went silent on code the user did write.
+ *  3. **A dependency starved the scan.** `Carthage` sorts before most app
+ *     directories, so 420 vendored Swift files exhausted the file cap and the
+ *     app's own `ContentView.swift` — carrying both a `NavigationView` and a
+ *     `.font(.system(size: 17))` — was never opened. The report read
+ *     `Platform: iOS … Platform-scoped rules ran` above `0 error · 0 warning ·
+ *     0 info`, which is the worst shape this whole module exists to avoid.
+ *
+ * `.build` and `.swiftpm` need no entry: `scanProject` skips every directory
+ * whose name begins with a dot. A Swift package's sources vendored under some
+ * other name are not covered by this list and are disclosed instead.
+ */
+export const APPLE_SKIP_DIRS = ["Pods", "Carthage", "DerivedData"];
+
 /** `*.colorset/Contents.json` — the only asset-catalog member read here. */
 const COLORSET_CONTENTS = /\.colorset\/Contents\.json$/;
 /** `project.pbxproj`, at any depth. */
@@ -748,19 +778,21 @@ export const APPLE_NOT_VISIBLE: string[] = [
 
   "**A file this scan never opened.** It opens `.swift`, `.plist` and `.entitlements` files, plus three files matched by name — `Info.plist`, `Contents.json` and `project.pbxproj` — and stops there. In a directory holding `Base.lproj/Main.storyboard`, `Base.lproj/Launch.xib`, `Legacy/LegacyVC.m`, `InfoPlist.xcstrings` and `Sources/V.swift.txt` beside one `Sources/V.swift`, the scan read two files: the plist and the `.swift`. A screen laid out in Interface Builder, a view controller written in Objective-C, and a Swift file saved under any other suffix are each outside what was read — the live `NavigationView` in that `V.swift.txt` drew nothing. An asset-catalog member that is not a colorset is opened and then contributes nothing: a run with `Assets.xcassets/Contents.json` and `Assets.xcassets/AppIcon.appiconset/Contents.json` counted three files read and zero colorsets.",
 
-  "**A directory the walk never enters** — a fixed skip list, plus every directory whose name begins with a dot. The same `Info.plist`, declaring `UIRequiresFullScreen`, was reported from `Pods/Info.plist` and not from `build/Info.plist` or `.build/Info.plist` in the same tree: `build` is on the list and `.build`, SwiftPM's build directory, is skipped for its leading dot. Nothing consults `.gitignore`, and the cost runs both ways — a generated or vendored plist in a directory that is not on that list is read as though a person wrote it, which is how the `Pods` copy above came to be the one that produced the finding.",
+  "**A directory the walk never enters** — a fixed skip list, plus every directory whose name begins with a dot. `Pods`, `Carthage` and `DerivedData` are on that list for this audit specifically, beside the shared `node_modules`, `vendor`, `build` and the rest; SwiftPM's `.build` and `.swiftpm` are skipped for their leading dot. **Nothing inside a dependency is audited, in either direction.** On a clean app with `Pods/` and `Carthage/` beside it, every finding came from `Ledger/ContentView.swift` and none from either — a pod's `Info.plist` declaring `UIRequiresFullScreen` drew nothing, two vendored `NavigationView`s drew nothing, and a pod's own `INFOPLIST_KEY_LSMinimumSystemVersion` did not reach the platform verdict. Read that as coverage rather than as a clean bill on your dependencies: this audit says nothing about them at all.",
+
+  "**Vendored source under a directory name that is not on that list.** The list is names, not provenance, and nothing consults `.gitignore` or a lockfile. A library checked into `Vendor/Lib/View.swift` — capital `V`, which the shared lowercase `vendor` entry does not match — was read as though a person on the team had written it, and its `NavigationView` was reported against that path. Check the file a finding names before acting on it; the surfaces list above prints every Swift file that was read.",
 
   `**Whatever the scan stopped short of.** It reads at most ${MAX_FILES} files and at most ${kb(MAX_TOTAL_BYTES)} in total, stopping at the *first* file that would cross either line and leaving everything the walk had not yet reached unread rather than sampled. A project of 406 Swift files beside one \`Info.plist\` was read to ${MAX_FILES} files, and the \`NavigationView\` in the Swift file that sorted last was not reported. Configuration is read before any of them and is exempt from the file cap, so the \`Info.plist\` in that same run was read — but while \`scan.hitFileCap\` or \`scan.hitByteCap\` is true, no absence in \`findings\` covers the part that was never opened, and the markdown says so in a single **Capped:** line that is easy to read past.`,
 
-  `**A file over ${kb(MAX_FILE_BYTES)}, which is skipped whole rather than truncated.** It is never opened, so nothing above is claimed about anything inside it, and the scan carries on with the rest. A \`Sources/Huge.swift\` past that cap whose second line was \`NavigationView { Text("x") }\` produced no finding and appears only in the skipped-file line above and in \`scan.skippedLarge\`, while the small Swift file beside it was read normally.`,
+  `**A file over ${kb(MAX_FILE_BYTES)}, which is skipped whole rather than truncated.** It is never opened, so nothing above is claimed about anything inside it, and the scan carries on with the rest. A \`Sources/Huge.swift\` past that cap whose second line was \`NavigationView { Text("x") }\` produced no finding, and the small Swift file beside it was read normally. The line above names at most five such files: with six over the cap, five were named and the sixth appeared nowhere in the prose at all. \`scan.skippedLarge\` carries every one of them.`,
 
   "**Anything reached through a symbolic link.** The walk descends into real directories and reads real files, and a directory entry that is a symlink is neither, so it is stepped over — silently: a skipped link is counted in neither `scan.unreadable` nor `scan.skippedLarge`, and nothing in the report mentions it. A linked directory holding a `NavigationView` and a linked `Sources/LinkedV.swift` holding another both drew nothing, while the real Swift file beside them was audited normally. A workspace whose packages are linked into the tree you audit is outside what was read for this reason; point the tool at the directory the files really live in, since the path you pass is followed whether or not it is itself a link.",
 
   "**A configuration file that could not be parsed.** A binary plist (the `bplist00` magic) and anything without a `<plist>`/`<dict>` structure come back as \"not read\" rather than as an empty result, and a `Contents.json` that is not valid JSON is treated the same way. Such a path is kept out of the surfaces list entirely and named in the **Could not be parsed** line above instead — which is what stopped `sandbox-absent-macos`, on a macOS project whose only `App.entitlements` was a binary plist, from naming that file as one it had read: it said \"No entitlements file was among the surfaces read here\" instead, where the same project written as XML draws a message naming the file. A binary `Info.plist` beside a Swift file took the platform verdict to \"not determined\" and silenced every platform-scoped rule with it.",
 
-  "**A plist value outside the small subset this reader covers.** It reads `<string>`, `<true/>`, `<false/>` and an `<array>` of direct `<string>` children; a key whose value is a `<dict>`, an `<integer>`, a `<real>`, a `<date>` or `<data>` is walked past and dropped rather than represented with a guessed type, and an `<array>` of `<dict>`s comes back as an empty array. One consequence is worth knowing before reading a \"not determined\" platform line: Xcode's app template writes `UILaunchScreen` as a dictionary, and a plist declaring it that way contributed no iOS signal at all in a run here, where the same key written as a `<string>` produced `Platform: iOS` and let `fixed-font-size` fire on the identical Swift file. A `UIRequiresFullScreen` nested one dictionary down inside `NSAppTransportSecurity` drew no finding either.",
+  "**A plist value outside the small subset this reader covers.** It reads `<string>`, `<true/>`, `<false/>` and an `<array>` of direct `<string>` children; a key whose value is a `<dict>`, an `<integer>`, a `<real>`, a `<date>` or `<data>` is walked past and dropped rather than represented with a guessed type, and an `<array>` of `<dict>`s comes back as an empty array. A `UIRequiresFullScreen` nested one dictionary down inside `NSAppTransportSecurity` drew no finding, and a `CFBundleURLTypes` array of dicts came back holding nothing. The dropped-key rule reaches the platform signals too: `UILaunchScreen` written as a `<dict>` contributed no signal in a run here, where the same key as a `<string>` produced `Platform: iOS` on the identical Swift file. That particular loss is usually covered rather than fatal — the Xcode 12–14 template writes `UILaunchScreen` as a dict *and* `UISupportedInterfaceOrientations` as an array of strings, and a plist carrying both was still read as iOS off the second one — but a plist whose only iOS evidence is a dict-valued key has none this reader can use.",
 
-  "**Everything in a `project.pbxproj` other than `INFOPLIST_KEY_*`.** That prefix is the only thing read out of the file; the rest of the build configuration is not parsed. In a `project.pbxproj` carrying `ENABLE_HARDENED_RUNTIME = YES`, `CODE_SIGN_ENTITLEMENTS = App/App.entitlements` and `PRODUCT_NAME = \"Ledger\"` beside three `INFOPLIST_KEY_*` settings, the three prefixed settings were read — `INFOPLIST_KEY_UIRequiresFullScreen` produced both a finding and the iOS verdict — and the other three were outside what was read. The prefix is also stripped literally, which is worth knowing before assuming a build setting reached a rule: `INFOPLIST_KEY_UILaunchScreen_Generation` was read as the key `UILaunchScreen_Generation`, which is not a key any rule or platform signal here looks for.",
+  "**Everything in a `project.pbxproj` other than `INFOPLIST_KEY_*`.** That prefix is the only thing read out of the file; the rest of the build configuration is not parsed. In a `project.pbxproj` carrying `ENABLE_HARDENED_RUNTIME = YES`, `CODE_SIGN_ENTITLEMENTS = App/App.entitlements` and `PRODUCT_NAME = \"Ledger\"` beside three `INFOPLIST_KEY_*` settings, the three prefixed settings were read — `INFOPLIST_KEY_UIRequiresFullScreen` produced both a finding and the iOS verdict — and the other three were outside what was read. The prefix is also stripped literally, so a build setting arrives under whatever name follows it: `INFOPLIST_KEY_UILaunchScreen_Generation` becomes the key `UILaunchScreen_Generation`, and `INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone` becomes `UISupportedInterfaceOrientations_iPhone`. Those three suffixed spellings are recognised as iOS signals by name, because they are what a default project actually writes — but only those three, and only as an exact set.",
 
   "**Which target a key belongs to.** Keys from every plist and every `project.pbxproj` in the tree are merged into one map, because nothing in the four surfaces read here carries a target. An app target with `App/Info.plist` and a share extension with `ShareExtension/Info.plist` produced one `uirequiresfullscreen-deprecated` finding, phrased as a fact about \"this project's configuration\", when the key had been declared by the extension alone. The surfaces list above names every plist that went into that map, which is the only place in this report where the distinction survives.",
 
@@ -779,6 +811,14 @@ export const APPLE_NOT_VISIBLE: string[] = [
   "**The shapes the Swift rules do not match, which a clean run says nothing about.** `fixed-font-size` matches the SwiftUI `.system(size:)` form only, so `UIFont.systemFont(ofSize: 17)` and `Font.custom(\"Inter\", fixedSize: 17)` — which carry the same documented cost to Dynamic Type — are outside it. `hardcoded-color-literal` wants a `red:` argument label, so a project's own hex initialiser, `Color(hex: \"#FF3B30\")`, is outside it. `symbol-as-only-button-label` needs the symbol name as a string literal, so `Image(systemName: symbol)` with a variable is outside it. One iOS file carrying all four of those lines drew zero findings here. A clean result on a UIKit target, or on a codebase with its own colour and symbol helpers, is coverage rather than restraint.",
 
   "**The difference between code and a string that looks like code.** `maskComments` blanks comments and leaves string contents in place, so a rule matching a type name matches it inside a literal too: `Text(\"NavigationView is deprecated\")` drew `navigationview-deprecated` against that line. Rare in practice, and stated here so a finding against a line of prose is not a surprise.",
+
+  "**A key spelling this reader has not been taught.** `GENERATE_INFOPLIST_FILE = YES` has been Xcode's default since 13, so a new project has no `Info.plist` and every key arrives out of `project.pbxproj` — where Xcode splits two iOS families by idiom and generation. Those three spellings (`UISupportedInterfaceOrientations_iPhone`, `UISupportedInterfaceOrientations_iPad`, `UILaunchScreen_Generation`) are matched by name, so a default SwiftUI-lifecycle iOS app with no `Info.plist` and no `import UIKit` anywhere reads as `Platform: iOS` and `fixed-font-size` fires on it. Anything outside that set produces no signal rather than a guessed one: a project whose only iOS-shaped keys were `UIApplicationSceneManifest_Generation` and `UIApplicationSupportsIndirectInputEvents` came back `not determined`, with `fixed-font-size` silent on a `.font(.system(size: 17))` sitting in the file beside them.",
+
+  "**A colorset that declares no colour value.** An entry counts as a colour when it carries a `color` object; a colorset carrying none is left out of the result entirely, the same way an unparseable one is, and draws no finding in either direction. Xcode's project template writes exactly that shape for `AccentColor` — `{\"colors\":[{\"idiom\":\"universal\"}]}`, an idiom and nothing else, meaning \"use the system accent\" — and a default project carrying only that colorset produced zero findings here. It is still listed above as an asset-catalog colorset that was read, because it was; it simply contributed nothing. A colorset holding a real value under some shape this reader does not recognise would be dropped the same way and would look identical.",
+
+  "**A path this process could not open.** A directory it may not list and a file it may not read are both recorded, stepped over, and the audit continues without them. `chmod 000` on a `Secret/` directory holding a `NavigationView` produced no finding and a **Could not be opened at all: `Secret`** line above; `scan.unreadable` carries every such path, and the line above names at most five. Nothing under an unopened path was audited, so an empty findings list covers the part of the tree that was readable and no more.",
+
+  "**A file that is not UTF-8 text.** Every file is decoded as UTF-8 and the result is handed to the rules whatever it looks like. A `Sources/Utf16.swift` saved as UTF-16, whose second line was a live `NavigationView`, produced no finding, while the UTF-8 file beside it was audited normally — and it counts as read in every register: it is named in the surfaces list above, its bytes count towards the byte cap, and it appears in neither `scan.unreadable` nor `scan.skippedLarge`. This one is invisible everywhere except in the finding it did not produce.",
 
   "**What a colorset resolves to.** `hasDarkVariant` is a reading of a declaration, not of a colour. A `Brand.colorset` declaring a `luminosity: dark` appearance whose dark components are byte-for-byte its light ones drew no finding, which is correct — the declaration is there — and settles nothing about whether the two appearances differ, whether either is legible against what it is drawn on, or what happens under Increase Contrast. The colour components are never compared here at all.",
 ];
@@ -845,7 +885,7 @@ function renderFinding(f: LintFinding & { file?: string }): string[] {
  * what differs is that this one knows which file produced which.
  */
 export function appleReport(root: string): AuditReport & { structured: AppleStructured } {
-  const scan = scanProject(root, APPLE_EXTENSIONS, APPLE_FILENAMES);
+  const scan = scanProject(root, APPLE_EXTENSIONS, APPLE_FILENAMES, APPLE_SKIP_DIRS);
   const files = scan.files.map((f) => ({ path: f.path, source: f.source }));
 
   const config = readAppleConfig(files);
@@ -901,6 +941,18 @@ export function appleReport(root: string): AuditReport & { structured: AppleStru
     lines.push(
       `**Could not be parsed, and therefore not read at all:** ${config.unparsed.map((p) => `\`${p}\``).join(", ")}. `
       + `Nothing above is claimed about anything inside them, in either direction — a key that would have been declared there is absent from this audit's view of the project, not absent from the project.`,
+      "",
+    );
+  }
+  // A path this process may not open reads exactly like a directory holding
+  // nothing to report unless the report says otherwise. `scan.unreadable`
+  // carried these from the first version; the markdown did not, so a
+  // permissions problem was invisible to anyone reading the prose.
+  if (scan.unreadable.length) {
+    lines.push(
+      `**Could not be opened at all:** ${scan.unreadable.slice(0, 5).map((p) => `\`${p}\``).join(", ")}`
+      + `${scan.unreadable.length > 5 ? `, …and ${scan.unreadable.length - 5} more` : ""}. `
+      + `A directory this process may not list and a file it may not read are both stepped over and the audit continues, so anything under them was not audited. \`scan.unreadable\` carries all ${scan.unreadable.length}.`,
       "",
     );
   }

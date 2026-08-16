@@ -235,6 +235,25 @@ describe("server handshake", () => {
     }
   });
 
+  // The README's headline count was written by hand and pinned by nothing:
+  // integrity.test.ts checks one tool's row and the document count, never the
+  // count against the registrations. It went stale the moment a 34th tool was
+  // registered, and would have gone stale again on the 35th. Read off the live
+  // server rather than off the source, so it is the advertised number that is
+  // checked.
+  it("agrees with the tool count the README advertises", async () => {
+    const readme = await import("node:fs").then((fs) => fs.readFileSync(join(root, "README.md"), "utf8"));
+    const claimed = /·\s*(\d+)\s+tools\s*·/.exec(readme);
+    expect(claimed, "README no longer states a tool count in the expected shape").toBeTruthy();
+    expect(Number(claimed![1])).toBe(toolNames.length);
+  });
+
+  it("gives the newest tool a row in the README's tool table", async () => {
+    const readme = await import("node:fs").then((fs) => fs.readFileSync(join(root, "README.md"), "utf8"));
+    const missing = toolNames.filter((n) => !readme.includes(`\`${n}\``));
+    expect(missing, "registered but absent from the README").toEqual([]);
+  });
+
   it("reports the package version", async () => {
     const pkg = JSON.parse(
       await import("node:fs").then((fs) => fs.readFileSync(join(root, "package.json"), "utf8")),

@@ -72,14 +72,27 @@ export interface ProjectAudit {
  * handful of small files — are read first and exempt from the file cap, and
  * only the extension matches are capped. `hitFileCap` therefore means "some
  * source files were not read", which is exactly what callers report.
+ *
+ * `extraSkipDirs` adds to `SKIP_DIRS` for one caller without widening it for
+ * the rest. The shared list already carries `node_modules` and `vendor`,
+ * because a dependency someone else wrote is not the project being audited and
+ * reading it produces findings the user cannot act on — but the directory a
+ * dependency lands in is ecosystem-specific, and an auditor scoped to one
+ * ecosystem knows its own names (`Pods`, `Carthage`, `DerivedData` for Xcode)
+ * where this shared function does not. Adding rather than replacing is
+ * deliberate: a caller reaching for this wants *more* excluded, never less, and
+ * a replace-semantics argument would let one silently start reading
+ * `node_modules`.
  */
 export function scanProject(
   root: string,
   extensions: string[] = UI_EXTENSIONS,
   filenames: string[] = [],
+  extraSkipDirs: string[] = [],
 ): ScanResult {
   const wanted = new Set(extensions.map((e) => e.toLowerCase()));
   const wantedNames = new Set(filenames);
+  const skipDirs = extraSkipDirs.length ? new Set([...SKIP_DIRS, ...extraSkipDirs]) : SKIP_DIRS;
   const files: ProjectFile[] = [];
   const skippedLarge: string[] = [];
   const unreadable: string[] = [];
@@ -100,10 +113,10 @@ export function scanProject(
     }
     // Deterministic order, so the same project always produces the same report.
     for (const entry of [...entries].sort((a, b) => a.name.localeCompare(b.name))) {
-      if (entry.name.startsWith(".") && entry.isDirectory() && !SKIP_DIRS.has(entry.name)) continue;
+      if (entry.name.startsWith(".") && entry.isDirectory() && !skipDirs.has(entry.name)) continue;
       const full = join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (SKIP_DIRS.has(entry.name)) continue;
+        if (skipDirs.has(entry.name)) continue;
         walk(full);
         continue;
       }

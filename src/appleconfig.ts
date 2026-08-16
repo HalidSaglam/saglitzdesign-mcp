@@ -302,6 +302,19 @@ export function readEntitlements(source: string): Set<string> {
  * A `Contents.json` that is not valid JSON is skipped, not reported as a
  * colorset with no dark variant — that would misrepresent a file we could
  * not read as a file we read and found plain.
+ *
+ * A colorset **declaring no colour value at all** is skipped for a different
+ * reason: it has nothing to have a dark variant *of*. Xcode's own project
+ * template writes exactly this shape for `AccentColor` —
+ * `{"colors":[{"idiom":"universal"}]}`, an entry with an idiom and no `color`
+ * — as a placeholder meaning "use the system accent". Reporting it as a custom
+ * colour missing its dark appearance fired on every default project, iOS and
+ * macOS alike, before a reader had written a single colour of their own, and
+ * the advice it carried ("give the dark appearance its own value") is not
+ * actionable on a colorset that has no light value either. An entry is
+ * counted as a colour when it carries a `color` object; a colorset with none
+ * is left out of the result entirely, exactly as an unparseable one is, and
+ * the omission is disclosed rather than reported.
  */
 export function readAssetCatalog(files: Array<{ path: string; source: string }>): ColorSet[] {
   const out: ColorSet[] = [];
@@ -316,6 +329,17 @@ export function readAssetCatalog(files: Array<{ path: string; source: string }>)
     }
 
     const colors = (parsed as { colors?: unknown })?.colors;
+    // A placeholder declaring no colour value — Xcode's default `AccentColor`
+    // — is not a custom colour, so it is not a custom colour missing a dark
+    // appearance either.
+    const declaresAColour =
+      Array.isArray(colors) &&
+      colors.some((c) => {
+        const color = (c as { color?: unknown })?.color;
+        return typeof color === "object" && color !== null;
+      });
+    if (!declaresAColour) continue;
+
     const hasDarkVariant =
       Array.isArray(colors) &&
       colors.some((c) => {
@@ -357,6 +381,46 @@ const SIGNAL = {
   importUIKit: "import UIKit in any Swift file",
   conflictingOsChecks: "#if os(macOS) and #if os(iOS) both present",
 } as const;
+
+/**
+ * The key spellings each signal accepts, including the suffixed forms Xcode
+ * writes as build settings.
+ *
+ * `GENERATE_INFOPLIST_FILE = YES` has been the default since Xcode 13, so a
+ * new project has no `Info.plist` at all and every key arrives out of
+ * `project.pbxproj` instead — where Xcode splits two of these families by
+ * idiom and generation. A default SwiftUI-lifecycle iOS app writes
+ * `INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone`,
+ * `INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad` and
+ * `INFOPLIST_KEY_UILaunchScreen_Generation`, and *no* unsuffixed spelling of
+ * either. Matching only the unsuffixed names left the commonest input this
+ * audit will ever be pointed at with `signals: []` and a null verdict — and
+ * with no `import UIKit` to fall back on, since a SwiftUI-lifecycle app has
+ * none — which silenced every platform-scoped rule on a project whose platform
+ * is not remotely in doubt.
+ *
+ * These are matched as an explicit set rather than by prefix. A prefix test on
+ * `UILaunchScreen` would also swallow a future `UILaunchScreen_Anything`, and
+ * a key this file has not seen is one it should not be claiming to understand;
+ * an unrecognised spelling produces no signal, which is the failure direction
+ * this whole module is built around.
+ *
+ * The macOS families need no equivalent. Xcode writes `LSMinimumSystemVersion`
+ * and `LSUIElement` unsuffixed, and the macOS template also writes a real
+ * `.entitlements` carrying `com.apple.security.app-sandbox`, so a default
+ * macOS project already infers correctly from two independent signals.
+ */
+const IOS_ORIENTATION_KEYS = [
+  "UIRequiresFullScreen",
+  "UISupportedInterfaceOrientations",
+  "UISupportedInterfaceOrientations_iPhone",
+  "UISupportedInterfaceOrientations_iPad",
+] as const;
+const IOS_LAUNCH_KEYS = [
+  "UILaunchScreen",
+  "UILaunchStoryboardName",
+  "UILaunchScreen_Generation",
+] as const;
 
 /**
  * Decides which Apple platform a project targets from the configuration
@@ -470,11 +534,11 @@ export function inferPlatform(input: {
     signals.push(SIGNAL.lsUIElement);
     pointsTo.add("macos");
   }
-  if (input.keys.has("UIRequiresFullScreen") || input.keys.has("UISupportedInterfaceOrientations")) {
+  if (IOS_ORIENTATION_KEYS.some((k) => input.keys.has(k))) {
     signals.push(SIGNAL.iosOrientation);
     pointsTo.add("ios");
   }
-  if (input.keys.has("UILaunchScreen") || input.keys.has("UILaunchStoryboardName")) {
+  if (IOS_LAUNCH_KEYS.some((k) => input.keys.has(k))) {
     signals.push(SIGNAL.iosLaunchScreen);
     pointsTo.add("ios");
   }
