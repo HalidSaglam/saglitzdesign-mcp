@@ -128,15 +128,47 @@ describe("maskComments — Swift block comments nest, unlike every other isJsLik
     expect(masked).toContain("still code");
   });
 
-  it("known gap, not fixed here: an unbalanced comment-opening-looking substring inside a Swift multi-line string blanks the rest of the file", () => {
-    // Quote tracking resets at every newline, so content inside a `"""`
-    // string is only protected on the line the string opens on. This is
-    // the same over-masking direction the module's own doc comment says it
-    // refuses to ship for `_headers` — pinned here, for `.swift`, as a
-    // named and known exception rather than a silent one.
-    const source = 'let doc = """\nregex-ish: /* not a comment\n"""\nlet liveCode = 1\n';
+  it("case-insensitive path match: APP.SWIFT and App.Swift are .swift paths too", () => {
+    const source = "/* outer /* inner */\nimport AppKit\n*/\n";
+    expect(maskComments(source, "APP.SWIFT")).not.toContain("import AppKit");
+    expect(maskComments(source, "App.Swift")).not.toContain("import AppKit");
+  });
+
+  // A prior version of this fix tracked nesting depth with no fallback: a
+  // block comment that never balances was masked all the way to the end of
+  // the file. Quote tracking resets at every newline, so text inside a
+  // `"""`-delimited multi-line string is only protected from being read as
+  // code on the line it opens on — a later line inside such a string that
+  // merely *looks* like block-comment markers (a glob pattern in a doc
+  // string, for instance) can leave the nesting counter one open short of
+  // balanced with no more closing markers anywhere in the file. A
+  // six-scanner differential against real Swift source reproduced exactly
+  // this: a live `import AppKit` after such a string went from a correct
+  // "macos" verdict to a fabricated `platform: null`. This is now fixed by
+  // falling back to the position a flat, non-nesting scan would find —
+  // this pins the fixed behaviour, not the old (broken) one.
+  it("does not let an unbalanced comment-opening-looking substring inside a Swift multi-line string swallow real code after it", () => {
+    const source = 'let doc = """\nglob: /* a /* b */ c\n"""\nimport AppKit\n';
     const masked = maskComments(source, "App.swift");
-    expect(masked).not.toContain("let liveCode = 1");
+    expect(masked).toContain("import AppKit");
+  });
+
+  it("known, bounded gap, not fixed here: string-internal markers that happen to balance still mask wider than a flat scan would, but stop at the string", () => {
+    // Same per-line quote-reset blind spot as above, but here the
+    // string-internal text happens to look like a fully *balanced* nested
+    // comment, so `findNestedBlockCommentEnd` treats it as one and masks
+    // the whole span — wider than a flat first-close scan would, but
+    // bounded to the markers actually present. It does not reach the real
+    // `import` two lines later.
+    const source = 'let doc = """\n/* a /* b */ c */\n"""\nimport AppKit\n';
+    const masked = maskComments(source, "App.swift");
+    expect(masked).toContain("import AppKit");
+  });
+
+  it("a genuinely unterminated Swift block comment (no closing marker anywhere) still masks to the end of the file, same as every other isJsLike extension", () => {
+    const source = "/* never closes\nimport AppKit\n";
+    const masked = maskComments(source, "App.swift");
+    expect(masked).not.toContain("import AppKit");
   });
 });
 

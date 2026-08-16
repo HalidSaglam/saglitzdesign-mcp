@@ -23,9 +23,28 @@
  * marker met before the next closing marker as opening a comment of its
  * own rather than treating that first closing marker as the end. `from` is
  * the index right after the comment's own opening marker (depth already at
- * 1). Returns the index just past the matching close, or the end of the
- * source if the nesting never balances (the same "consume to end of file"
- * fallback the non-nesting branch uses for an unterminated comment).
+ * 1). Returns the index just past the matching close on a comment that
+ * actually balances.
+ *
+ * When it does not balance — depth never returns to zero before the source
+ * runs out of closing markers — this falls back to the position a
+ * *non*-nesting scan would have found: the very first closing marker after
+ * `from`, or the end of the source if there is none at all. That fallback
+ * matters more than it looks: depth tracking on its own is monotonic
+ * toward masking *more*, never less, than the non-nesting scan would, and
+ * `.swift`'s per-line-reset quote tracking (see `maskComments`'s own doc
+ * comment) means a `"""`-delimited multi-line string can contain
+ * comment-marker-looking text this scanner has no way to know is inside a
+ * string. A source there with an extra unmatched opening marker and one
+ * closing marker inside such a string — legal, compiling Swift, since none
+ * of it is really comment syntax — would otherwise never balance and get
+ * masked to the end of the file: a fabricated absence on a file with
+ * nothing wrong with it, not a call this function gets to make. Falling
+ * back to the same
+ * first-close answer the non-nesting scan already gives keeps the nesting
+ * win on every comment that actually balances, without opening a
+ * masks-to-EOF failure mode nesting depth tracking would otherwise
+ * introduce that a flat, non-nesting scan never had.
  *
  * Kept as its own function, ahead of `maskComments`'s own doc comment
  * below, so that doc comment stays attached to the function it documents —
@@ -33,12 +52,15 @@
  * immediately.
  */
 function findNestedBlockCommentEnd(source: string, from: number): number {
+  const n = source.length;
+  const firstClose = source.indexOf("*/", from);
+  const nonNestingStop = firstClose === -1 ? n : firstClose + 2;
+
   let depth = 1;
   let i = from;
-  const n = source.length;
   while (depth > 0) {
     const nextClose = source.indexOf("*/", i);
-    if (nextClose === -1) return n; // unterminated — consume to end of file
+    if (nextClose === -1) return nonNestingStop; // never balances — fall back, do not consume to EOF
     const nextOpen = source.indexOf("/*", i);
     if (nextOpen !== -1 && nextOpen < nextClose) {
       depth++;
@@ -67,7 +89,12 @@ function findNestedBlockCommentEnd(source: string, from: number): number {
  *   - the same two forms in `.swift` files, too — Swift's line comment and
  *     its slash-star block comment are the identical syntax, and
  *     `appleconfig.ts`/`apple.ts` need the same "don't let a comment decide
- *     anything" guarantee an Apple audit rule gets for free elsewhere.
+ *     anything" guarantee an Apple audit rule gets for free elsewhere. The
+ *     match, like every extension test in this function, is
+ *     case-insensitive: `App.SWIFT` and `APP.Swift` are `.swift` paths for
+ *     this purpose exactly as `App.swift` is; only the trailing extension
+ *     itself has to be spelled `swift` in some case, nothing about the rest
+ *     of the path matters.
  *     Unlike JS, Swift block comments **nest**: a block comment opened
  *     inside another is closed by its own matching close, not by the first
  *     closing marker the scanner meets, and nesting is exactly the idiom
@@ -105,24 +132,42 @@ function findNestedBlockCommentEnd(source: string, from: number): number {
  * (no `'`-delimited literal exists in Swift; raw (`#"..."#`) string forms
  * are out of scope) — the existing approximation, not a Swift-specific one.
  *
- * **A known over-masking gap, specific to `.swift`'s multi-line
+ * **A residual, bounded over-masking risk in `.swift`'s multi-line
  * `"""`-delimited strings, deliberately left unhandled rather than
- * half-fixed:** quote tracking resets at every newline (the same
- * multi-line-template-literal gap already noted above for JS), so text
- * inside a `"""` string is only protected from being read as code on the
- * line it starts on. A line inside such a string that contains an
- * unbalanced `/*`-looking substring — a regex fragment in a doc string,
- * for instance — opens what this scanner sees as a real, unterminated
- * block comment and masks everything from there to the end of the file,
- * a false absence on a file that has nothing wrong with it. This is the
- * same failure mode the `_headers` exclusion above exists to prevent, not
- * fixed here for the same reason multi-line string tracking is out of
- * scope generally: doing it correctly needs the file read top-to-bottom
- * as one string-aware pass instead of the current per-character scan with
- * per-line quote reset, which is a larger change than this fix's scope.
- * `appleconfig.ts` is the caller this can reach today, through arbitrary
- * user Swift source — noted on `inferPlatform`'s own doc comment as well,
- * since that is where a caller of *this* function would look first.
+ * half-fixed:** quote tracking resets at every newline, so text inside a
+ * `"""` string is only protected from being read as code on the line it
+ * opens on — a later line inside such a string can contain text that only
+ * looks like block-comment markers and this scanner has no way to know
+ * it's inside a string. What happens next depends on whether that
+ * string-internal text happens to "balance" as nesting-shaped text (a
+ * coincidence, since none of it is real comment syntax):
+ *   - If it does not balance — an opening marker inside the string with no
+ *     further closing marker anywhere in the rest of the file, or the
+ *     reverse — `findNestedBlockCommentEnd` falls back to the position a
+ *     flat, non-nesting scan would find: the very first closing marker
+ *     after the opening one, the same bound every other `isJsLike`
+ *     extension already lives with for its own multi-line-string/template-
+ *     literal blind spot. This is the specific failure mode (masking ran
+ *     to the end of the file, silently dropping a real `import` after it)
+ *     a six-scanner differential run against real Swift source reproduced
+ *     and this fallback closes; verified against that exact input.
+ *   - If it does balance — again, only by coincidence — the masked span
+ *     can still run wider than a flat scan would produce, out to wherever
+ *     the string-internal markers finish "closing" each other. It cannot
+ *     reach past the string into a caller's real code on its own; doing
+ *     that needs the string's fake markers to be miscounted together with
+ *     genuine comment markers the caller's own code contains, the same
+ *     "two independent malformations have to line up" shape as the
+ *     pre-existing gap documented on `stripNestedContainers` in
+ *     `appleconfig.ts` — not a single-input, easily-reachable defect the
+ *     way the EOF case was.
+ * Not fixed further because doing so correctly needs the file read
+ * top-to-bottom as one string-aware pass instead of the current
+ * per-character scan with per-line quote reset — a larger change than
+ * either this fix or the nesting fix it belongs to. `appleconfig.ts` is
+ * the caller this can reach today, through arbitrary user Swift source —
+ * noted on `inferPlatform`'s own doc comment as well, since that is where
+ * a caller of *this* function would look first.
  *
  * Exported because `generic.ts` needs the same "don't flag commented-out
  * markup" guarantee for its visual rules — the same judgement Task 6 of the

@@ -403,24 +403,38 @@ const SIGNAL = {
  * rule downstream would run on that wrong assumption with nothing in the
  * output to explain why.
  *
- * Two things a caller building `swiftSources` needs to know, because this
- * function has no way to enforce either one itself:
+ * Three things a caller building `swiftSources` needs to know, because this
+ * function has no way to enforce or widen any of them itself:
  *
- * - Comment masking is keyed on `path` ending in `.swift`
- *   (`maskComments`'s own file-shape gate). A path that does not end that
- *   way — `"App"`, `"App.swift.txt"`, an empty string — silently skips
- *   masking and this function falls back to scanning the raw source, which
- *   reopens the exact commented-out-import defect this comment describes.
- *   There is no error or signal for that fallback; it just happens.
- * - `maskComments` has a known, undocumented-at-the-call-site-until-now
- *   over-masking gap for `.swift` source containing a multi-line
- *   `"""`-delimited string: an unbalanced comment-opening-looking
- *   substring inside such a string can blank the rest of the file, which
- *   would read here as an absence of every signal after that point rather
- *   than the truth. See the over-masking paragraph on `maskComments`'s own
- *   doc comment in `src/scan.ts` for the mechanism; not fixed there or
- *   here, because doing so correctly needs string tracking across lines,
- *   which is a larger change than either fix's scope.
+ * - Comment masking is keyed on `path` ending in `.swift`, case-insensitive
+ *   (`maskComments`'s own file-shape gate — `"App.SWIFT"` and
+ *   `"APP.Swift"` both qualify, same as `"App.swift"`). A path that does
+ *   not end that way at all — `"App"`, `"App.swift.txt"`, an empty string
+ *   — silently skips masking and this function falls back to scanning the
+ *   raw source, which reopens the exact commented-out-import defect this
+ *   comment describes. There is no error or signal for that fallback; it
+ *   just happens.
+ * - `maskComments` has a residual, bounded over-masking risk for `.swift`
+ *   source containing a multi-line `"""`-delimited string: text inside such
+ *   a string that only looks like block-comment markers can still get
+ *   masked as if it were a real comment, extending the masked span as far
+ *   as those string-internal markers happen to "close" against each other.
+ *   It stops there — it cannot silently swallow a real signal arbitrarily
+ *   far past the string the way an unbounded scan would, and a
+ *   differential run against real Swift source confirmed a live `import`
+ *   right after such a string is read correctly, not masked away. See the
+ *   over-masking paragraph on `maskComments`'s own doc comment in
+ *   `src/scan.ts` for the full mechanism and why it is bounded rather than
+ *   closed outright.
+ * - The import/`#if` recognisers above are text patterns, not a parser:
+ *   `@testable import Foo` is recognised, but `@_exported import Foo` and a
+ *   submodule import like `import struct AppKit.NSRect` are not — neither
+ *   sets `sawAppKit`/`sawUIKit`, so a project using only those forms
+ *   produces no import-based signal at all rather than a wrong one. This is
+ *   unchanged from the very first version of this function and was never
+ *   claimed to be otherwise; noted here because a later task consuming
+ *   these same regexes should know the recognised vocabulary before
+ *   assuming it is exhaustive.
  */
 export function inferPlatform(input: {
   keys: Map<string, string | boolean | string[]>;
