@@ -21,6 +21,13 @@ subject is a named page rather than Apple). The block from `WHAT THIS GUARD DOES
 NOT CATCH` onward names its own blind spots, which is the standard the rest of
 this file is held to.
 
+**This file trips two of those patterns itself**, in the quoted family names two
+paragraphs above. They are mentions, not claims — the same construction the
+guard's own source comment uses to name what it rejects. `docs/` is outside the
+scope §2 proposes, so nothing catches them today; whoever widens the gate past
+the README and the disclosure lists will meet this file first and needs to decide
+between excluding quoted pattern names and excluding `docs/`.
+
 **It runs over `APPLE_DOC_IDS` only.** Six knowledge documents. It does not read:
 
 | Surface | Reader | Gated today |
@@ -81,8 +88,14 @@ verb>` pattern rather than reasoned about:
 "an hreflang set that omits the page itself"         clean
 ```
 
-Either clean form says the same thing. Prefer the second: `omits` keeps the
-sentence's shape and reads the way the finding message does.
+Either clean form says the same thing. Prefer `omits the page itself`: it keeps
+the original sentence's shape, so the rewrite is a one-word substitution.
+
+Do not justify it by the finding message — `src/seo.ts:938` reads "This hreflang
+set **never lists** this page itself", and `grep -c "omits" src/seo.ts` returns 0.
+An earlier draft of this line claimed the opposite. If the rewrite ships, the
+finding message is a second site carrying the same construction, and whoever
+does the work should decide deliberately whether to change it too.
 
 ## 4. Two decisions that will look wrong later, recorded with their reasons
 
