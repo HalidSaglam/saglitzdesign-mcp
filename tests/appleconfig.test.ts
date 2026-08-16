@@ -39,6 +39,37 @@ describe("readPlist", () => {
     expect(m.has("NSAppTransportSecurity")).toBe(false);
     expect(m.get("CFBundleDisplayName")).toBe("Receipts");
   });
+
+  it("does not harvest strings out of an array's nested dicts (CFBundleURLTypes)", () => {
+    const urlTypes = `<plist version="1.0"><dict>
+      <key>CFBundleURLTypes</key>
+      <array><dict>
+        <key>CFBundleTypeRole</key><string>Editor</string>
+        <key>CFBundleURLName</key><string>com.example.myapp</string>
+        <key>CFBundleURLSchemes</key><array><string>myapp</string><string>myapp2</string></array>
+      </dict></array>
+      <key>CFBundleDisplayName</key><string>Receipts</string>
+    </dict></plist>`;
+    const m = readPlist(urlTypes)!;
+    // No direct <string> children of the outer array — its only member is a
+    // <dict> — so the array reads as empty, not as a flattened mix of the
+    // role, bundle identifier and schemes nested one level down inside it.
+    expect(m.get("CFBundleURLTypes")).toEqual([]);
+    expect(m.get("CFBundleDisplayName")).toBe("Receipts");
+  });
+
+  it("reads direct-child strings of an array unaffected by a sibling nested array", () => {
+    const mixed = `<plist version="1.0"><dict>
+      <key>Nested</key>
+      <array>
+        <string>direct-one</string>
+        <array><string>buried</string></array>
+        <string>direct-two</string>
+      </array>
+    </dict></plist>`;
+    const m = readPlist(mixed)!;
+    expect(m.get("Nested")).toEqual(["direct-one", "direct-two"]);
+  });
 });
 
 describe("readBuildSettingKeys", () => {
@@ -51,6 +82,24 @@ describe("readBuildSettingKeys", () => {
     expect(m.get("NSCameraUsageDescription")).toBe("To scan receipts");
     expect(m.get("UILaunchScreen_Generation")).toBe("YES");
     expect(m.has("PRODUCT_NAME")).toBe(false);
+  });
+
+  it("tolerates whitespace between the closing quote and the semicolon", () => {
+    const pbx = [
+      'INFOPLIST_KEY_A = "one space" ;',
+      'INFOPLIST_KEY_B = "two spaces"  ;',
+      'INFOPLIST_KEY_C = "a tab"\t;',
+    ].join("\n");
+    const m = readBuildSettingKeys(pbx);
+    expect(m.get("A")).toBe("one space");
+    expect(m.get("B")).toBe("two spaces");
+    expect(m.get("C")).toBe("a tab");
+  });
+
+  it("unescapes \\\" and \\\\ inside a quoted value", () => {
+    const pbx = String.raw`INFOPLIST_KEY_X = "needs \"access\" to camera";`;
+    const m = readBuildSettingKeys(pbx);
+    expect(m.get("X")).toBe('needs "access" to camera');
   });
 });
 

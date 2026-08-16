@@ -67,6 +67,52 @@ function findMatchingClose(source: string, from: number, tag: string): number | 
 }
 
 /**
+ * Removes nested `<dict>...</dict>` and `<array>...</array>` spans from an
+ * array's body, so a scan for `<string>` afterwards only ever meets a
+ * *direct* child of the array — never a string that happens to live inside
+ * a dict this array holds. `CFBundleURLTypes` is exactly this shape: an
+ * array of dicts, each carrying a role, a bundle identifier, and its own
+ * nested array of URL schemes. Without stripping, a flat `<string>` scan
+ * over the whole array body would harvest all of those into one array,
+ * indistinguishable from one another — a wrongly populated key, not a
+ * merely incomplete one. Self-closed containers (`<array/>`) hold nothing
+ * and are left as-is; a container missing its matching close is left in
+ * place too rather than guessed at, since that only happens on malformed
+ * input the outer scan will also stop on shortly after.
+ */
+function stripNestedContainers(body: string): string {
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const dictIdx = body.indexOf("<dict", i);
+    const arrIdx = body.indexOf("<array", i);
+    let idx: number, tag: string;
+    if (dictIdx === -1 && arrIdx === -1) {
+      out += body.slice(i);
+      return out;
+    } else if (dictIdx === -1 || (arrIdx !== -1 && arrIdx < dictIdx)) {
+      idx = arrIdx;
+      tag = "array";
+    } else {
+      idx = dictIdx;
+      tag = "dict";
+    }
+
+    out += body.slice(i, idx);
+    const tagEnd = body.indexOf(">", idx);
+    if (tagEnd === -1) return out; // malformed tail — stop, do not guess at the rest
+
+    if (body[tagEnd - 1] === "/") {
+      i = tagEnd + 1; // self-closed, nothing inside to strip
+      continue;
+    }
+    const closeIdx = findMatchingClose(body, tagEnd + 1, tag);
+    if (closeIdx === null) return out + body.slice(idx); // unbalanced — leave the rest untouched
+    i = closeIdx + `</${tag}>`.length;
+  }
+}
+
+/**
  * Walks a `<dict>...</dict>` body one `<key>` + value pair at a time.
  *
  * Handles the subset Apple's own project templates emit: `<string>`,
@@ -80,10 +126,19 @@ function findMatchingClose(source: string, from: number, tag: string): number | 
  * outer key that pointed at it is therefore absent from the result, not
  * present with a guessed or flattened value. The same is true of any other
  * value type outside the subset above (`<integer>`, `<real>`, `<date>`,
- * `<data>`, or an `<array>` whose members are not all `<string>` — only the
- * `<string>` members of such an array are read, the rest silently skipped):
- * the key is dropped rather than represented with a wrong type. A later
- * audit that wants to disclose this gap should point here.
+ * `<data>`): the key is dropped rather than represented with a wrong type.
+ *
+ * An `<array>` is read for its *direct* `<string>` children only —
+ * `stripNestedContainers` removes any nested `<dict>`/`<array>` span before
+ * the `<string>` scan runs, so an array of dicts (`CFBundleURLTypes`) comes
+ * back as an empty array rather than a flattened mix of the role strings,
+ * bundle identifiers and schemes that live one level down inside it. That
+ * empty array is not a dropped key: it correctly states "this array has no
+ * string values directly in it", which is true; the strings nested inside
+ * its member dicts are unreachable here for the same reason a dict-valued
+ * key's contents are — this reader has no shape for anything past one
+ * level of nesting. A later audit that wants to disclose this gap should
+ * point here.
  */
 function parseDictBody(body: string, map: Map<string, string | boolean | string[]>): void {
   let pos = 0;
@@ -122,7 +177,7 @@ function parseDictBody(body: string, map: Map<string, string | boolean | string[
       map.set(key, inner);
     } else if (tagName === "array") {
       const strings: string[] = [];
-      for (const m of inner.matchAll(/<string>([\s\S]*?)<\/string>/g)) strings.push(m[1]);
+      for (const m of stripNestedContainers(inner).matchAll(/<string>([\s\S]*?)<\/string>/g)) strings.push(m[1]);
       map.set(key, strings);
     }
     // "dict" and any other tag name: read past, key not recorded (see doc comment above).
@@ -165,20 +220,36 @@ export function readPlist(source: string): Map<string, string | boolean | string
 // ── build settings ──────────────────────────────────────────────────────────
 
 /**
+ * Reverses the small set of backslash escapes a quoted pbxproj string uses
+ * for a literal `"` or `\` — `\"` and `\\` — so a value like
+ * `"needs \"access\" to camera"` reads back with real quote characters
+ * instead of the escape sequences that only mean something inside the
+ * quoted literal. Any other escape sequence is left exactly as written,
+ * since this reader does not attempt the rest of pbxproj's (undocumented,
+ * NeXT-derived) string-escaping grammar.
+ */
+function unescapeQuoted(raw: string): string {
+  return raw.replace(/\\(["\\])/g, "$1");
+}
+
+/**
  * Pulls `INFOPLIST_KEY_*` assignments out of a `.pbxproj`'s raw text —
  * Xcode's "generate Info.plist" mode writes Info.plist keys as build
  * settings instead of into a plist file. Only the `INFOPLIST_KEY_` prefix is
  * recognised (that is the one Xcode itself emits for this purpose); every
  * other build setting, however Info.plist-shaped its name looks, is left
  * alone rather than guessed at. Values are returned as the raw right-hand
- * side text — quotes stripped when the setting was quoted — since this
- * reader does not know or assume the setting's intended type.
+ * side text — quotes stripped and `\"`/`\\` unescaped when the setting was
+ * quoted, trimmed when it was not — since this reader does not know or
+ * assume the setting's intended type. Whitespace (including a tab) between
+ * the closing quote and the terminating `;` is tolerated and does not
+ * defeat the quoted match.
  */
 export function readBuildSettingKeys(pbxproj: string): Map<string, string> {
   const map = new Map<string, string>();
-  const re = /INFOPLIST_KEY_([A-Za-z0-9_]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;\n]+));/g;
+  const re = /INFOPLIST_KEY_([A-Za-z0-9_]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"\s*|([^;\n]+));/g;
   for (const m of pbxproj.matchAll(re)) {
-    const value = m[2] !== undefined ? m[2] : m[3].trim();
+    const value = m[2] !== undefined ? unescapeQuoted(m[2]) : m[3].trim();
     map.set(m[1], value);
   }
   return map;
