@@ -819,6 +819,11 @@ describe("every doc a rule cites resolves and makes the rule's claim", () => {
 // demonstration below` fails the suite until one exists.
 
 const FIXTURES = join(__dirname, "fixtures", "apple");
+
+// `chmod 000` is a no-op for root, so the one test that depends on a path this
+// process may not open is skipped there rather than left to fail. Same guard,
+// same reason, as the two identical-technique tests in tests/project.test.ts.
+const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
 const temps: string[] = [];
 afterAll(() => {
   for (const dir of temps) rmSync(dir, { recursive: true, force: true });
@@ -1155,7 +1160,62 @@ describe("3. a directory the walk never enters", () => {
   });
 });
 
+describe("3c. the skip list is a name test, not a provenance test", () => {
+  // The direction entry 3 previously asserted in prose with no run behind it:
+  // a user who keeps their own code under one of those names loses it, and
+  // nothing in the report body marks the loss.
+  it("drops a project's own code kept under Pods/, with no signal in the report body", () => {
+    const root = project({
+      "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\n",
+      "Pods/MyOwnCode.swift": 'import SwiftUI\nNavigationView { Text("mine") }\n',
+    });
+    const r = appleReport(root);
+    expect(rules(root)).toEqual([]);
+    expect(r.structured.scan.filesRead).toBe(1);
+    expect(r.text).toContain("- Swift source: none read");
+    // Not in `unreadable`, not in `skippedLarge`, not in the prose — the entry
+    // in the disclosure list is the only place this is stated.
+    expect(r.structured.scan.unreadable).toEqual([]);
+    expect(r.structured.scan.skippedLarge).toEqual([]);
+    const body = r.text.slice(0, r.text.indexOf("## Not visible to this audit"));
+    expect(body).not.toContain("Pods");
+  });
+
+  // …and the escape hatch the entry offers: `walk(root)` never name-checks the
+  // root it was given, so pointing the tool at the directory audits it.
+  it("audits that same directory when the tool is pointed straight at it", () => {
+    const outer = project({ "Pods/MyOwnCode.swift": 'import SwiftUI\nimport UIKit\nNavigationView { Text("mine") }\n' });
+    const r = appleReport(join(outer, "Pods"));
+    expect(r.structured.findings.map((f) => `${f.rule} ${f.file}`)).toEqual(["navigationview-deprecated MyOwnCode.swift"]);
+  });
+});
+
 describe("3b. vendored source under a directory name that is not on that list", () => {
+  // The remedy this entry offers has to hold on the projects big enough to have
+  // vendored code beside their own. An earlier wording said "the surfaces list
+  // above prints every Swift file that was read"; the list caps at ten names per
+  // kind, so on 14 Swift files the one the finding named was in the remainder.
+  // The entry now points at the finding's own path, which is what this pins.
+  it("carries the path on the finding itself, where the capped surfaces list does not name it", () => {
+    const files: Record<string, string> = {
+      "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\n",
+    };
+    for (let i = 0; i < 13; i++) files[`Sources/F${String(i).padStart(2, "0")}.swift`] = "import SwiftUI\nlet x = 1\n";
+    files["Vendor/Lib/View.swift"] = 'import SwiftUI\nNavigationView { Text("vendored") }\n';
+    const root = project(files);
+    const r = appleReport(root);
+
+    const surfaceLine = r.text.split("\n").find((l) => l.startsWith("- Swift source"))!;
+    expect(surfaceLine).toContain("- Swift source (14):");
+    expect(surfaceLine).toContain("…and 4 more");
+    expect(surfaceLine).not.toContain("Vendor/Lib/View.swift");
+
+    // …while the path the reader actually needs is on the finding, in both
+    // registers.
+    expect(r.structured.findings.map((f) => f.file)).toEqual(["Vendor/Lib/View.swift"]);
+    expect(r.text).toContain("— Vendor/Lib/View.swift: ");
+  });
+
   it("audits a library checked into Vendor/ as though a person on the team wrote it", () => {
     const root = project({
       "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\n",
@@ -1208,6 +1268,8 @@ describe("5. a file over the per-file cap", () => {
     expect(r.structured.scan.skippedLarge).toHaveLength(6);
     expect(r.text).toContain("**Skipped 6 file(s) over 500 KB**");
     expect(r.text).toContain("`Sources/Huge4.swift`");
+    // Counted but not named — the same shape the two lines above it use.
+    expect(r.text).toContain(", …and 1 more.");
     expect(r.text).not.toContain("Sources/Huge5.swift");
   });
 });
@@ -1644,6 +1706,13 @@ describe("21. a colorset that declares no colour value", () => {
     expect(appleReport(root).text).toContain("- Asset catalog colorsets (1): `Assets.xcassets/AccentColor.colorset/Contents.json`");
   });
 
+  it("does not count an empty `color` array as a declared colour", () => {
+    const root = project({
+      "Assets.xcassets/Odd.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal", color: [] }] }),
+    });
+    expect(rules(root)).toEqual([]);
+  });
+
   it("still reports a colorset beside it that does declare one", () => {
     const root = project({
       "Assets.xcassets/AccentColor.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal" }] }),
@@ -1658,7 +1727,7 @@ describe("21. a colorset that declares no colour value", () => {
 });
 
 describe("22. a path this process could not open", () => {
-  it("names the directory it could not list, and audits nothing under it", () => {
+  it.skipIf(asRoot)("names the directory it could not list, and audits nothing under it", () => {
     const root = project({
       "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\n",
       "Ledger/ContentView.swift": "import SwiftUI\nimport UIKit\n",

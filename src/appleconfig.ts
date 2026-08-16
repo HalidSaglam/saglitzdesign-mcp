@@ -336,7 +336,10 @@ export function readAssetCatalog(files: Array<{ path: string; source: string }>)
       Array.isArray(colors) &&
       colors.some((c) => {
         const color = (c as { color?: unknown })?.color;
-        return typeof color === "object" && color !== null;
+        // An object, and not an array: `"color": []` carries no components and
+        // is not a declared colour, where `typeof [] === "object"` alone would
+        // have counted it as one.
+        return typeof color === "object" && color !== null && !Array.isArray(color);
       });
     if (!declaresAColour) continue;
 
