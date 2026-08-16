@@ -25,6 +25,16 @@ describe("maskComments — length-preserving for every syntax it handles", () =>
     expect(maskComments(source, "app.js").length).toBe(source.length);
   });
 
+  it("line and block comments in a .swift file", () => {
+    const source = `import Foundation // trailing comment\n/* a block comment */\nlet x = 1\n`;
+    expect(maskComments(source, "App.swift").length).toBe(source.length);
+  });
+
+  it("a nested Swift block comment", () => {
+    const source = "/* outer /* inner */\nimport AppKit\n*/\n";
+    expect(maskComments(source, "App.swift").length).toBe(source.length);
+  });
+
   it("JSX comments {/* */}", () => {
     // `{` and `}` are not part of the comment syntax the masker recognises —
     // it is the `/* */` inside them that gets blanked — so this exercises the
@@ -80,6 +90,53 @@ describe("maskComments — length-preserving for every syntax it handles", () =>
       `</script>`,
     ].join("\n");
     expect(maskComments(source, "page.vue").length).toBe(source.length);
+  });
+});
+
+// `.swift` is the one `isJsLike` extension where a block comment can legally
+// nest — `/* /* */ */` is one comment in Swift, closed only by the outer
+// close, and nesting inside an existing comment is the idiom Swift
+// developers reach for to comment out a region that already has one. A
+// masker that stops at the first close would leave the inner content live,
+// which is exactly how a commented-out `import` decided a platform verdict
+// before this was fixed (see `appleconfig.test.ts`). Every other `isJsLike`
+// extension keeps first-close semantics, since C-family nesting isn't legal
+// syntax there.
+describe("maskComments — Swift block comments nest, unlike every other isJsLike language", () => {
+  it("closes only at the outer close when a block comment nests one level", () => {
+    const source = "/* outer /* inner */\nimport AppKit\n*/\n";
+    const masked = maskComments(source, "App.swift");
+    expect(masked).not.toContain("import AppKit");
+  });
+
+  it("closes only at the outer close on one line, too", () => {
+    const source = "/* a /* b */ import AppKit */";
+    const masked = maskComments(source, "App.swift");
+    expect(masked).not.toContain("import AppKit");
+  });
+
+  it("still masks a plain, non-nested Swift block comment, and leaves live code after it alone", () => {
+    const source = "/* import AppKit */\nimport UIKit\n";
+    const masked = maskComments(source, "App.swift");
+    expect(masked).not.toContain("import AppKit");
+    expect(masked).toContain("import UIKit");
+  });
+
+  it("does NOT depth-track a non-Swift JS-like file — closes at the first close, same as before this fix", () => {
+    const source = "/* /* */ still code */";
+    const masked = maskComments(source, "app.ts");
+    expect(masked).toContain("still code");
+  });
+
+  it("known gap, not fixed here: an unbalanced comment-opening-looking substring inside a Swift multi-line string blanks the rest of the file", () => {
+    // Quote tracking resets at every newline, so content inside a `"""`
+    // string is only protected on the line the string opens on. This is
+    // the same over-masking direction the module's own doc comment says it
+    // refuses to ship for `_headers` — pinned here, for `.swift`, as a
+    // named and known exception rather than a silent one.
+    const source = 'let doc = """\nregex-ish: /* not a comment\n"""\nlet liveCode = 1\n';
+    const masked = maskComments(source, "App.swift");
+    expect(masked).not.toContain("let liveCode = 1");
   });
 });
 

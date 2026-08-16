@@ -396,10 +396,31 @@ const SIGNAL = {
  *
  * Every Swift source is run through `maskComments` before any of the above
  * is scanned for. Without it, an `import AppKit` line sitting inside a
- * block comment reads exactly like a live import — the platform verdict
- * would then rest on dead code, and every platform-scoped rule downstream
- * would run on that wrong assumption with nothing in the output to explain
- * why.
+ * block comment — including a block comment nested inside another, the
+ * idiom Swift developers reach for and which `maskComments` tracks
+ * correctly for a `.swift` path — reads exactly like a live import: the
+ * platform verdict would then rest on dead code, and every platform-scoped
+ * rule downstream would run on that wrong assumption with nothing in the
+ * output to explain why.
+ *
+ * Two things a caller building `swiftSources` needs to know, because this
+ * function has no way to enforce either one itself:
+ *
+ * - Comment masking is keyed on `path` ending in `.swift`
+ *   (`maskComments`'s own file-shape gate). A path that does not end that
+ *   way — `"App"`, `"App.swift.txt"`, an empty string — silently skips
+ *   masking and this function falls back to scanning the raw source, which
+ *   reopens the exact commented-out-import defect this comment describes.
+ *   There is no error or signal for that fallback; it just happens.
+ * - `maskComments` has a known, undocumented-at-the-call-site-until-now
+ *   over-masking gap for `.swift` source containing a multi-line
+ *   `"""`-delimited string: an unbalanced comment-opening-looking
+ *   substring inside such a string can blank the rest of the file, which
+ *   would read here as an absence of every signal after that point rather
+ *   than the truth. See the over-masking paragraph on `maskComments`'s own
+ *   doc comment in `src/scan.ts` for the mechanism; not fixed there or
+ *   here, because doing so correctly needs string tracking across lines,
+ *   which is a larger change than either fix's scope.
  */
 export function inferPlatform(input: {
   keys: Map<string, string | boolean | string[]>;
