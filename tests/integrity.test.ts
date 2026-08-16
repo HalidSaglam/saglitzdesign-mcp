@@ -294,16 +294,20 @@ describe("skills distribution", () => {
    * skill should have named but did not is indistinguishable from a skill that
    * genuinely condenses fewer documents, so this check cannot separate them.
    *
-   * The declaration is judged by the ids it parses to, not by the presence of
-   * the line: a missing field, an empty one, and one holding only separators all
-   * declare nothing, and all report the same way. `.filter(Boolean)` alone would
-   * have passed the last two by looping zero times and finding no problem.
+   * A declaration is judged by what it parses to, never by how the line looks:
+   * whatever yields zero ids declares nothing and is reported. `sources: , ,` is
+   * the case that motivated the rule — it satisfies a test for the field being
+   * present, then loops zero times and finds no problem to report.
+   *
+   * Read from the frontmatter alone, sliced at the second `---`, so no body line
+   * opening `sources: ` can stand in for a field the frontmatter never had.
    */
   it("binds every skill to knowledge documents that exist", () => {
     const ids = new Set(docs.map((d) => d.id));
     const problems: string[] = [];
     for (const n of names) {
-      const declared = read(n).match(/^sources: (.+)$/m)?.[1] ?? "";
+      const frontmatter = read(n).split(/^---$/m)[1] ?? "";
+      const declared = frontmatter.match(/^sources: (.+)$/m)?.[1] ?? "";
       const named = declared.split(",").map((s) => s.trim()).filter(Boolean);
       if (named.length === 0) { problems.push(`${n}: no sources declared`); continue; }
       for (const id of named) {
