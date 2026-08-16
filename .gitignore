@@ -6,3 +6,10 @@ knowledge/examples/images/
 
 # npm pack output
 *.tgz
+
+# SwiftPM / sourcekit-lsp index output. A local Swift toolchain regenerates this
+# inside tests/fixtures/apple/ambiguous whenever it indexes that fixture's
+# Package.swift; the audit itself never reads it, since scanProject skips every
+# directory whose name begins with a dot.
+.build/
+.swiftpm/

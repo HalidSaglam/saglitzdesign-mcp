@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, chmodSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import {
@@ -970,6 +970,270 @@ describe("appleReport returns both registers", () => {
     expect(text).toContain("- Information property lists (1): `Info.plist`");
     expect(text).toContain("- Entitlements: none read");
     expect(text).toContain("- Asset catalog colorsets (1): `Assets.xcassets/Brand.colorset/Contents.json`");
+  });
+});
+
+// ── the fixture matrix ──────────────────────────────────────────────────────
+//
+// Six directories, and what the tool returns for each. Three must come back
+// empty, one must come back with an exact set, and two exist to prove that a
+// silence is the platform gate rather than a result.
+//
+// The correct-work half is thin, and deliberately so: this repository ships
+// four SwiftUI recipes and no more, where the web matrices had dozens of pages
+// to draw a clean run from. The weight therefore sits on `broken` — which
+// asserts an exact set, so the matrix cannot pass by finding nothing —
+// and on `ambiguous` and `no-plist`, which are the two shapes that decide
+// whether this tool fires on correct code.
+//
+// Every fixture below is built from the shape Xcode actually writes rather than
+// a simplified one. That is not a preference: the review of Task 5 found two
+// Criticals precisely because the fixtures until then were hand-simplified. A
+// default Xcode project has written **no `Info.plist` at all** since Xcode 13
+// (`GENERATE_INFOPLIST_FILE = YES`), so `no-plist` — not `ios-clean` — is the
+// commonest input this tool will ever meet; and Xcode's own default
+// `AccentColor.colorset` declares no colour, so `macos-clean` and `no-plist`
+// both carry that placeholder rather than a colorset invented for the test.
+
+/**
+ * `recipes-swiftui` is **not** a copy. The four shipped recipes are audited
+ * where they live, so a change to one is caught by this suite instead of
+ * drifting away from a duplicate that no longer resembles what the server
+ * ships. Every other name resolves under `tests/fixtures/apple/`.
+ */
+const RECIPES = join(__dirname, "..", "recipes");
+const fixtureRoot = (name: string) => (name === "recipes-swiftui" ? RECIPES : join(FIXTURES, name));
+const fixture = (name: string) => appleReport(fixtureRoot(name));
+
+/**
+ * The complete set of rules that do not run until the verdict names a platform:
+ * `fixed-font-size` on an iOS verdict, `sandbox-absent-macos` on a macOS one.
+ * Named once so `ambiguous` below asserts over the whole set rather than over
+ * whichever member someone remembered.
+ */
+const PLATFORM_SCOPED = ["fixed-font-size", "sandbox-absent-macos"];
+
+describe("the fixture matrix: correct work draws nothing", () => {
+  it.each(["recipes-swiftui", "ios-clean", "macos-clean"])("%s returns no findings", (name) => {
+    expect(fixture(name).structured.findings).toEqual([]);
+  });
+
+  // An empty findings list is also what an empty directory returns. Each of the
+  // three read real files, so none of them passed by having nothing to read.
+  it.each([
+    ["recipes-swiftui", 4],
+    ["ios-clean", 3],
+    ["macos-clean", 6],
+  ])("%s read %i file(s), so its clean result is not an empty directory's", (name, count) => {
+    expect(fixture(name as string).structured.scan.filesRead).toBe(count);
+  });
+});
+
+describe("the four SwiftUI recipes this repository ships", () => {
+  const RECIPE_PATHS = ["button/swiftui.swift", "card/swiftui.swift", "input/swiftui.swift", "list-row/swiftui.swift"];
+  const recipeSource = (path: string) => ({ path, source: readFileSync(join(RECIPES, path), "utf8") });
+
+  it("audits all four in place, and draws nothing against any of them", () => {
+    const r = fixture("recipes-swiftui");
+    const surfaceLine = r.text.split("\n").find((l) => l.startsWith("- Swift source"))!;
+    for (const path of RECIPE_PATHS) expect(surfaceLine, path).toContain(`\`${path}\``);
+    expect(r.structured.findings).toEqual([]);
+  });
+
+  // Pointed at `recipes/`, the verdict is null: four SwiftUI files with no
+  // configuration between them settle nothing, so `fixed-font-size` was never
+  // allowed to run in the assertion above. That would make "the recipes are
+  // clean" a weaker claim than it sounds. Running each recipe under both
+  // verdicts closes the gap — a recipe counts as correct work only if it is
+  // clean with every platform-scoped rule live, on either platform.
+  it.each(RECIPE_PATHS)("%s is clean under an iOS verdict and under a macOS one", (path) => {
+    expect(appleSwiftRules([recipeSource(path)], IOS)).toEqual([]);
+    expect(appleSwiftRules([recipeSource(path)], MACOS)).toEqual([]);
+  });
+
+  // Stated rather than left implicit, so nobody reads the clean run above as
+  // evidence that the iOS-scoped rule ran during it.
+  it("names the verdict the in-place run actually had, which is none", () => {
+    expect(fixture("recipes-swiftui").text).toContain("**Platform: not determined**. Signals seen: none.");
+  });
+});
+
+describe("macos-clean: a clean Mac project, and no iOS rule on it", () => {
+  // `sandbox-absent-macos` is the macOS-scoped rule, and the template
+  // entitlements silence it by declaring the capability rather than by the
+  // platform gate — which is the correct reason for a clean macOS project.
+  it("infers macOS from three independent signals", () => {
+    expect(fixture("macos-clean").text).toContain(
+      "**Platform: macOS**, inferred from 3 signal(s): `com.apple.security.app-sandbox in entitlements`, `LSMinimumSystemVersion key present`, `import AppKit in any Swift file`. Platform-scoped rules ran.",
+    );
+  });
+
+  // The fixture carries two `.font(.system(size: 13))` lines — 13pt being the
+  // macOS system size — so this assertion is about a rule that had something to
+  // match rather than about a file with nothing in it. macOS has no Dynamic
+  // Type, so the identical line that is a finding on iOS is correct here, and a
+  // `fixed-font-size` finding on Mac source would be a false positive by
+  // construction.
+  it("draws no fixed-font-size on Mac source that carries the exact line it matches", () => {
+    const source = readFileSync(join(FIXTURES, "macos-clean", "Ledger", "ContentView.swift"), "utf8");
+    expect(source).toContain(".font(.system(size: 13))");
+    expect(fixture("macos-clean").structured.findings).toEqual([]);
+    // …and the same source under an iOS verdict draws it twice, so the silence
+    // above is the platform gate rather than a pattern that never matched.
+    const onIOS = appleSwiftRules([{ path: "Ledger/ContentView.swift", source }], IOS);
+    expect(onIOS.map((f) => `${f.rule}@${f.line}`)).toEqual(["fixed-font-size@14", "fixed-font-size@16"]);
+  });
+
+  // Limit 3 of the header comment, on a fixture rather than on a constructed
+  // config: this project enables the Hardened Runtime in its build settings and
+  // declares one of its exception entitlements, and no rule says anything about
+  // it in either direction.
+  it("says nothing about the Hardened Runtime it both enables and excepts", () => {
+    const r = fixture("macos-clean");
+    expect(readFileSync(join(FIXTURES, "macos-clean", "Ledger.xcodeproj", "project.pbxproj"), "utf8"))
+      .toContain("ENABLE_HARDENED_RUNTIME = YES;");
+    expect(readFileSync(join(FIXTURES, "macos-clean", "Ledger", "Ledger.entitlements"), "utf8"))
+      .toContain("com.apple.security.cs.disable-library-validation");
+    expect(r.text.slice(0, r.text.indexOf("## Not visible to this audit"))).not.toMatch(/hardened runtime/i);
+  });
+});
+
+describe("the broken project draws exactly the expected set", () => {
+  it("draws those six rules and no seventh", () => {
+    expect(fixture("broken").structured.findings.map((f) => f.rule).sort()).toEqual([
+      "colorset-no-dark-variant", "fixed-font-size", "microphone-entitlement-mismatch",
+      "navigationview-deprecated", "symbol-as-only-button-label", "uirequiresfullscreen-deprecated",
+    ]);
+  });
+
+  // One finding per defect, each at the position it belongs at: the three
+  // configuration facts at the sentinel line 0, the three Swift facts at the
+  // line that carries them.
+  it("draws each exactly once, at its own line", () => {
+    expect(fixture("broken").structured.findings.map((f) => `${f.rule}@${f.line}`)).toEqual([
+      "colorset-no-dark-variant@0",
+      "uirequiresfullscreen-deprecated@0",
+      "microphone-entitlement-mismatch@0",
+      "navigationview-deprecated@6",
+      "fixed-font-size@9",
+      "symbol-as-only-button-label@11",
+    ]);
+    expect(fixture("broken").structured.summary).toEqual({ error: 0, warning: 5, info: 1 });
+  });
+
+  it("reached an iOS verdict, which is what let the iOS-scoped rule run at all", () => {
+    expect(fixture("broken").text).toContain("**Platform: iOS**, inferred from 3 signal(s)");
+  });
+
+  // The two rules the set deliberately excludes, and why each is correct to be
+  // silent: the verdict is iOS, so the macOS distribution rule does not apply;
+  // and the fixture's colour is `Color("Brand")`, a resource reference, which
+  // is what `hardcoded-color-literal` exists to distinguish a literal from.
+  it("excludes the macOS rule and the colour-literal rule, on their own merits", () => {
+    const ids = fixture("broken").structured.findings.map((f) => f.rule);
+    expect(ids).not.toContain("sandbox-absent-macos");
+    expect(ids).not.toContain("hardcoded-color-literal");
+    expect(readFileSync(join(FIXTURES, "broken", "Ledger", "ContentView.swift"), "utf8")).toContain('Color("Brand")');
+  });
+});
+
+// The fixture that stops the platform inference from guessing. A SwiftUI
+// package targeting both platforms has no configuration to settle the question
+// and no `import UIKit`/`import AppKit` to fall back on, which is exactly the
+// input where a guess would be most tempting and most damaging: macOS has no
+// Dynamic Type, so a `fixed-font-size` finding on Mac source is a false
+// positive by construction, and a guessed iOS verdict here would produce one.
+describe("an ambiguous project runs no platform-specific rule and says so", () => {
+  it("runs neither platform-scoped rule", () => {
+    const ids = fixture("ambiguous").structured.findings.map((f) => f.rule);
+    for (const rule of PLATFORM_SCOPED) expect(ids, rule).not.toContain(rule);
+  });
+
+  // …while the unscoped rule fires, so the two silences above are the gate and
+  // not a run that read nothing.
+  it("still reports what is not platform-scoped, so the silence is not an empty run", () => {
+    expect(fixture("ambiguous").structured.findings.map((f) => `${f.rule}@${f.line}`))
+      .toEqual(["navigationview-deprecated@11"]);
+    expect(fixture("ambiguous").structured.scan.filesRead).toBe(2);
+  });
+
+  it("says in the report why every platform-scoped rule stayed silent", () => {
+    expect(fixture("ambiguous").text).toContain(
+      "**Platform: not determined**. Signals seen: none. **Every platform-scoped rule stayed silent**, so their silence here is the gate rather than a result.",
+    );
+  });
+
+  it("says it in the disclosure list too, where a caller reading only the structured half will see it", () => {
+    const r = fixture("ambiguous");
+    expect(r.structured.notVisible.join(" ")).toMatch(/platform/i);
+    expect(r.structured.notVisible.some((e) => e.includes(
+      "Every platform-scoped rule, whenever the platform line above does not name a platform.",
+    ))).toBe(true);
+  });
+
+  // Both halves of the gate, demonstrated on this fixture's own bytes: the
+  // Swift file draws `fixed-font-size` the moment a verdict says iOS, and the
+  // fixture's own (empty) configuration draws `sandbox-absent-macos` the moment
+  // one says macOS. Neither rule is missing a pattern; both were held back.
+  it("draws both of them the moment a verdict names a platform", () => {
+    const source = readFileSync(join(FIXTURES, "ambiguous", "Sources", "DesignKit", "BadgeView.swift"), "utf8");
+    const files = [{ path: "Sources/DesignKit/BadgeView.swift", source }];
+    expect(appleSwiftRules(files, IOS).map((f) => `${f.rule}@${f.line}`))
+      .toEqual(["navigationview-deprecated@11", "fixed-font-size@13"]);
+
+    // `readAppleConfig` over the same files is what the report itself built:
+    // a Swift path is no configuration surface, so this is the fixture's real
+    // config, empty, with a macOS verdict put over it.
+    const config = readAppleConfig(files);
+    expect(config.surfaces).toEqual({ plist: [], buildSettings: [], entitlements: [], assetCatalogs: [] });
+    expect(appleConfigRules({ config, platform: MACOS }).map((f) => f.rule)).toEqual(["sandbox-absent-macos"]);
+  });
+});
+
+// `GENERATE_INFOPLIST_FILE = YES` has been Xcode's default since 13, so this —
+// not `ios-clean` — is the shape a default project has today: no `Info.plist`
+// anywhere, every key suffixed inside `project.pbxproj`, and a SwiftUI
+// lifecycle with no `import UIKit` to infer from.
+describe("finds keys that live only in build settings, and reports no false absence", () => {
+  it("reports the key it found there", () => {
+    expect(fixture("no-plist").structured.findings.map((f) => f.rule)).toEqual(["uirequiresfullscreen-deprecated"]);
+  });
+
+  it("read no information property list at all, and says so", () => {
+    const text = fixture("no-plist").text;
+    expect(text).toContain("- Information property lists: none read");
+    expect(text).toContain("- Build settings (`INFOPLIST_KEY_*` only) (1): `Ledger.xcodeproj/project.pbxproj`");
+  });
+
+  it("infers iOS from the suffixed families, with no import UIKit anywhere to fall back on", () => {
+    const text = fixture("no-plist").text;
+    expect(text).toContain("**Platform: iOS**, inferred from 2 signal(s)");
+    expect(text).toContain("`UIRequiresFullScreen or UISupportedInterfaceOrientations key present`");
+    expect(text).toContain("`UILaunchScreen / UILaunchStoryboardName key present`");
+    for (const swift of ["Ledger/ContentView.swift", "Ledger/LedgerApp.swift"]) {
+      expect(readFileSync(join(FIXTURES, "no-plist", ...swift.split("/")), "utf8"), swift).not.toContain("import UIKit");
+    }
+  });
+
+  // The false absence this fixture exists to rule out. A purpose string
+  // declared only as a build setting is the case a plist-only reader calls
+  // missing on a project that is correct; the key is found here, and no rule
+  // reports anything about it.
+  it("picks the purpose string out of the build settings and says nothing about it", () => {
+    const config = readAppleConfig([{
+      path: "Ledger.xcodeproj/project.pbxproj",
+      source: readFileSync(join(FIXTURES, "no-plist", "Ledger.xcodeproj", "project.pbxproj"), "utf8"),
+    }]);
+    expect(config.keys.get("NSCameraUsageDescription")).toBe("Ledger photographs your receipts.");
+    expect(config.keys.get("UIRequiresFullScreen")).toBe("YES");
+    expect(config.surfaces.plist).toEqual([]);
+  });
+
+  it("states no absence anywhere in the report body", () => {
+    const r = fixture("no-plist");
+    const body = r.text.slice(0, r.text.indexOf("## Not visible to this audit"));
+    expect(body).not.toMatch(/declares no|was among the surfaces read|no Info\.plist|missing/i);
+    expect(r.structured.findings.filter((f) => /absent|missing/i.test(f.rule))).toEqual([]);
   });
 });
 
