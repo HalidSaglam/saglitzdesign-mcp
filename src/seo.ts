@@ -137,11 +137,12 @@ export const SEO_EXTENSIONS = [
 
 /**
  * Files read by name rather than extension — and, in `scanProject`, read
- * *before* the extension matches and exempt from the file cap. The same
- * judgement security.ts made for `_headers`: an audit that never opened
- * robots.txt reports the site's crawl rules absent, which is worse than not
- * looking. `sitemap.ts` / `robots.ts` are the Next.js App Router generators
- * for the two static files beside them.
+ * *before* the extension matches. The same judgement security.ts made for
+ * `_headers`: an audit that never opened robots.txt reports the site's crawl
+ * rules absent, which is worse than not looking. `sitemap.ts` / `robots.ts`
+ * are the Next.js App Router generators for the two static files beside them.
+ * Priority, not exemption: these count against both caps like every other
+ * file, and a scan that drops one says so through `hitFileCap`.
  */
 export const SEO_FILENAMES = [
   "robots.txt", "llms.txt", "llms-full.txt",

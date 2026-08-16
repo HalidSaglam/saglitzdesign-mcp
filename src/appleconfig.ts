@@ -289,6 +289,15 @@ export function readEntitlements(source: string): Set<string> {
 // ── asset catalog ────────────────────────────────────────────────────────────
 
 /**
+ * `*.colorset/Contents.json` — the only asset-catalog member this package
+ * reads, named once so the scan that selects the files and the reader that
+ * parses them cannot drift apart. Two copies of this pattern existed until
+ * v0.25.0 and the scan now selects on it, which makes agreement structural
+ * rather than incidental.
+ */
+export const COLORSET_CONTENTS = /\.colorset\/Contents\.json$/;
+
+/**
  * Reads colorsets out of an already-collected list of asset catalog files.
  * Only `*.colorset/Contents.json` entries are considered — other catalog
  * members (`.appiconset`, `.imageset`, `.dataset`, the catalog's own root
@@ -319,7 +328,7 @@ export function readEntitlements(source: string): Set<string> {
 export function readAssetCatalog(files: Array<{ path: string; source: string }>): ColorSet[] {
   const out: ColorSet[] = [];
   for (const file of files) {
-    if (!/\.colorset\/Contents\.json$/.test(file.path)) continue;
+    if (!COLORSET_CONTENTS.test(file.path)) continue;
 
     let parsed: unknown;
     try {

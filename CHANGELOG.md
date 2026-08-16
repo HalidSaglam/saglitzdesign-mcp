@@ -99,13 +99,15 @@ not misread a clean report:
   nothing about how that colour reads against anything;
   `hardcoded-color-literal` fires on the numbers without computing a ratio
   from them.
-- **Three extensions and three filenames are opened, and the rest of a project
-  is outside what was read.** `.swift`, `.plist` and `.entitlements`, plus
-  `Info.plist`, `Contents.json` and `project.pbxproj` matched by name. A
-  screen laid out in a storyboard or XIB, a view controller written in
-  Objective-C, a localised value in `InfoPlist.xcstrings` and a Swift file
-  saved under another suffix were each present in a run here and each drew
-  nothing.
+- **Three extensions and three configuration shapes are opened, and the rest
+  of a project is outside what was read.** `.swift`, `.plist` and
+  `.entitlements`, plus `Info.plist` and `project.pbxproj` matched by name and
+  `*.colorset/Contents.json` matched by the end of its path. A screen laid out
+  in a storyboard or XIB, a view controller written in Objective-C, a
+  localised value in `InfoPlist.xcstrings` and a Swift file saved under
+  another suffix were each present in a run here and each drew nothing. An
+  asset-catalog member that is not a colorset — an imageset, an appiconset,
+  the catalog's own root `Contents.json` — is not opened either.
 - **A directory the walk never enters, and your own code with it if you keep
   it under one of those names.** `Pods`, `Carthage` and `DerivedData` are
   added for this audit, on top of the shared skip list every scanner here uses
@@ -164,13 +166,14 @@ not misread a clean report:
   carried an `.accessibilityLabel`, which is why its own text calls it a risk
   to check rather than a fault found.
 - **Whatever the scan stopped short of.** At most 400 files and 3 MB in total,
-  and any single file over 500 KB is skipped whole rather than truncated.
-  `scan.hitFileCap`, `scan.hitByteCap`, `scan.skippedLarge` and
-  `scan.unreadable` report each of those, and while a cap was hit no absence
-  in `findings` covers the part that was never opened. A symlinked directory
-  or file is stepped over and is counted in neither `scan.unreadable` nor
-  `scan.skippedLarge`, so that one shows up only in the finding it did not
-  produce.
+  with nothing exempt — configuration is read *before* any Swift file, which
+  buys it priority and not an exemption — and any single file over 500 KB is
+  skipped whole rather than truncated. `scan.hitFileCap`, `scan.hitByteCap`,
+  `scan.skippedLarge` and `scan.unreadable` report each of those, and while a
+  cap was hit no absence in `findings` covers the part that was never opened.
+  A symlinked directory or file is stepped over and is counted in neither
+  `scan.unreadable` nor `scan.skippedLarge`, so that one shows up only in the
+  finding it did not produce.
 
 An empty findings list means no rule this audit runs matched the text of the
 files that were read — not that the project is sound, and not that it was all

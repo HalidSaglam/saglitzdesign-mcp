@@ -56,7 +56,7 @@ import {
   auditStructuredFrom, renderNotVisibleSection,
 } from "./lint.js";
 import {
-  type ConfigRead, type PlatformVerdict,
+  type ConfigRead, type PlatformVerdict, COLORSET_CONTENTS,
   readPlist, readEntitlements, readBuildSettingKeys, readAssetCatalog, inferPlatform,
 } from "./appleconfig.js";
 import { maskComments } from "./scan.js";
@@ -627,8 +627,8 @@ export function appleSwiftRules(
 export const APPLE_EXTENSIONS = [".swift", ".plist", ".entitlements"];
 
 /**
- * Files matched by name rather than extension, which `scanProject` reads
- * first and exempts from the file cap.
+ * Files matched by name or path tail rather than extension, which
+ * `scanProject` reads before any of the extension matches.
  *
  * All three are configuration, which is the backbone of this audit: an
  * `Info.plist` whose keys settle the platform, the `project.pbxproj` Xcode
@@ -636,8 +636,22 @@ export const APPLE_EXTENSIONS = [".swift", ".plist", ".entitlements"];
  * colorset. Being read first is what stops a project with four hundred Swift
  * files from spending its whole budget before reaching the plist that decides
  * which platform-scoped rules may run at all.
+ *
+ * **The third is a path tail, not a basename, and that is the whole point.**
+ * `Contents.json` alone was the shipped spelling, and in an Xcode asset
+ * catalog that basename is one file per asset *entry* — every imageset,
+ * appiconset, symbolset, dataset and group has one — so the match scaled with
+ * an app's image count while `readAssetCatalog` accepted only the colorsets
+ * among them. On an ordinary iOS app with 400 imagesets the useless 399 filled
+ * the file budget and not one Swift file was opened: `Platform: iOS …
+ * Platform-scoped rules ran` above `0 error · 0 warning · 0 info`, on a
+ * project whose own `ContentView.swift` carried two findings. That is the same
+ * shape `APPLE_SKIP_DIRS` below exists to prevent, re-entering through the
+ * catalog. `.colorset/Contents.json` asks for exactly the members this audit
+ * can use — `COLORSET_CONTENTS`, the pattern `readAppleConfig` then routes on,
+ * so the two cannot disagree about which files were worth opening.
  */
-export const APPLE_FILENAMES = ["Info.plist", "Contents.json", "project.pbxproj"];
+export const APPLE_FILENAMES = ["Info.plist", "project.pbxproj", ".colorset/Contents.json"];
 
 /**
  * Where an Xcode project's *dependencies* live, added to `scanProject`'s own
@@ -669,8 +683,6 @@ export const APPLE_FILENAMES = ["Info.plist", "Contents.json", "project.pbxproj"
  */
 export const APPLE_SKIP_DIRS = ["Pods", "Carthage", "DerivedData"];
 
-/** `*.colorset/Contents.json` — the only asset-catalog member read here. */
-const COLORSET_CONTENTS = /\.colorset\/Contents\.json$/;
 /** `project.pbxproj`, at any depth. */
 const PBXPROJ = /(^|\/)project\.pbxproj$/;
 const ENTITLEMENTS_PATH = /\.entitlements$/i;
@@ -776,13 +788,13 @@ export const APPLE_PREAMBLE =
 export const APPLE_NOT_VISIBLE: string[] = [
   "**Nothing here is measured, and nothing is rendered.** No contrast ratio is computed, no tap target sized, no simulator launched, no screenshot taken, no build run. `colorset-no-dark-variant` fired on a `Brand.colorset` whose single colour is `(0.18, 0.35, 0.85)` and said nothing whatever about how that colour reads against anything, and `hardcoded-color-literal` fired on `Color(red: 0.10, green: 0.20, blue: 0.30)` without computing a ratio from it either. Not one number in this report came from a rendered pixel. `audit_accessibility` computes a contrast ratio, from the pairs you hand it rather than from anything found in a file, and `measure_screenshot` is the only tool here that looks at a rendered frame.",
 
-  "**A file this scan never opened.** It opens `.swift`, `.plist` and `.entitlements` files, plus three files matched by name — `Info.plist`, `Contents.json` and `project.pbxproj` — and stops there. In a directory holding `Base.lproj/Main.storyboard`, `Base.lproj/Launch.xib`, `Legacy/LegacyVC.m`, `InfoPlist.xcstrings` and `Sources/V.swift.txt` beside one `Sources/V.swift`, the scan read two files: the plist and the `.swift`. A screen laid out in Interface Builder, a view controller written in Objective-C, and a Swift file saved under any other suffix are each outside what was read — the live `NavigationView` in that `V.swift.txt` drew nothing. An asset-catalog member that is not a colorset is opened and then contributes nothing: a run with `Assets.xcassets/Contents.json` and `Assets.xcassets/AppIcon.appiconset/Contents.json` counted three files read and zero colorsets.",
+  "**A file this scan never opened.** It opens `.swift`, `.plist` and `.entitlements` files, plus `Info.plist` and `project.pbxproj` matched by name and `*.colorset/Contents.json` matched by the end of its path — and stops there. In a directory holding `Base.lproj/Main.storyboard`, `Base.lproj/Launch.xib`, `Legacy/LegacyVC.m`, `InfoPlist.xcstrings` and `Sources/V.swift.txt` beside one `Sources/V.swift`, the scan read two files: the plist and the `.swift`. A screen laid out in Interface Builder, a view controller written in Objective-C, and a Swift file saved under any other suffix are each outside what was read — the live `NavigationView` in that `V.swift.txt` drew nothing. An asset-catalog member that is not a colorset is outside it too, and is not opened at all: a run with `Assets.xcassets/Contents.json` and `Assets.xcassets/AppIcon.appiconset/Contents.json` beside one Swift file counted one file read and zero colorsets.",
 
   "**A directory the walk never enters** — a fixed skip list, plus every directory whose name begins with a dot. `Pods`, `Carthage` and `DerivedData` are on that list for this audit specifically, beside the shared `node_modules`, `vendor`, `build` and the rest; SwiftPM's `.build` and `.swiftpm` are skipped for their leading dot. **Nothing inside a dependency is audited, in either direction.** On a clean app with `Pods/` and `Carthage/` beside it, every finding came from `Ledger/ContentView.swift` and none from either — a pod's `Info.plist` declaring `UIRequiresFullScreen` drew nothing, two vendored `NavigationView`s drew nothing, and a pod's own `INFOPLIST_KEY_LSMinimumSystemVersion` did not reach the platform verdict. Read that as coverage rather than as a clean bill on your dependencies: this audit says nothing about them at all. **It is a name test, not a provenance test, so it drops your own code if you keep it under one of those names** — a project whose own `Pods/MyOwnCode.swift` held a `NavigationView` came back `filesRead: 1`, \"Swift source: none read\" and no findings, with nothing in the report body marking the skip. Pointing the tool straight at that directory audits it normally, because the root you name is never itself name-checked.",
 
   "**Vendored source under a directory name that is not on that list.** The list is names, not provenance, and nothing consults `.gitignore` or a lockfile. A library checked into `Vendor/Lib/View.swift` — capital `V`, which the shared lowercase `vendor` entry does not match — was read as though a person on the team had written it, and its `NavigationView` was reported against that path. Check the file a finding names before acting on it — every Swift finding carries its path, in the markdown bullet and in `structuredContent.findings[].file`. Do not read it off the surfaces list above: that list names at most ten paths per kind (with an exact count, and an \"…and N more\" tail beyond it), and on a project of 14 Swift files the one the finding named was in the untruncated remainder rather than in the ten.",
 
-  `**Whatever the scan stopped short of.** It reads at most ${MAX_FILES} files and at most ${kb(MAX_TOTAL_BYTES)} in total, stopping at the *first* file that would cross either line and leaving everything the walk had not yet reached unread rather than sampled. A project of 406 Swift files beside one \`Info.plist\` was read to ${MAX_FILES} files, and the \`NavigationView\` in the Swift file that sorted last was not reported. Configuration is read before any of them and is exempt from the file cap, so the \`Info.plist\` in that same run was read — but while \`scan.hitFileCap\` or \`scan.hitByteCap\` is true, no absence in \`findings\` covers the part that was never opened, and the markdown says so in a single **Capped:** line that is easy to read past.`,
+  `**Whatever the scan stopped short of.** It reads at most ${MAX_FILES} files and at most ${kb(MAX_TOTAL_BYTES)} in total, with nothing exempt — configuration counts against both — stopping at the *first* file that would cross either line and leaving everything the walk had not yet reached unread rather than sampled. Configuration is read *before* any Swift file, which is priority and not exemption, and both halves of that showed up in a pair of runs: a project of 406 Swift files beside one \`Info.plist\` was read to ${MAX_FILES} files with the plist among them, and the \`NavigationView\` in the Swift file that sorted last was not reported; a project of 500 colorsets beside one Swift file spent the entire budget on colorsets, drew ${MAX_FILES} \`colorset-no-dark-variant\` findings, and reported \`Swift source: none read\`. \`scan.hitFileCap\` was true in both, and while either cap flag is true no absence in \`findings\` covers the part that was never opened — the markdown says so in a single **Capped:** line that is easy to read past.`,
 
   `**A file over ${kb(MAX_FILE_BYTES)}, which is skipped whole rather than truncated.** It is never opened, so nothing above is claimed about anything inside it, and the scan carries on with the rest. A \`Sources/Huge.swift\` past that cap whose second line was \`NavigationView { Text("x") }\` produced no finding, and the small Swift file beside it was read normally. The line above names at most five such files and counts the rest: with six over the cap it read \"Skipped 6 file(s) … , …and 1 more\", so the sixth is counted but not named. \`scan.skippedLarge\` carries every one of them by path.`,
 

@@ -504,12 +504,13 @@ export const SECURITY_EXTENSIONS = [
 
 /**
  * Files read by name rather than extension — and, in `scanProject`, read
- * *before* the extension matches and exempt from the file cap. Every name
- * here is somewhere a project declares its response headers, and a header
- * audit that never opened the header configuration is worse than no audit:
- * it reports the headers absent. Most of these also match on extension, so
- * listing them changes nothing about *whether* they are read — only about
- * whether 400 components can push them out of the scan.
+ * *before* the extension matches. Every name here is somewhere a project
+ * declares its response headers, and a header audit that never opened the
+ * header configuration is worse than no audit: it reports the headers absent.
+ * Most of these also match on extension, so listing them changes nothing about
+ * *whether* they are read — only about whether 400 components can push them
+ * out of the scan. Priority, not exemption: these count against both caps like
+ * every other file, and a scan that drops one says so through `hitFileCap`.
  */
 export const SECURITY_FILENAMES = [
   "_headers", ".env", ".env.local", ".env.production", ".gitignore",

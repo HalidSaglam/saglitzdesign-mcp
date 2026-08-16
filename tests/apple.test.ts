@@ -1023,7 +1023,9 @@ describe("the fixture matrix: correct work draws nothing", () => {
   it.each([
     ["recipes-swiftui", 4],
     ["ios-clean", 3],
-    ["macos-clean", 6],
+    // Five of the six files under it: the catalog's own root `Contents.json`
+    // is not a colorset, so the scan does not open it.
+    ["macos-clean", 5],
   ])("%s read %i file(s), so its clean result is not an empty directory's", (name, count) => {
     expect(fixture(name as string).structured.scan.filesRead).toBe(count);
   });
@@ -1447,15 +1449,35 @@ describe("2. a file this scan never opened", () => {
     expect(r.text).toContain("- Swift source (1): `Sources/V.swift`");
   });
 
-  it("opens an asset-catalog member that is not a colorset and takes nothing from it", () => {
+  it("does not open an asset-catalog member that is not a colorset", () => {
     const root = project({
       "Assets.xcassets/Contents.json": JSON.stringify({ info: { author: "xcode", version: 1 } }),
       "Assets.xcassets/AppIcon.appiconset/Contents.json": JSON.stringify({ images: [{ idiom: "universal" }] }),
       "Sources/V.swift": "import SwiftUI\nimport UIKit\n",
     });
     const r = appleReport(root);
-    expect(r.structured.scan.filesRead).toBe(3);
+    expect(r.structured.scan.filesRead).toBe(1);
     expect(r.text).toContain("- Asset catalog colorsets: none read");
+    expect(r.text).toContain("- Swift source (1): `Sources/V.swift`");
+  });
+
+  // The colorsets are the half that must survive the narrowing: matching the
+  // path tail rather than the basename has to keep reading the members this
+  // audit can actually use, or C1's fix would have traded a starved scan for a
+  // silent rule.
+  it("still opens a colorset beside the members it skips", () => {
+    const root = project({
+      "Assets.xcassets/Contents.json": JSON.stringify({ info: { author: "xcode", version: 1 } }),
+      "Assets.xcassets/AppIcon.appiconset/Contents.json": JSON.stringify({ images: [{ idiom: "universal" }] }),
+      "Assets.xcassets/Brand.colorset/Contents.json": JSON.stringify({
+        colors: [{ idiom: "universal", color: { "color-space": "srgb", components: { red: "0.1", green: "0.2", blue: "0.3", alpha: "1" } } }],
+      }),
+      "Sources/V.swift": "import SwiftUI\nimport UIKit\n",
+    });
+    const r = appleReport(root);
+    expect(r.structured.scan.filesRead).toBe(2);
+    expect(r.text).toContain("- Asset catalog colorsets (1): `Assets.xcassets/Brand.colorset/Contents.json`");
+    expect(rules(root)).toEqual(["colorset-no-dark-variant"]);
   });
 });
 
@@ -1595,9 +1617,90 @@ describe("4. whatever the scan stopped short of", () => {
     expect(r.structured.scan.hitFileCap).toBe(true);
     expect(r.structured.findings).toEqual([]);
     expect(r.text).toContain("**Capped:** the 400-file cap was reached");
-    // Configuration is read first and exempt from the cap, which is the half of
-    // the sentence that would be easiest to get wrong by reading the code.
+    // Configuration is read first, which is the half of the sentence that
+    // would be easiest to get wrong by reading the code.
     expect(r.text).toContain("- Information property lists (1): `Info.plist`");
+  });
+
+  // The other half of the same sentence: reading configuration first is
+  // priority, not an exemption. 500 colorsets are all configuration, and they
+  // stop at the cap like anything else — so the file count stays a real bound
+  // and the report says the Swift file went unread rather than implying it was
+  // clean.
+  it("spends the whole budget on configuration when there is that much of it, and says so", () => {
+    const colorset = JSON.stringify({
+      colors: [{ idiom: "universal", color: { "color-space": "srgb", components: { red: "0.1", green: "0.2", blue: "0.3", alpha: "1" } } }],
+    });
+    const files: Record<string, string> = { "Sources/zzz.swift": 'import SwiftUI\nimport UIKit\nNavigationView { Text("x") }\n' };
+    for (let i = 0; i < 500; i++) files[`Assets.xcassets/C${String(i).padStart(4, "0")}.colorset/Contents.json`] = colorset;
+    const root = project(files);
+    const r = appleReport(root);
+    expect(r.structured.scan.filesRead).toBe(400);
+    expect(r.structured.scan.hitFileCap).toBe(true);
+    expect(r.text).toContain("**Capped:** the 400-file cap was reached");
+    expect(r.text).toContain("- Swift source: none read");
+    expect(r.structured.findings).toHaveLength(400);
+  });
+});
+
+// C1: `Contents.json` as a bare basename made the name match scale with an
+// app's image count, and the name matches were exempt from both caps. On an
+// ordinary iOS app the two together read 401 files and starved every Swift
+// file in the project — `Platform: iOS … Platform-scoped rules ran` above
+// `0 error · 0 warning · 0 info`, on a project carrying two real findings.
+//
+// Two independent guards, because the defect had two independent halves.
+describe("an asset catalog cannot starve the Swift half of the scan", () => {
+  const IOS_PLIST = plist("<key>UILaunchScreen</key>\n<string>LaunchScreen</string>");
+  const VIEW = 'import SwiftUI\nstruct ContentView: View {\n  var body: some View {\n    NavigationView {\n      Text("hi").font(.system(size: 17))\n    }\n  }\n}\n';
+
+  const appWithImagesets = (n: number) => {
+    const files: Record<string, string> = { "Info.plist": IOS_PLIST, "Sources/ContentView.swift": VIEW };
+    for (let i = 0; i < n; i++) {
+      files[`Assets.xcassets/Img${String(i).padStart(4, "0")}.imageset/Contents.json`] =
+        JSON.stringify({ images: [{ idiom: "universal" }], info: { version: 1, author: "xcode" } });
+    }
+    return project(files);
+  };
+
+  // The threshold that used to decide it: 398 imagesets reported both defects,
+  // 399 reported none, 400 read 401 files.
+  it.each([398, 399, 400])("reports both defects on an app with %i imagesets", (n) => {
+    const root = appWithImagesets(n);
+    const r = appleReport(root);
+    expect(r.structured.scan.filesRead).toBe(2);
+    expect(r.structured.scan.hitFileCap).toBe(false);
+    expect(rules(root)).toEqual(["navigationview-deprecated", "fixed-font-size"]);
+    expect(r.text).toContain("- Swift source (1): `Sources/ContentView.swift`");
+  });
+
+  // The caps are bounds on everything, so no arrangement of files can read
+  // past them. 500 name-matched configuration files is the arrangement that
+  // could before.
+  it("never reads past the file cap, however many files match by name or path", () => {
+    const colorset = JSON.stringify({
+      colors: [{ idiom: "universal", color: { "color-space": "srgb", components: { red: "0.1", green: "0.2", blue: "0.3", alpha: "1" } } }],
+    });
+    const files: Record<string, string> = { "Info.plist": IOS_PLIST };
+    for (let i = 0; i < 500; i++) files[`Assets.xcassets/C${String(i).padStart(4, "0")}.colorset/Contents.json`] = colorset;
+    const r = appleReport(project(files));
+    expect(r.structured.scan.filesRead).toBeLessThanOrEqual(400);
+    expect(r.structured.scan.hitFileCap).toBe(true);
+  });
+
+  it("never reads past the total-bytes cap, however many files match by name or path", () => {
+    const pad = "x".repeat(30 * 1024);
+    const files: Record<string, string> = { "Info.plist": IOS_PLIST };
+    for (let i = 0; i < 200; i++) {
+      files[`Assets.xcassets/C${String(i).padStart(4, "0")}.colorset/Contents.json`] = JSON.stringify({
+        pad,
+        colors: [{ idiom: "universal", color: { "color-space": "srgb", components: { red: "0.1", green: "0.2", blue: "0.3", alpha: "1" } } }],
+      });
+    }
+    const r = appleReport(project(files));
+    expect(r.structured.scan.scannedBytes).toBeLessThanOrEqual(3 * 1024 * 1024);
+    expect(r.structured.scan.hitByteCap).toBe(true);
+    expect(r.text).toContain("**Capped:** the 3072 KB total-bytes cap was reached");
   });
 });
 

@@ -8,7 +8,7 @@
 // that looks complete is worse than one that says what it skipped.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, extname } from "node:path";
+import { join, relative, extname, sep } from "node:path";
 import {
   designLint, type LintFinding, type AuditReport, type AuditStructured,
   auditStructuredFrom, renderNotVisibleSection,
@@ -68,10 +68,32 @@ export interface ProjectAudit {
  * the security headers was never opened — and the audit then reported the
  * headers absent. A directory listing is cheap; the file *contents* are what
  * the caps exist to bound. So the walk collects candidates unbounded (it is
- * only readdir), the `filenames` matches — configuration, by construction a
- * handful of small files — are read first and exempt from the file cap, and
- * only the extension matches are capped. `hitFileCap` therefore means "some
- * source files were not read", which is exactly what callers report.
+ * only readdir) and the `filenames` matches are read *first*, before any
+ * extension match, wherever in the tree they turned up. That ordering is the
+ * whole of the priority: it decides which files get the budget, never how big
+ * the budget is.
+ *
+ * **Both groups are counted against both caps.** The name matches were exempt
+ * until v0.25.0, on the assumption that configuration is "by construction a
+ * handful of small files". `audit_apple_ui` falsified it: an Xcode asset
+ * catalog writes one `Contents.json` per asset entry, so a name match on that
+ * basename scales with an app's image count. 400 imagesets read 401 files and
+ * 120 padded ones read 3.5 MB, both past a bound two shipped disclosure
+ * sentences state as absolute — and, worse, the 401st file was the first Swift
+ * file, which tripped `hitFileCap` before a single one of them was opened. An
+ * exemption is only ever as good as its caller's naming, and a cap that a
+ * caller can lift by choosing a popular basename is not a cap. Priority
+ * survives the change; the exemption does not, and a configuration file
+ * dropped for the cap is reported through `hitFileCap`/`hitByteCap` like any
+ * other.
+ *
+ * A `filenames` entry containing a `/` is matched against the **end of the
+ * file's path** rather than against its basename, so a caller that wants one
+ * member of a directory shape can say so — `audit_apple_ui` asks for
+ * `.colorset/Contents.json` and leaves every imageset, appiconset and dataset
+ * `Contents.json` unopened. Entries without a `/` are basenames, as before.
+ * Separators are normalised to `/` before the comparison, so the same entry
+ * works on Windows.
  *
  * `extraSkipDirs` adds to `SKIP_DIRS` for one caller without widening it for
  * the rest. The shared list already carries `node_modules` and `vendor`,
@@ -91,7 +113,8 @@ export function scanProject(
   extraSkipDirs: string[] = [],
 ): ScanResult {
   const wanted = new Set(extensions.map((e) => e.toLowerCase()));
-  const wantedNames = new Set(filenames);
+  const wantedNames = new Set(filenames.filter((n) => !n.includes("/")));
+  const wantedPathEnds = filenames.filter((n) => n.includes("/"));
   const skipDirs = extraSkipDirs.length ? new Set([...SKIP_DIRS, ...extraSkipDirs]) : SKIP_DIRS;
   const files: ProjectFile[] = [];
   const skippedLarge: string[] = [];
@@ -102,6 +125,16 @@ export function scanProject(
 
   const named: string[] = [];
   const byExt: string[] = [];
+
+  // A `/`-bearing entry is a path tail, so it needs the whole path rather than
+  // the directory entry's name. Guarded on the list being non-empty: every
+  // caller but one passes basenames only, and they should not pay for a
+  // per-file string split.
+  const matchesPathEnd = (full: string): boolean => {
+    if (!wantedPathEnds.length) return false;
+    const path = sep === "/" ? full : full.split(sep).join("/");
+    return wantedPathEnds.some((end) => path.endsWith(end));
+  };
 
   const walk = (dir: string) => {
     let entries;
@@ -121,16 +154,17 @@ export function scanProject(
         continue;
       }
       if (!entry.isFile()) continue;
-      // A name match is configuration; it is read before any of the capped
-      // source files, wherever in the tree it turned up.
-      if (wantedNames.has(entry.name)) named.push(full);
+      // A name match is configuration; it is read before any of the source
+      // files, wherever in the tree it turned up. It is not exempt from the
+      // caps — see the doc comment.
+      if (wantedNames.has(entry.name) || matchesPathEnd(full)) named.push(full);
       else if (wanted.has(extname(entry.name).toLowerCase())) byExt.push(full);
     }
   };
 
   walk(root);
 
-  const read = (full: string, capped: boolean): void => {
+  const read = (full: string): void => {
     let size = 0;
     try {
       size = statSync(full).size;
@@ -143,15 +177,13 @@ export function scanProject(
       skippedLarge.push(rel);
       return;
     }
-    if (capped) {
-      if (files.length >= MAX_FILES) {
-        hitFileCap = true;
-        return;
-      }
-      if (scannedBytes + size > MAX_TOTAL_BYTES) {
-        hitByteCap = true;
-        return;
-      }
+    if (files.length >= MAX_FILES) {
+      hitFileCap = true;
+      return;
+    }
+    if (scannedBytes + size > MAX_TOTAL_BYTES) {
+      hitByteCap = true;
+      return;
     }
     try {
       files.push({ path: rel, bytes: size, source: readFileSync(full, "utf8") });
@@ -161,10 +193,13 @@ export function scanProject(
     }
   };
 
-  for (const full of named) read(full, false);
-  for (const full of byExt) {
-    if (hitFileCap || hitByteCap) break; // everything after the first drop is unread too
-    read(full, true);
+  // Configuration first, source second, one budget between them; everything
+  // after the first file that would cross a cap is unread too, in either group.
+  for (const group of [named, byExt]) {
+    for (const full of group) {
+      if (hitFileCap || hitByteCap) break;
+      read(full);
+    }
   }
 
   return { files, scannedBytes, skippedLarge, hitFileCap, hitByteCap, unreadable };
