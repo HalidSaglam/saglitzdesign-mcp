@@ -35,6 +35,7 @@ import { securityReport, HEADER_SOURCES_SENTENCE } from "./security.js";
 import { genericReport } from "./generic.js";
 import { seoReport, SEO_CAPABILITIES } from "./seo.js";
 import { perfReport, PERF_CAPABILITIES } from "./perf.js";
+import { appleReport } from "./apple.js";
 import { createDesignSystem, type DSPlatform } from "./designsystem.js";
 import { normalizeHex } from "./tokens.js";
 
@@ -1154,6 +1155,89 @@ tool(
     return { ...text(body), structuredContent: structured };
   },
   AUDIT_OUTPUT_SCHEMA,
+);
+
+// The shape `audit_apple_ui` declares on top of `AUDIT_OUTPUT_SCHEMA`: the same
+// six `scan` fields `audit_project` and `audit_generic_design` declare, meaning
+// the same things and read off the same `scanProject` result, so a caller that
+// learned the block from one of them can read it from this one. Required, as it
+// is for `audit_project` and unlike `audit_generic_design`'s: this tool has no
+// snippet mode, so every successful call scanned a directory and there is no
+// shape in which the block is legitimately absent.
+const APPLE_OUTPUT_SCHEMA = {
+  ...AUDIT_OUTPUT_SCHEMA,
+  scan: z
+    .object({
+      filesRead: z.number().int().describe("How many files were actually opened and read — Swift source and the four configuration surfaces together, plus asset-catalog members that turned out not to be colorsets."),
+      scannedBytes: z.number().int().describe("Total bytes read, which is what the byte cap is measured against."),
+      skippedLarge: z.array(z.string()).describe("Files past the per-file byte cap. Never opened, so nothing in `findings` is claimed about anything inside them."),
+      hitFileCap: z.boolean().describe("True when some Swift files were not read because the file cap was reached. Configuration is read first and exempt from that cap, so the platform verdict may still be sound while this is true — but no absence in `findings` covers the part that was never opened."),
+      hitByteCap: z.boolean().describe("True when the scan stopped because the total-bytes cap was reached before every candidate file was read. Same caveat as hitFileCap."),
+      unreadable: z.array(z.string()).describe("Files and directories that could not be opened. Distinct from a file that was opened and could not be *parsed* — a binary plist is named in the markdown's \"Could not be parsed\" line instead, and counts as read here."),
+    })
+    .describe("What the scan reached. Read it before trusting any absence claim: a capped scan looked at part of the project, and the platform-scoped rules are gated on configuration this scan may never have opened."),
+};
+
+// ── Tool 34: audit an Apple app's UI ─────────────────────────────────────────
+tool(
+  "audit_apple_ui",
+  "Audit an iOS or macOS app's UI against Apple's own documentation: point it at the project directory and it reads the four surfaces an Xcode project declares configuration on — the information property list, `INFOPLIST_KEY_*` build settings in `project.pbxproj`, the entitlements plist, and each colorset's `Contents.json` — infers whether the project targets iOS or macOS from those plus the Swift imports, and runs eight rules. "
+    + "Configuration: a custom colorset with no `luminosity: dark` appearance, the deprecated `UIRequiresFullScreen` key (either spelling), a microphone entitlement declared under one capability and not its twin, and — on macOS only — no App Sandbox entitlement, reported as a fact about the Mac App Store channel rather than as a defect. "
+    + "Swift: `NavigationView`, `.font(.system(size:))` on iOS only, a colour written as numbers, and a `Button` whose whole label is one SF Symbol. "
+    + "Every platform-scoped rule stays silent when the platform signals do not settle the question, and the report says which platform was inferred and from what, so a silence can be read as the gate rather than as a result. "
+    + "It reads source and does not measure anything: it builds nothing, runs no simulator, takes no screenshot, and no finding is or can be a rendered-output, contrast, notarization or App Review result. "
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, file, line — configuration findings carry no line, since a missing key has no position), a severity summary, a `scan` block saying how much was actually read, and a long machine-readable `notVisible` list of what it structurally could not check, every entry of it derived from a run. "
+    + "Directory only — there is no snippet mode, because configuration is the backbone of this audit and a snippet carries none of it. A missing path, a path that is a file, or a `code` argument is returned as an error result, not as an empty audit. "
+    + "Pair with get_design_doc(\"apple-hig-liquid-glass\"), get_design_doc(\"apple-accessibility\") and get_design_doc(\"apple-shipping-readiness\") for the guidance behind the rules.",
+  {
+    path: z.string().optional().describe("The Xcode project directory to audit — the folder holding your `.xcodeproj`, `Info.plist`, `Assets.xcassets` and Swift sources. Required. Absolute paths are strongly preferred: a relative path is resolved against the server's working directory, which is usually not your project folder."),
+    // Declared precisely so that passing it is answered with an explanation
+    // rather than with a schema rejection. Every other structured auditor on
+    // this server takes `code`, so an agent that has learned the family will
+    // reach for it here; leaving it undeclared makes that attempt fail with a
+    // validation error that says nothing about why a snippet cannot work.
+    code: z.string().optional().describe("Not supported by this tool, and rejected with an explanation if passed. There is no snippet mode: the platform verdict and half the rules are read from the information property list, the entitlements plist, `project.pbxproj` and the asset catalog, and a pasted snippet carries none of them. Pass `path` instead."),
+  },
+  async ({ path, code }) => {
+    // Directory only, and every other shape is an error result rather than a
+    // successful-looking empty audit. With an outputSchema declared, answering
+    // any of these as ordinary prose is a protocol violation: the caller gets
+    // no structuredContent and nothing tells it the audit never ran.
+    if (code) {
+      return {
+        ...text(
+          "`audit_apple_ui` has no snippet mode — pass `path`, the directory holding the Xcode project. "
+          + "Configuration is the backbone of this audit and a snippet carries none of it: whether the project targets iOS or macOS is inferred from the information property list, the entitlements plist, `project.pbxproj` and the Swift imports together, and every platform-scoped rule stays silent without that verdict. "
+          + "Four of the eight rules read configuration surfaces and nothing else. Run `design_lint` on a snippet for the language-agnostic checks that do work on one.",
+        ),
+        isError: true,
+      };
+    }
+    if (!path) {
+      return {
+        ...text("Pass `path`: the directory holding the Xcode project you want audited. This tool audits a directory and has no other mode."),
+        isError: true,
+      };
+    }
+    const abs = isAbsolute(path) ? path : resolve(process.cwd(), path);
+    let stat;
+    try {
+      stat = statSync(abs);
+    } catch {
+      return { ...text(`There is no directory at \`${abs}\`. Pass an absolute path to the Xcode project folder you want audited.`), isError: true };
+    }
+    if (!stat.isDirectory()) {
+      return {
+        ...text(
+          `\`${abs}\` is a file, not a directory. Pass its parent folder. This audit has no single-file mode: configuration is its backbone — the platform verdict, and with it every platform-scoped rule, is read from the information property list, the entitlements plist and \`project.pbxproj\`, and one file carries none of them.`,
+        ),
+        isError: true,
+      };
+    }
+    const { text: body, structured } = appleReport(abs);
+    return { ...text(body), structuredContent: structured };
+  },
+  APPLE_OUTPUT_SCHEMA,
 );
 
 // ── resources ────────────────────────────────────────────────────────────────

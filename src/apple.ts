@@ -51,9 +51,16 @@
 // is not a near miss — it is a confident wrong answer about code that is
 // correct for the platform it actually targets.
 
-import type { LintFinding } from "./lint.js";
-import type { ConfigRead, PlatformVerdict } from "./appleconfig.js";
+import {
+  type LintFinding, type AuditReport, type AuditStructured,
+  auditStructuredFrom, renderNotVisibleSection,
+} from "./lint.js";
+import {
+  type ConfigRead, type PlatformVerdict,
+  readPlist, readEntitlements, readBuildSettingKeys, readAssetCatalog, inferPlatform,
+} from "./appleconfig.js";
 import { maskComments } from "./scan.js";
+import { scanProject, MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES } from "./project.js";
 
 /**
  * Entitlement identifiers this file matches on, named once so the rule and its
@@ -601,4 +608,337 @@ export function appleSwiftRules(
   }
 
   return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The report
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * File extensions this audit opens.
+ *
+ * `.swift` is the only source language read. `.plist` covers an `Info.plist`
+ * wherever it sits plus any other property list a target carries;
+ * `.entitlements` is the same XML shape read for a different purpose.
+ * Everything else an Xcode project contains — `.m`, `.h`, `.storyboard`,
+ * `.xib`, `.xcstrings`, `.metal`, the asset catalog's images — is never
+ * opened, and the disclosure list says so.
+ */
+export const APPLE_EXTENSIONS = [".swift", ".plist", ".entitlements"];
+
+/**
+ * Files matched by name rather than extension, which `scanProject` reads
+ * first and exempts from the file cap.
+ *
+ * All three are configuration, which is the backbone of this audit: an
+ * `Info.plist` whose keys settle the platform, the `project.pbxproj` Xcode
+ * writes `INFOPLIST_KEY_*` into, and the `Contents.json` inside every
+ * colorset. Being read first is what stops a project with four hundred Swift
+ * files from spending its whole budget before reaching the plist that decides
+ * which platform-scoped rules may run at all.
+ */
+export const APPLE_FILENAMES = ["Info.plist", "Contents.json", "project.pbxproj"];
+
+/** `*.colorset/Contents.json` — the only asset-catalog member read here. */
+const COLORSET_CONTENTS = /\.colorset\/Contents\.json$/;
+/** `project.pbxproj`, at any depth. */
+const PBXPROJ = /(^|\/)project\.pbxproj$/;
+const ENTITLEMENTS_PATH = /\.entitlements$/i;
+const PLIST_PATH = /\.plist$/i;
+
+/**
+ * Fold the scanned files into the four configuration surfaces
+ * `appleConfigRules` and `inferPlatform` read.
+ *
+ * **A path that could not be parsed never enters `surfaces`.** The two arrays
+ * are independent — nothing in `ConfigRead` relates `unparsed` to `surfaces`
+ * — so a path listed in both would let `sandbox-absent-macos` say "the
+ * entitlements file read here — `App.entitlements` — declares no
+ * `com.apple.security.app-sandbox`" about a binary plist whose contents this
+ * process never saw. That is a fabricated fact with a real filename attached
+ * to it, which is worse than silence. `readPlist` already distinguishes "read,
+ * and empty" from "not read"; this function is where that distinction is
+ * spent, by routing the second to `unparsed` and returning before the surface
+ * is recorded. The colorset branch does the same with its own `JSON.parse`,
+ * because `readAssetCatalog` skips a malformed `Contents.json` silently and
+ * a caller that only called it could not tell a skipped file from a directory
+ * holding no colorsets at all.
+ *
+ * Keys are merged across every plist and every `project.pbxproj` into one
+ * flat map, first writer winning. That is a real widening and it is disclosed:
+ * a workspace with an app target and a share extension has two `Info.plist`s,
+ * and a key declared by either reads here as declared by "this project".
+ * Nothing in `ConfigRead` carries a target, so there is no shape in which this
+ * function could report which one.
+ */
+export function readAppleConfig(files: Array<{ path: string; source: string }>): ConfigRead {
+  const keys = new Map<string, string | boolean | string[]>();
+  const entitlements = new Set<string>();
+  const surfaces: ConfigRead["surfaces"] = { plist: [], buildSettings: [], entitlements: [], assetCatalogs: [] };
+  const unparsed: string[] = [];
+  const colorSetFiles: Array<{ path: string; source: string }> = [];
+
+  for (const file of files) {
+    if (ENTITLEMENTS_PATH.test(file.path)) {
+      if (readPlist(file.source) === null) {
+        unparsed.push(file.path);
+        continue;
+      }
+      surfaces.entitlements.push(file.path);
+      for (const id of readEntitlements(file.source)) entitlements.add(id);
+      continue;
+    }
+    if (PLIST_PATH.test(file.path)) {
+      const parsed = readPlist(file.source);
+      if (parsed === null) {
+        unparsed.push(file.path);
+        continue;
+      }
+      surfaces.plist.push(file.path);
+      for (const [key, value] of parsed) if (!keys.has(key)) keys.set(key, value);
+      continue;
+    }
+    if (PBXPROJ.test(file.path)) {
+      surfaces.buildSettings.push(file.path);
+      for (const [key, value] of readBuildSettingKeys(file.source)) if (!keys.has(key)) keys.set(key, value);
+      continue;
+    }
+    if (COLORSET_CONTENTS.test(file.path)) {
+      try {
+        JSON.parse(file.source);
+      } catch {
+        unparsed.push(file.path);
+        continue;
+      }
+      surfaces.assetCatalogs.push(file.path);
+      colorSetFiles.push(file);
+    }
+  }
+
+  return { keys, entitlements, colorSets: readAssetCatalog(colorSetFiles), surfaces, unparsed };
+}
+
+const kb = (n: number) => `${(n / 1024).toFixed(0)} KB`;
+
+export const APPLE_PREAMBLE =
+  "This walks the directory you named, reads the configuration and Swift files it can open, and runs static rules over their text. It builds nothing, resolves no import, evaluates no build setting, renders nothing and measures nothing. It cannot see:";
+
+/**
+ * What `audit_apple_ui` structurally cannot see.
+ *
+ * Every entry below was written *after* running `appleReport` on a directory
+ * built to demonstrate it, and every demonstration is kept as a test in
+ * `tests/apple.test.ts`. That order is the method, not a preference: four
+ * earlier rounds in this package each wrote a sentence off the code rather
+ * than off a run, and a reviewer running the case found the discrepancy every
+ * time.
+ *
+ * **Every sentence is scoped to what was searched.** "Not found in the files
+ * named, having searched these surfaces" — never "the project does not do X",
+ * and never "Apple does not publish X". v0.24.0 shipped six false absence
+ * claims and the defect was the sentence form rather than the effort: an
+ * unbounded absence is falsified by one fetch or one unread file, where a
+ * scoped one is made *incomplete* by the same discovery and is corrected by
+ * naming another surface rather than by reversing an assertion.
+ * `tests/integrity.test.ts` rejects the unbounded form in the Apple
+ * documents; this list is held to the same standard by a test of its own.
+ */
+export const APPLE_NOT_VISIBLE: string[] = [
+  "**Nothing here is measured, and nothing is rendered.** No contrast ratio is computed, no tap target sized, no simulator launched, no screenshot taken, no build run. `colorset-no-dark-variant` fired on a `Brand.colorset` whose single colour is `(0.18, 0.35, 0.85)` and said nothing whatever about how that colour reads against anything, and `hardcoded-color-literal` fired on `Color(red: 0.10, green: 0.20, blue: 0.30)` without computing a ratio from it either. Not one number in this report came from a rendered pixel. `audit_accessibility` computes a contrast ratio, from the pairs you hand it rather than from anything found in a file, and `measure_screenshot` is the only tool here that looks at a rendered frame.",
+
+  "**A file this scan never opened.** It opens `.swift`, `.plist` and `.entitlements` files, plus three files matched by name — `Info.plist`, `Contents.json` and `project.pbxproj` — and stops there. In a directory holding `Base.lproj/Main.storyboard`, `Base.lproj/Launch.xib`, `Legacy/LegacyVC.m`, `InfoPlist.xcstrings` and `Sources/V.swift.txt` beside one `Sources/V.swift`, the scan read two files: the plist and the `.swift`. A screen laid out in Interface Builder, a view controller written in Objective-C, and a Swift file saved under any other suffix are each outside what was read — the live `NavigationView` in that `V.swift.txt` drew nothing. An asset-catalog member that is not a colorset is opened and then contributes nothing: a run with `Assets.xcassets/Contents.json` and `Assets.xcassets/AppIcon.appiconset/Contents.json` counted three files read and zero colorsets.",
+
+  "**A directory the walk never enters** — a fixed skip list, plus every directory whose name begins with a dot. The same `Info.plist`, declaring `UIRequiresFullScreen`, was reported from `Pods/Info.plist` and not from `build/Info.plist` or `.build/Info.plist` in the same tree: `build` is on the list and `.build`, SwiftPM's build directory, is skipped for its leading dot. Nothing consults `.gitignore`, and the cost runs both ways — a generated or vendored plist in a directory that is not on that list is read as though a person wrote it, which is how the `Pods` copy above came to be the one that produced the finding.",
+
+  `**Whatever the scan stopped short of.** It reads at most ${MAX_FILES} files and at most ${kb(MAX_TOTAL_BYTES)} in total, stopping at the *first* file that would cross either line and leaving everything the walk had not yet reached unread rather than sampled. A project of 406 Swift files beside one \`Info.plist\` was read to ${MAX_FILES} files, and the \`NavigationView\` in the Swift file that sorted last was not reported. Configuration is read before any of them and is exempt from the file cap, so the \`Info.plist\` in that same run was read — but while \`scan.hitFileCap\` or \`scan.hitByteCap\` is true, no absence in \`findings\` covers the part that was never opened, and the markdown says so in a single **Capped:** line that is easy to read past.`,
+
+  `**A file over ${kb(MAX_FILE_BYTES)}, which is skipped whole rather than truncated.** It is never opened, so nothing above is claimed about anything inside it, and the scan carries on with the rest. A \`Sources/Huge.swift\` past that cap whose second line was \`NavigationView { Text("x") }\` produced no finding and appears only in the skipped-file line above and in \`scan.skippedLarge\`, while the small Swift file beside it was read normally.`,
+
+  "**Anything reached through a symbolic link.** The walk descends into real directories and reads real files, and a directory entry that is a symlink is neither, so it is stepped over — silently: a skipped link is counted in neither `scan.unreadable` nor `scan.skippedLarge`, and nothing in the report mentions it. A linked directory holding a `NavigationView` and a linked `Sources/LinkedV.swift` holding another both drew nothing, while the real Swift file beside them was audited normally. A workspace whose packages are linked into the tree you audit is outside what was read for this reason; point the tool at the directory the files really live in, since the path you pass is followed whether or not it is itself a link.",
+
+  "**A configuration file that could not be parsed.** A binary plist (the `bplist00` magic) and anything without a `<plist>`/`<dict>` structure come back as \"not read\" rather than as an empty result, and a `Contents.json` that is not valid JSON is treated the same way. Such a path is kept out of the surfaces list entirely and named in the **Could not be parsed** line above instead — which is what stopped `sandbox-absent-macos`, on a macOS project whose only `App.entitlements` was a binary plist, from naming that file as one it had read: it said \"No entitlements file was among the surfaces read here\" instead, where the same project written as XML draws a message naming the file. A binary `Info.plist` beside a Swift file took the platform verdict to \"not determined\" and silenced every platform-scoped rule with it.",
+
+  "**A plist value outside the small subset this reader covers.** It reads `<string>`, `<true/>`, `<false/>` and an `<array>` of direct `<string>` children; a key whose value is a `<dict>`, an `<integer>`, a `<real>`, a `<date>` or `<data>` is walked past and dropped rather than represented with a guessed type, and an `<array>` of `<dict>`s comes back as an empty array. One consequence is worth knowing before reading a \"not determined\" platform line: Xcode's app template writes `UILaunchScreen` as a dictionary, and a plist declaring it that way contributed no iOS signal at all in a run here, where the same key written as a `<string>` produced `Platform: iOS` and let `fixed-font-size` fire on the identical Swift file. A `UIRequiresFullScreen` nested one dictionary down inside `NSAppTransportSecurity` drew no finding either.",
+
+  "**Everything in a `project.pbxproj` other than `INFOPLIST_KEY_*`.** That prefix is the only thing read out of the file; the rest of the build configuration is not parsed. In a `project.pbxproj` carrying `ENABLE_HARDENED_RUNTIME = YES`, `CODE_SIGN_ENTITLEMENTS = App/App.entitlements` and `PRODUCT_NAME = \"Ledger\"` beside three `INFOPLIST_KEY_*` settings, the three prefixed settings were read — `INFOPLIST_KEY_UIRequiresFullScreen` produced both a finding and the iOS verdict — and the other three were outside what was read. The prefix is also stripped literally, which is worth knowing before assuming a build setting reached a rule: `INFOPLIST_KEY_UILaunchScreen_Generation` was read as the key `UILaunchScreen_Generation`, which is not a key any rule or platform signal here looks for.",
+
+  "**Which target a key belongs to.** Keys from every plist and every `project.pbxproj` in the tree are merged into one map, because nothing in the four surfaces read here carries a target. An app target with `App/Info.plist` and a share extension with `ShareExtension/Info.plist` produced one `uirequiresfullscreen-deprecated` finding, phrased as a fact about \"this project's configuration\", when the key had been declared by the extension alone. The surfaces list above names every plist that went into that map, which is the only place in this report where the distinction survives.",
+
+  "**Localised values, and every localisation surface.** `InfoPlist.xcstrings` — where Xcode puts a localised `NSCameraUsageDescription` — is not among the file shapes this scan opens, and neither is a `.strings` file nor the contents of an `.lproj` directory. A project carrying an `InfoPlist.xcstrings` with an `NSCameraUsageDescription` inside it read two files here, and that was not one of them. A value declared only there is absent from this audit's view of the project rather than from the project.",
+
+  "**Whether the Hardened Runtime is enabled.** It is a build capability, `ENABLE_HARDENED_RUNTIME`, rather than an entitlement, so it is carried by none of the four surfaces read here, and there is deliberately no rule for it in either direction. A macOS project with `ENABLE_HARDENED_RUNTIME = YES` in its `project.pbxproj` produced one finding, `sandbox-absent-macos`, and nothing about the runtime; a macOS project declaring the exception entitlement `com.apple.security.cs.disable-library-validation` produced that same one finding and nothing about the runtime either. Two facts from Apple's own documentation are why no rule is keyed on a *missing* exception: Xcode \"automatically adds the Hardened Runtime capability\" to a new macOS app from a template, and the capability \"doesn't affect the operation of most apps\" — so \"macOS, no exception entitlement declared\" is the shape of a correctly configured hardened app rather than of a missing one. What is readable here, if a rule is ever wanted, is a *declared* `com.apple.security.cs.*` exception.",
+
+  "**Purpose strings, in both directions.** No rule here reports a missing `NS…UsageDescription`, and the silence is not a verdict on a project's purpose strings. From the plist alone the check is a false-positive generator, because Xcode writes the same value into an `INFOPLIST_KEY_NSCameraUsageDescription` build setting and a localised one into `InfoPlist.xcstrings`: a project declaring it only as a build setting was run here, the key was picked up out of `project.pbxproj`, and a rule reading the plist alone would have called it missing on a project that is correct. From Swift source it is a lower bound, because a third-party SDK creates the obligation as surely as a first-party call does — an iOS project calling `AVCaptureDevice.requestAccess(for: .video)` with no usage description anywhere drew nothing here, and a project whose only camera access sits inside a vendored framework has nothing in its own source to find.",
+
+  "**Every platform-scoped rule, whenever the platform line above does not name a platform.** `fixed-font-size` runs on an iOS verdict only and `sandbox-absent-macos` on a macOS one only; both stay silent on a null verdict, and null is the correct answer whenever the signals are absent or point both ways rather than a failure to be worked around. One `Sources/V.swift` — `.font(.system(size: 17))` on one line, `NavigationView` on the next — drew `fixed-font-size` on a project carrying an iOS signal and drew it on neither of two projects without one: a project with no signal at all, and a project where `LSMinimumSystemVersion` and `UILaunchStoryboardName` conflicted. All three drew `navigationview-deprecated`, which is not platform-scoped. Read the platform line before reading any silence here as a result.",
+
+  "**Whether a Swift file is missing something.** No rule here claims an absence in Swift source, and two properties of the language are why: a modifier applied to a parent covers its children, so a label seven lines above a control is invisible to a reader working one line at a time; and the code that satisfies a requirement — a Reduce Motion check, a `@ScaledMetric`, a `dynamicTypeSize` — may live in another file entirely. The consequence is visible in the findings rather than only in their absence: `symbol-as-only-button-label` fired on a `Button` whose enclosing `VStack` carried both `.accessibilityLabel(\"Refresh the ledger\")` and `.accessibilityElement(children: .combine)`, because those modifiers are on the parent and the rule reads the line. That finding is a risk to check with VoiceOver, which is what its own text says, and never a report that a label is missing.",
+
+  "**A Swift file whose comment masking went wrong, which reads exactly like a file with nothing to find.** `maskComments` tracks quotes per character rather than tokenizing, so Swift string interpolation can expose a comment marker inside a literal as live code, and a well-formed comment later in the file then lets the nesting walk through and blank the real code in between. A file whose second line was `let label = \"a\\(f(\"open /*\")) still\"` and whose fifth line held a live `NavigationView` produced no findings at all — that `NavigationView` had been masked to whitespace before any rule saw it. There is no signal for this anywhere in the output. A rule going quiet on a file containing an interpolated string with a `/*` or `//` inside it may be meeting this gap rather than finding nothing; it is pinned as a known, unfixed gap in `tests/scan.test.ts`.",
+
+  "**The shapes the Swift rules do not match, which a clean run says nothing about.** `fixed-font-size` matches the SwiftUI `.system(size:)` form only, so `UIFont.systemFont(ofSize: 17)` and `Font.custom(\"Inter\", fixedSize: 17)` — which carry the same documented cost to Dynamic Type — are outside it. `hardcoded-color-literal` wants a `red:` argument label, so a project's own hex initialiser, `Color(hex: \"#FF3B30\")`, is outside it. `symbol-as-only-button-label` needs the symbol name as a string literal, so `Image(systemName: symbol)` with a variable is outside it. One iOS file carrying all four of those lines drew zero findings here. A clean result on a UIKit target, or on a codebase with its own colour and symbol helpers, is coverage rather than restraint.",
+
+  "**The difference between code and a string that looks like code.** `maskComments` blanks comments and leaves string contents in place, so a rule matching a type name matches it inside a literal too: `Text(\"NavigationView is deprecated\")` drew `navigationview-deprecated` against that line. Rare in practice, and stated here so a finding against a line of prose is not a surprise.",
+
+  "**What a colorset resolves to.** `hasDarkVariant` is a reading of a declaration, not of a colour. A `Brand.colorset` declaring a `luminosity: dark` appearance whose dark components are byte-for-byte its light ones drew no finding, which is correct — the declaration is there — and settles nothing about whether the two appearances differ, whether either is legible against what it is drawn on, or what happens under Increase Contrast. The colour components are never compared here at all.",
+];
+
+export const APPLE_CLOSING =
+  "An empty findings list here means no rule this audit runs matched the text of the files that were read — not that the project is sound, and not that it was all read. `scan` says how much of it was, and the platform line above says which of the rules were allowed to run at all.";
+
+/**
+ * The structured half of `audit_apple_ui`, on top of what every structured
+ * auditor carries: what the scan actually reached.
+ *
+ * The same six fields, meaning the same things and read off the same
+ * `scanProject` result, that `audit_project` and `audit_generic_design`
+ * declare — so a caller that learned the block from one tool can read it from
+ * this one. Required rather than optional, as it is for `audit_project`: this
+ * tool has no snippet mode, so every call scanned a directory and there is no
+ * shape in which the block is legitimately absent.
+ */
+export interface AppleStructured extends AuditStructured {
+  scan: {
+    filesRead: number;
+    scannedBytes: number;
+    skippedLarge: string[];
+    hitFileCap: boolean;
+    hitByteCap: boolean;
+    unreadable: string[];
+  };
+}
+
+
+/**
+ * How a finding is rendered, and why line 0 is printed as no line at all.
+ *
+ * The configuration rules emit at the sentinel `NO_LINE`, which is 0 because
+ * a real plist line is 1-based and can never collide with it. Printing
+ * `(line 0)` beside "this project's entitlements file declares no App Sandbox
+ * entitlement" would invite a reader to open the file and look at a line that
+ * does not exist; the fact has no position, and the rendering says so by
+ * omission. The Swift findings carry a real 1-based line and print it.
+ */
+function renderFinding(f: LintFinding & { file?: string }): string[] {
+  const where = f.line > 0 ? ` (line ${f.line})` : "";
+  const lines = [`- **${f.rule}**${where} — ${f.file ? `${f.file}: ` : ""}${f.message}`, `  - Fix: ${f.fix}`];
+  if (f.doc) lines.push(`  - Read: \`get_design_doc("${f.doc}")\``);
+  return lines;
+}
+
+/**
+ * The whole of `audit_apple_ui`: scan a directory, read its four
+ * configuration surfaces, infer the platform, run both halves of this file's
+ * rules, and return the result in both registers.
+ *
+ * **The findings are never routed through a `${rule}:${line}` deduper.** Three
+ * sites in this codebase end that way — `lint.ts`, `genericVisualRules` and
+ * `genericCopyRules` in `generic.ts` — which is correct for a scanner walking
+ * a file and wrong for these: `appleConfigRules` deliberately emits one
+ * finding per colorset and one per `UIRequiresFullScreen` spelling, all at the
+ * constant line 0, and that filter takes five findings to two on a project
+ * with three flat colorsets. Pinned by a test.
+ *
+ * `appleSwiftRules` is called once per file rather than once with all of them
+ * so each finding can carry the path it came from. The function loops over its
+ * `files` argument independently, so the findings are identical either way;
+ * what differs is that this one knows which file produced which.
+ */
+export function appleReport(root: string): AuditReport & { structured: AppleStructured } {
+  const scan = scanProject(root, APPLE_EXTENSIONS, APPLE_FILENAMES);
+  const files = scan.files.map((f) => ({ path: f.path, source: f.source }));
+
+  const config = readAppleConfig(files);
+  const swiftFiles = files.filter((f) => SWIFT_PATH.test(f.path));
+  const platform = inferPlatform({ keys: config.keys, entitlements: config.entitlements, swiftSources: swiftFiles });
+
+  const findings: Array<LintFinding & { file?: string }> = [
+    ...appleConfigRules({ config, platform }),
+  ];
+  for (const file of swiftFiles) {
+    for (const f of appleSwiftRules([file], platform)) findings.push({ ...f, file: file.path });
+  }
+
+  const structured: AppleStructured = {
+    ...auditStructuredFrom({ findings, notVisible: APPLE_NOT_VISIBLE }),
+    scan: {
+      filesRead: scan.files.length,
+      scannedBytes: scan.scannedBytes,
+      skippedLarge: scan.skippedLarge,
+      hitFileCap: scan.hitFileCap,
+      hitByteCap: scan.hitByteCap,
+      unreadable: scan.unreadable,
+    },
+  };
+
+  const lines: string[] = ["# Apple UI audit", ""];
+  lines.push(`\`${root}\` — ${scan.files.length} file(s), ${kb(scan.scannedBytes)} scanned.`, "");
+
+  // Which surfaces were actually read, named. Without this a reader has no way
+  // to tell "the entitlements file declares no sandbox entitlement" from "no
+  // entitlements file was among the files read", and the second read as the
+  // first is the failure this whole module is built around.
+  // Named, but not all of them: a 400-file Swift target would otherwise print
+  // 400 backticked paths into the middle of the report and bury the platform
+  // line and the findings under them. The count is always exact, and
+  // `structuredContent.scan.filesRead` carries the total independently.
+  const SHOWN = 10;
+  const surfaceLines: string[] = [];
+  const name = (label: string, paths: string[]) => {
+    if (!paths.length) return surfaceLines.push(`- ${label}: none read`);
+    const shown = paths.slice(0, SHOWN).map((p) => `\`${p}\``).join(", ");
+    const rest = paths.length > SHOWN ? `, …and ${paths.length - SHOWN} more` : "";
+    return surfaceLines.push(`- ${label} (${paths.length}): ${shown}${rest}`);
+  };
+  name("Information property lists", config.surfaces.plist);
+  name("Build settings (`INFOPLIST_KEY_*` only)", config.surfaces.buildSettings);
+  name("Entitlements", config.surfaces.entitlements);
+  name("Asset catalog colorsets", config.surfaces.assetCatalogs);
+  name("Swift source", swiftFiles.map((f) => f.path));
+  lines.push("**Surfaces read:**", "", ...surfaceLines, "");
+
+  if (config.unparsed.length) {
+    lines.push(
+      `**Could not be parsed, and therefore not read at all:** ${config.unparsed.map((p) => `\`${p}\``).join(", ")}. `
+      + `Nothing above is claimed about anything inside them, in either direction — a key that would have been declared there is absent from this audit's view of the project, not absent from the project.`,
+      "",
+    );
+  }
+  if (scan.hitFileCap) lines.push(`**Capped:** the ${MAX_FILES}-file cap was reached, so later files were not read.`, "");
+  if (scan.hitByteCap) lines.push(`**Capped:** the ${kb(MAX_TOTAL_BYTES)} total-bytes cap was reached, so later files were not read.`, "");
+  if (scan.skippedLarge.length) lines.push(`**Skipped ${scan.skippedLarge.length} file(s) over ${kb(MAX_FILE_BYTES)}**, unopened: ${scan.skippedLarge.slice(0, 5).map((p) => `\`${p}\``).join(", ")}.`, "");
+
+  // The platform line. Every platform-scoped rule is silent on a null verdict,
+  // so a reader who cannot see the verdict cannot tell a rule that found
+  // nothing from a rule that was never allowed to run.
+  lines.push(
+    platform.platform
+      ? `**Platform: ${platform.platform === "ios" ? "iOS" : "macOS"}**, inferred from ${platform.signals.length} signal(s): ${platform.signals.map((s) => `\`${s}\``).join(", ")}. Platform-scoped rules ran.`
+      : `**Platform: not determined**${platform.conflicted ? " — the signals pointed both ways" : ""}. Signals seen: ${platform.signals.length ? platform.signals.map((s) => `\`${s}\``).join(", ") : "none"}. **Every platform-scoped rule stayed silent**, so their silence here is the gate rather than a result.`,
+    "",
+  );
+
+  const errors = findings.filter((f) => f.severity === "error");
+  const warnings = findings.filter((f) => f.severity === "warning");
+  const info = findings.filter((f) => f.severity === "info");
+  lines.push(`**${errors.length} error · ${warnings.length} warning · ${info.length} info**`, "");
+
+  if (!findings.length) {
+    lines.push("No findings in what was read.", "");
+  } else {
+    for (const group of [
+      { title: "Errors", items: errors },
+      { title: "Warnings", items: warnings },
+      { title: "Notes", items: info },
+    ]) {
+      if (!group.items.length) continue;
+      lines.push(`## ${group.title}`, "");
+      for (const f of group.items) lines.push(...renderFinding(f));
+      lines.push("");
+    }
+  }
+
+  lines.push(...renderNotVisibleSection(APPLE_PREAMBLE, APPLE_NOT_VISIBLE, APPLE_CLOSING));
+
+  return { text: lines.join("\n"), structured };
 }

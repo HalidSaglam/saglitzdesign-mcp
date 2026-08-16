@@ -1,6 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { join } from "node:path";
-import { appleConfigRules, appleSwiftRules } from "../dist/apple.js";
+import { describe, it, expect, afterAll } from "vitest";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import {
+  appleConfigRules, appleSwiftRules, appleReport, readAppleConfig,
+  APPLE_NOT_VISIBLE, APPLE_PREAMBLE, APPLE_CLOSING,
+} from "../dist/apple.js";
 import { inferPlatform } from "../dist/appleconfig.js";
 import { loadKnowledge, findDoc } from "../dist/knowledge.js";
 
@@ -800,5 +805,757 @@ describe("every doc a rule cites resolves and makes the rule's claim", () => {
     const doc = findDoc(docs, cited!);
     expect(doc, `${rule} → ${cited} does not resolve`).toBeTruthy();
     expect(vocabulary.test(doc!.body), `${cited} never carries ${vocabulary}`).toBe(true);
+  });
+});
+
+// ── the report, the registers, and the disclosure list ──────────────────────
+//
+// Every sentence in `APPLE_NOT_VISIBLE` was written after running `appleReport`
+// on a directory built to demonstrate it, and each of those runs is kept below.
+// The order is the method rather than a preference: all four earlier tasks in
+// this package wrote at least one sentence off the code instead of off a run,
+// and a reviewer running the case found the discrepancy every time. A sentence
+// with no test under it does not ship — `every notVisible entry has a
+// demonstration below` fails the suite until one exists.
+
+const FIXTURES = join(__dirname, "fixtures", "apple");
+const temps: string[] = [];
+afterAll(() => {
+  for (const dir of temps) rmSync(dir, { recursive: true, force: true });
+});
+
+/** A throwaway Xcode-shaped directory, written from a path → contents map. */
+function project(files: Record<string, string>): string {
+  const root = mkdtempSync(join(tmpdir(), "saglitz-apple-"));
+  temps.push(root);
+  for (const [rel, body] of Object.entries(files)) {
+    const full = join(root, rel);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, body);
+  }
+  return root;
+}
+
+const plist = (inner: string) =>
+  `<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n${inner}\n</dict>\n</plist>\n`;
+
+/** Every rule id the run produced, in report order, with its line. */
+const ruleLines = (root: string) =>
+  appleReport(root).structured.findings.map((f) => `${f.rule}@${f.line}`);
+const rules = (root: string) => appleReport(root).structured.findings.map((f) => f.rule);
+
+/** The `- ` bullets of the rendered "Not visible to this audit" section. */
+function renderedBullets(markdown: string): string[] {
+  const heading = markdown.indexOf("## Not visible to this audit");
+  if (heading === -1) return [];
+  const lines = markdown.slice(heading).split("\n");
+  const first = lines.findIndex((l) => l.startsWith("- "));
+  if (first === -1) return [];
+  const bullets: string[] = [];
+  let current: string | null = null;
+  for (let i = first; i < lines.length; i++) {
+    if (lines[i] === "") break;
+    if (lines[i].startsWith("- ")) {
+      if (current !== null) bullets.push(current);
+      current = lines[i].slice(2);
+    } else if (current !== null) current += `\n${lines[i]}`;
+  }
+  if (current !== null) bullets.push(current);
+  return bullets;
+}
+
+describe("appleReport returns both registers", () => {
+  it("returns both registers and a non-empty disclosure list", () => {
+    const r = appleReport(join(FIXTURES, "ios-clean"));
+    expect(r.structured.notVisible.length).toBeGreaterThan(4);
+    expect(r.text).toContain("## Not visible to this audit");
+    expect(r.structured.scan.filesRead).toBeGreaterThan(0);
+  });
+
+  // Set equality in both directions. `toContain` alone would prove only
+  // notVisible ⊆ markdown, and would stay green if the report printed a bullet
+  // that bypassed the shared array — which is exactly the drift
+  // `renderNotVisibleSection` exists to make impossible.
+  it("prints every notVisible entry in the markdown it returns, and no other", () => {
+    const r = appleReport(join(FIXTURES, "ios-findings"));
+    const bullets = renderedBullets(r.text);
+    expect([...bullets].sort()).toEqual([...r.structured.notVisible].sort());
+    expect([...bullets].sort()).toEqual([...APPLE_NOT_VISIBLE].sort());
+  });
+
+  it("renders the shared preamble and closing around that list", () => {
+    const r = appleReport(join(FIXTURES, "ios-clean"));
+    const section = r.text.slice(r.text.indexOf("## Not visible to this audit"));
+    expect(section).toContain(APPLE_PREAMBLE);
+    expect(section).toContain(APPLE_CLOSING);
+  });
+
+  it("reports the same summary its own findings add up to", () => {
+    const s = appleReport(join(FIXTURES, "ios-findings")).structured;
+    const count = (sev: string) => s.findings.filter((f) => f.severity === sev).length;
+    expect(s.summary).toEqual({ error: count("error"), warning: count("warning"), info: count("info") });
+    expect(s.findings.length).toBeGreaterThan(0);
+  });
+
+  it("attributes every Swift finding to its file and leaves configuration findings unattributed", () => {
+    const s = appleReport(join(FIXTURES, "ios-findings")).structured;
+    const swiftRules = ["navigationview-deprecated", "fixed-font-size", "hardcoded-color-literal", "symbol-as-only-button-label"];
+    for (const f of s.findings) {
+      if (swiftRules.includes(f.rule)) expect(f.file, f.rule).toBe("Sources/ContentView.swift");
+      else expect(f.file, f.rule).toBeUndefined();
+    }
+    expect(s.findings.some((f) => typeof f.file === "string")).toBe(true);
+  });
+
+  // The configuration rules emit at the sentinel line 0. Printing `(line 0)`
+  // beside "this project's entitlements file declares no App Sandbox
+  // entitlement" would invite a reader to open a line that does not exist.
+  it("suppresses the line on a configuration finding and prints it on a Swift one", () => {
+    const r = appleReport(join(FIXTURES, "ios-findings"));
+    expect(r.text).not.toMatch(/\(line 0\)/);
+    expect(r.text).not.toMatch(/\bL0\b/);
+    expect(r.text).toMatch(/- \*\*uirequiresfullscreen-deprecated\*\* — /);
+    expect(r.text).toMatch(/- \*\*navigationview-deprecated\*\* \(line 6\) — Sources\/ContentView\.swift: /);
+    expect(r.structured.findings.find((f) => f.rule === "uirequiresfullscreen-deprecated")!.line).toBe(0);
+  });
+
+  // The house `${rule}:${line}` idiom would take five findings to two here,
+  // and the reader would be told about one colorset out of three.
+  it("routes nothing through a rule+line deduper", () => {
+    const root = project({
+      "Info.plist": plist("<key>UIRequiresFullScreen</key>\n<true/>\n<key>UIRequiresFullscreen</key>\n<true/>"),
+      "Assets.xcassets/A.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal" }] }),
+      "Assets.xcassets/B.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal" }] }),
+      "Assets.xcassets/C.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal" }] }),
+    });
+    const findings = appleReport(root).structured.findings;
+    expect(findings).toHaveLength(5);
+    expect(new Set(findings.map((f) => f.line))).toEqual(new Set([0]));
+    const seen = new Set<string>();
+    const deduped = findings.filter((f) => {
+      const key = `${f.rule}:${f.line}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    expect(deduped).toHaveLength(2);
+    expect(new Set(findings.map((f) => f.message)).size).toBe(5);
+  });
+
+  it("still returns both registers for an empty directory", () => {
+    const r = appleReport(project({}));
+    expect(r.structured.scan.filesRead).toBe(0);
+    expect(r.structured.findings).toEqual([]);
+    expect(r.structured.notVisible).toEqual(APPLE_NOT_VISIBLE);
+    expect(r.text).toContain("No findings in what was read.");
+    expect(r.text).toContain("## Not visible to this audit");
+  });
+
+  // Whether a rule was allowed to run is not recoverable from an empty
+  // findings list, and every platform-scoped rule is gated on the verdict.
+  it("names the platform verdict and the signals behind it", () => {
+    expect(appleReport(join(FIXTURES, "ios-clean")).text)
+      .toContain("**Platform: iOS**, inferred from 1 signal(s): `import UIKit in any Swift file`");
+    expect(appleReport(project({ "Sources/V.swift": "let x = 1\n" })).text)
+      .toContain("**Platform: not determined**. Signals seen: none. **Every platform-scoped rule stayed silent**");
+  });
+
+  it("names every surface it read, and says so when it read none of a kind", () => {
+    const text = appleReport(join(FIXTURES, "ios-findings")).text;
+    expect(text).toContain("- Information property lists (1): `Info.plist`");
+    expect(text).toContain("- Entitlements: none read");
+    expect(text).toContain("- Asset catalog colorsets (1): `Assets.xcassets/Brand.colorset/Contents.json`");
+  });
+});
+
+// A path that could not be parsed and a path that was read are independent
+// arrays on `ConfigRead` with nothing relating them, so listing an unparsed
+// path in `surfaces` would let `sandbox-absent-macos` name a file it never
+// read as one it had read and found empty.
+describe("an unparsed surface never reaches the surfaces list", () => {
+  it("keeps a binary entitlements plist out of surfaces.entitlements", () => {
+    const config = readAppleConfig([{ path: "App.entitlements", source: "bplist00 binary" }]);
+    expect(config.surfaces.entitlements).toEqual([]);
+    expect(config.unparsed).toEqual(["App.entitlements"]);
+  });
+
+  it("stops sandbox-absent-macos from naming a file it could not read", () => {
+    const binary = project({
+      "App.entitlements": "bplist00  binary",
+      "Sources/App.swift": "import AppKit\nimport SwiftUI\n",
+    });
+    const message = appleReport(binary).structured.findings.find((f) => f.rule === "sandbox-absent-macos")!.message;
+    expect(message).toContain("No entitlements file was among the surfaces read here");
+    expect(message).not.toContain("App.entitlements");
+
+    const readable = project({
+      "App.entitlements": plist("<key>com.apple.security.network.client</key>\n<true/>"),
+      "Sources/App.swift": "import AppKit\nimport SwiftUI\n",
+    });
+    expect(appleReport(readable).structured.findings.find((f) => f.rule === "sandbox-absent-macos")!.message)
+      .toContain("The entitlements file read here — `App.entitlements` —");
+  });
+
+  it("keeps a malformed colorset out of surfaces.assetCatalogs and rules on the readable one beside it", () => {
+    const root = project({
+      "Assets.xcassets/Broken.colorset/Contents.json": "{ colors: [ }",
+      "Assets.xcassets/Flat.colorset/Contents.json": JSON.stringify({ colors: [{ idiom: "universal" }] }),
+    });
+    const r = appleReport(root);
+    expect(rules(root)).toEqual(["colorset-no-dark-variant"]);
+    expect(r.text).toContain("`Assets.xcassets/Flat.colorset/Contents.json`");
+    expect(r.text).toContain("**Could not be parsed, and therefore not read at all:** `Assets.xcassets/Broken.colorset/Contents.json`");
+  });
+});
+
+// ── one demonstration per disclosure sentence ───────────────────────────────
+//
+// Each `it` below is the run that produced the sentence beside it. The
+// coverage test at the end of this block pairs them up by an excerpt, so a
+// sentence added without a run — or a run whose sentence was later reworded
+// past recognition — fails rather than passes quietly.
+
+/** Excerpts, one per entry, in the order `APPLE_NOT_VISIBLE` declares them. */
+const DEMONSTRATED = [
+  "Nothing here is measured, and nothing is rendered.",
+  "A file this scan never opened.",
+  "A directory the walk never enters",
+  "Whatever the scan stopped short of.",
+  "which is skipped whole rather than truncated.",
+  "Anything reached through a symbolic link.",
+  "A configuration file that could not be parsed.",
+  "A plist value outside the small subset this reader covers.",
+  "Everything in a `project.pbxproj` other than `INFOPLIST_KEY_*`.",
+  "Which target a key belongs to.",
+  "Localised values, and every localisation surface.",
+  "Whether the Hardened Runtime is enabled.",
+  "Purpose strings, in both directions.",
+  "Every platform-scoped rule, whenever the platform line above does not name a platform.",
+  "Whether a Swift file is missing something.",
+  "A Swift file whose comment masking went wrong",
+  "The shapes the Swift rules do not match",
+  "The difference between code and a string that looks like code.",
+  "What a colorset resolves to.",
+];
+
+describe("every notVisible entry has a demonstration", () => {
+  it("pairs each entry with an excerpt, in order and one-to-one", () => {
+    expect(DEMONSTRATED).toHaveLength(APPLE_NOT_VISIBLE.length);
+    const unmatched = DEMONSTRATED.filter((excerpt, i) => !APPLE_NOT_VISIBLE[i].includes(excerpt));
+    expect(unmatched).toEqual([]);
+  });
+
+  it("keeps the list the longest disclosure this server ships", () => {
+    // Not a vanity number: this audit reads four configuration surfaces and a
+    // language it can only read one line at a time, and each of those is its
+    // own class of blind spot. A shrinking list here means a limit stopped
+    // being disclosed, not that one stopped existing.
+    expect(APPLE_NOT_VISIBLE.length).toBeGreaterThanOrEqual(19);
+  });
+});
+
+describe("1. nothing is measured and nothing is rendered", () => {
+  it("reports a flat colorset and a colour literal without computing anything about either", () => {
+    const r = appleReport(join(FIXTURES, "ios-findings"));
+    const colorset = r.structured.findings.find((f) => f.rule === "colorset-no-dark-variant")!;
+    const literal = r.structured.findings.find((f) => f.rule === "hardcoded-color-literal")!;
+    expect(colorset.message).not.toMatch(/\d+(\.\d+)?\s*:\s*1|contrast ratio of/i);
+    expect(literal.message).toContain("says nothing about the colour's contrast ratio");
+    expect(r.text).not.toMatch(/\d(\.\d+)?:1\b/);
+  });
+});
+
+describe("2. a file this scan never opened", () => {
+  it("reads the plist and the .swift, and none of the five shapes beside them", () => {
+    const root = project({
+      "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
+      "Base.lproj/Main.storyboard": "<document><navigationController/></document>",
+      "Base.lproj/Launch.xib": "<document/>",
+      "Legacy/LegacyVC.m": '#import "LegacyVC.h"\n@implementation LegacyVC\n@end\n',
+      "InfoPlist.xcstrings": JSON.stringify({ strings: {} }),
+      "Sources/V.swift": "import SwiftUI\nimport UIKit\n",
+      "Sources/V.swift.txt": 'import SwiftUI\nNavigationView { Text("x") }\n',
+    });
+    const r = appleReport(root);
+    expect(r.structured.scan.filesRead).toBe(2);
+    expect(r.structured.findings).toEqual([]);
+    expect(r.text).toContain("- Swift source (1): `Sources/V.swift`");
+  });
+
+  it("opens an asset-catalog member that is not a colorset and takes nothing from it", () => {
+    const root = project({
+      "Assets.xcassets/Contents.json": JSON.stringify({ info: { author: "xcode", version: 1 } }),
+      "Assets.xcassets/AppIcon.appiconset/Contents.json": JSON.stringify({ images: [{ idiom: "universal" }] }),
+      "Sources/V.swift": "import SwiftUI\nimport UIKit\n",
+    });
+    const r = appleReport(root);
+    expect(r.structured.scan.filesRead).toBe(3);
+    expect(r.text).toContain("- Asset catalog colorsets: none read");
+  });
+});
+
+describe("3. a directory the walk never enters", () => {
+  it("reads the plist under Pods/ and neither the one under build/ nor the one under .build/", () => {
+    const body = plist("<key>UIRequiresFullScreen</key>\n<true/>");
+    const root = project({
+      "build/Info.plist": body,
+      ".build/Info.plist": body,
+      "Pods/Info.plist": body,
+      "Sources/V.swift": "import SwiftUI\nimport UIKit\n",
+    });
+    const r = appleReport(root);
+    expect(r.text).toContain("- Information property lists (1): `Pods/Info.plist`");
+    expect(rules(root)).toEqual(["uirequiresfullscreen-deprecated"]);
+  });
+});
+
+describe("4. whatever the scan stopped short of", () => {
+  it("reads 400 of 406 Swift files and misses the NavigationView in the last of them", () => {
+    const files: Record<string, string> = { "Info.plist": plist("<key>CFBundleName</key>\n<string>Big</string>") };
+    for (let i = 0; i < 405; i++) files[`Sources/a${String(i).padStart(4, "0")}.swift`] = "import SwiftUI\nlet x = 1\n";
+    files["Sources/zzz.swift"] = 'import SwiftUI\nNavigationView { Text("x") }\n';
+    const root = project(files);
+    const r = appleReport(root);
+    expect(r.structured.scan.filesRead).toBe(400);
+    expect(r.structured.scan.hitFileCap).toBe(true);
+    expect(r.structured.findings).toEqual([]);
+    expect(r.text).toContain("**Capped:** the 400-file cap was reached");
+    // Configuration is read first and exempt from the cap, which is the half of
+    // the sentence that would be easiest to get wrong by reading the code.
+    expect(r.text).toContain("- Information property lists (1): `Info.plist`");
+  });
+});
+
+describe("5. a file over the per-file cap", () => {
+  it("skips it whole, names it, and reads the small file beside it", () => {
+    const root = project({
+      "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
+      "Sources/Huge.swift": 'import SwiftUI\nNavigationView { Text("x") }\n' + "// ".repeat(300 * 1024),
+      "Sources/Small.swift": "import SwiftUI\nimport UIKit\n",
+    });
+    const r = appleReport(root);
+    expect(r.structured.scan.skippedLarge).toEqual(["Sources/Huge.swift"]);
+    expect(r.structured.findings).toEqual([]);
+    expect(r.text).toContain("**Skipped 1 file(s) over 500 KB**, unopened: `Sources/Huge.swift`.");
+    expect(r.text).toContain("- Swift source (1): `Sources/Small.swift`");
+  });
+});
+
+describe("6. anything reached through a symbolic link", () => {
+  it("steps over a linked directory and a linked file, recording neither", () => {
+    const linked = project({ "Deep/V.swift": 'import SwiftUI\nNavigationView { Text("x") }\n' });
+    const root = project({
+      "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
+      "Sources/Real.swift": "import SwiftUI\nimport UIKit\n",
+    });
+    symlinkSync(join(linked, "Deep"), join(root, "Linked"));
+    symlinkSync(join(linked, "Deep", "V.swift"), join(root, "Sources", "LinkedV.swift"));
+    const r = appleReport(root);
+    expect(r.structured.findings).toEqual([]);
+    expect(r.structured.scan.filesRead).toBe(2);
+    expect(r.structured.scan.unreadable).toEqual([]);
+    expect(r.structured.scan.skippedLarge).toEqual([]);
+  });
+});
+
+describe("7. a configuration file that could not be parsed", () => {
+  it("takes the platform verdict to null when the plist that would have settled it is binary", () => {
+    const swift = 'import SwiftUI\nText("Hi").font(.system(size: 17))\nNavigationView { Text("x") }\n';
+    const binary = project({ "Info.plist": "bplist00 binary garbage", "Sources/V.swift": swift });
+    const r = appleReport(binary);
+    expect(r.text).toContain("**Platform: not determined**");
+    expect(rules(binary)).toEqual(["navigationview-deprecated"]);
+    expect(r.text).toContain("**Could not be parsed, and therefore not read at all:** `Info.plist`");
+    expect(r.text).toContain("- Information property lists: none read");
+
+    // The same project, readable, with a key the subset covers.
+    const readable = project({
+      "Info.plist": plist("<key>UILaunchStoryboardName</key>\n<string>LaunchScreen</string>"),
+      "Sources/V.swift": swift,
+    });
+    expect(rules(readable).sort()).toEqual(["fixed-font-size", "navigationview-deprecated"]);
+  });
+});
+
+describe("8. a plist value outside the reader's subset", () => {
+  it("drops a dict-valued, an integer-valued and an array-of-dicts key, and never sees a key nested inside one", () => {
+    const config = readAppleConfig([{
+      path: "Info.plist",
+      source: plist([
+        "<key>NSAppTransportSecurity</key>",
+        "<dict><key>UIRequiresFullScreen</key><true/></dict>",
+        "<key>CFBundleVersion</key>",
+        "<integer>42</integer>",
+        "<key>CFBundleURLTypes</key>",
+        "<array><dict><key>CFBundleURLSchemes</key><array><string>ledger</string></array></dict></array>",
+      ].join("\n")),
+    }]);
+    expect([...config.keys.keys()]).toEqual(["CFBundleURLTypes"]);
+    expect(config.keys.get("CFBundleURLTypes")).toEqual([]);
+  });
+
+  it("gets no iOS signal from a UILaunchScreen written as Xcode's template writes it, and one from the same key as a string", () => {
+    const swift = 'import SwiftUI\nText("Hi").font(.system(size: 17))\n';
+    const asDict = project({
+      "Info.plist": plist("<key>UILaunchScreen</key>\n<dict>\n<key>UIColorName</key>\n<string>Launch</string>\n</dict>"),
+      "Sources/V.swift": swift,
+    });
+    expect(appleReport(asDict).text).toContain("**Platform: not determined**");
+    expect(rules(asDict)).toEqual([]);
+
+    const asString = project({
+      "Info.plist": plist("<key>UILaunchScreen</key>\n<string>LaunchScreen</string>"),
+      "Sources/V.swift": swift,
+    });
+    expect(appleReport(asString).text).toContain("**Platform: iOS**");
+    expect(rules(asString)).toEqual(["fixed-font-size"]);
+  });
+});
+
+describe("9. everything in a project.pbxproj other than INFOPLIST_KEY_*", () => {
+  const pbxproj = [
+    "// !$*UTF8*$!",
+    "{ buildSettings = {",
+    "    ENABLE_HARDENED_RUNTIME = YES;",
+    "    CODE_SIGN_ENTITLEMENTS = App/App.entitlements;",
+    '    PRODUCT_NAME = "Ledger";',
+    "    INFOPLIST_KEY_UIRequiresFullScreen = YES;",
+    '    INFOPLIST_KEY_NSCameraUsageDescription = "Ledger photographs your receipts.";',
+    "    INFOPLIST_KEY_UILaunchScreen_Generation = YES;",
+    "  };",
+    "}",
+  ].join("\n");
+
+  it("reads the three prefixed settings and none of the three beside them", () => {
+    const config = readAppleConfig([{ path: "Ledger.xcodeproj/project.pbxproj", source: pbxproj }]);
+    expect([...config.keys.keys()].sort()).toEqual([
+      "NSCameraUsageDescription", "UILaunchScreen_Generation", "UIRequiresFullScreen",
+    ]);
+    expect(config.keys.has("ENABLE_HARDENED_RUNTIME")).toBe(false);
+    expect(config.keys.has("PRODUCT_NAME")).toBe(false);
+    expect(config.keys.has("CODE_SIGN_ENTITLEMENTS")).toBe(false);
+  });
+
+  it("lets INFOPLIST_KEY_UIRequiresFullScreen produce both the finding and the iOS verdict", () => {
+    const root = project({ "Ledger.xcodeproj/project.pbxproj": pbxproj });
+    expect(rules(root)).toEqual(["uirequiresfullscreen-deprecated"]);
+    expect(appleReport(root).text).toContain("**Platform: iOS**");
+  });
+
+  // The prefix is stripped literally, so a build setting whose name merely
+  // starts with a key this audit knows does not become that key.
+  it("reads INFOPLIST_KEY_UILaunchScreen_Generation as a key no rule and no signal looks for", () => {
+    const config = readAppleConfig([{ path: "project.pbxproj", source: "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\n" }]);
+    expect(config.keys.has("UILaunchScreen")).toBe(false);
+    const root = project({ "Ledger.xcodeproj/project.pbxproj": "INFOPLIST_KEY_UILaunchScreen_Generation = YES;\n" });
+    expect(appleReport(root).text).toContain("**Platform: not determined**");
+  });
+});
+
+describe("10. which target a key belongs to", () => {
+  it("reports a key declared by the share extension alone as a fact about the project", () => {
+    const root = project({
+      "App/Info.plist": plist("<key>CFBundleDisplayName</key>\n<string>Ledger</string>"),
+      "ShareExtension/Info.plist": plist("<key>UIRequiresFullScreen</key>\n<true/>"),
+    });
+    const r = appleReport(root);
+    expect(rules(root)).toEqual(["uirequiresfullscreen-deprecated"]);
+    expect(r.structured.findings[0].message).toContain("this project's configuration");
+    // The surfaces list is the only place the distinction survives.
+    expect(r.text).toContain("- Information property lists (2): `App/Info.plist`, `ShareExtension/Info.plist`");
+  });
+});
+
+describe("11. localised values, and every localisation surface", () => {
+  it("does not open InfoPlist.xcstrings, a .strings file, or an .lproj directory's contents", () => {
+    const root = project({
+      "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
+      "InfoPlist.xcstrings": JSON.stringify({
+        strings: { NSCameraUsageDescription: { localizations: { en: { stringUnit: { value: "Photos of receipts" } } } } },
+      }),
+      "en.lproj/InfoPlist.strings": '"NSCameraUsageDescription" = "Photos of receipts";\n',
+      "Sources/V.swift": "import SwiftUI\nimport UIKit\n",
+    });
+    const r = appleReport(root);
+    expect(r.structured.scan.filesRead).toBe(2);
+    // Above the disclosure section only — the disclosure list names both files
+    // deliberately, which is the whole point of the entry this demonstrates.
+    const body = r.text.slice(0, r.text.indexOf("## Not visible to this audit"));
+    expect(body).not.toContain("InfoPlist.xcstrings");
+    expect(body).not.toContain("InfoPlist.strings");
+    expect(body).toContain("- Swift source (1): `Sources/V.swift`");
+  });
+});
+
+describe("12. whether the Hardened Runtime is enabled", () => {
+  it("says nothing about the runtime on a macOS project that enables it in its build settings", () => {
+    const root = project({
+      "Ledger.xcodeproj/project.pbxproj": "ENABLE_HARDENED_RUNTIME = YES;\n",
+      "Sources/App.swift": "import AppKit\nimport SwiftUI\n",
+    });
+    expect(rules(root)).toEqual(["sandbox-absent-macos"]);
+    const r = appleReport(root);
+    const section = r.text.slice(0, r.text.indexOf("## Not visible to this audit"));
+    expect(section).not.toMatch(/hardened runtime/i);
+  });
+
+  it("says nothing about the runtime on a macOS project declaring one of its exception entitlements either", () => {
+    const root = project({
+      "App.entitlements": plist("<key>com.apple.security.cs.disable-library-validation</key>\n<true/>"),
+      "Sources/App.swift": "import AppKit\nimport SwiftUI\n",
+    });
+    expect(rules(root)).toEqual(["sandbox-absent-macos"]);
+    const r = appleReport(root);
+    const section = r.text.slice(0, r.text.indexOf("## Not visible to this audit"));
+    expect(section).not.toMatch(/hardened runtime/i);
+  });
+});
+
+describe("13. purpose strings, in both directions", () => {
+  it("reports nothing on an iOS project that opens the camera and declares no usage description anywhere", () => {
+    const root = project({
+      "Info.plist": plist("<key>UILaunchStoryboardName</key>\n<string>LaunchScreen</string>"),
+      "Sources/Camera.swift": [
+        "import SwiftUI",
+        "import AVFoundation",
+        "let device = AVCaptureDevice.default(for: .video)",
+        "func ask() { AVCaptureDevice.requestAccess(for: .video) { _ in } }",
+      ].join("\n"),
+    });
+    expect(rules(root)).toEqual([]);
+    expect(appleReport(root).text).toContain("**Platform: iOS**");
+  });
+
+  it("picks a usage description up out of project.pbxproj, which is where a plist-only rule would have called it missing", () => {
+    const root = project({
+      "Ledger.xcodeproj/project.pbxproj": 'INFOPLIST_KEY_NSCameraUsageDescription = "Ledger photographs your receipts.";\n',
+      "Sources/V.swift": "import SwiftUI\nimport UIKit\n",
+    });
+    const config = readAppleConfig([{
+      path: "Ledger.xcodeproj/project.pbxproj",
+      source: 'INFOPLIST_KEY_NSCameraUsageDescription = "Ledger photographs your receipts.";\n',
+    }]);
+    expect(config.keys.get("NSCameraUsageDescription")).toBe("Ledger photographs your receipts.");
+    expect(rules(root)).toEqual([]);
+  });
+});
+
+describe("14. every platform-scoped rule when the verdict names no platform", () => {
+  const swift = 'import SwiftUI\nText("Hi").font(.system(size: 17))\nNavigationView { Text("x") }\n';
+
+  it("runs fixed-font-size on an iOS verdict", () => {
+    const root = project({
+      "Info.plist": plist("<key>UILaunchStoryboardName</key>\n<string>LaunchScreen</string>"),
+      "Sources/V.swift": swift,
+    });
+    expect(rules(root).sort()).toEqual(["fixed-font-size", "navigationview-deprecated"]);
+  });
+
+  it("stays silent when there is no signal at all, and the unscoped rule still fires", () => {
+    const root = project({ "Sources/V.swift": swift });
+    expect(rules(root)).toEqual(["navigationview-deprecated"]);
+    expect(appleReport(root).text).toContain("**Every platform-scoped rule stayed silent**");
+  });
+
+  it("stays silent when the signals point both ways, and says the verdict conflicted", () => {
+    const root = project({
+      "Info.plist": plist("<key>UILaunchStoryboardName</key>\n<string>LaunchScreen</string>\n<key>LSMinimumSystemVersion</key>\n<string>14.0</string>"),
+      "Sources/V.swift": swift,
+    });
+    expect(rules(root)).toEqual(["navigationview-deprecated"]);
+    expect(appleReport(root).text).toContain("**Platform: not determined** — the signals pointed both ways");
+  });
+});
+
+describe("15. whether a Swift file is missing something", () => {
+  it("fires symbol-as-only-button-label on a Button whose parent VStack carries the label", () => {
+    const root = project({
+      "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
+      "Sources/V.swift": [
+        "import SwiftUI",
+        "var body: some View {",
+        "  VStack {",
+        '    Button(action: refresh) { Image(systemName: "arrow.clockwise") }',
+        "  }",
+        '  .accessibilityLabel("Refresh the ledger")',
+        "  .accessibilityElement(children: .combine)",
+        "}",
+      ].join("\n"),
+    });
+    expect(ruleLines(root)).toEqual(["symbol-as-only-button-label@4"]);
+    // …and the finding it emits is a risk to check, never a missing-label report.
+    const f = appleReport(root).structured.findings[0];
+    expect(f.message).toContain("this is a risk to check, not a fault found");
+    expect(f.severity).toBe("info");
+  });
+
+  it("reports no absence in Swift at all — a file with no accessibility or Reduce Motion handling draws nothing", () => {
+    const root = project({
+      "Info.plist": plist("<key>UILaunchStoryboardName</key>\n<string>LaunchScreen</string>"),
+      "Sources/V.swift": [
+        "import SwiftUI",
+        "struct Spinner: View {",
+        "  var body: some View {",
+        "    Circle().rotationEffect(.degrees(360)).animation(.linear.repeatForever(), value: true)",
+        "  }",
+        "}",
+      ].join("\n"),
+    });
+    expect(rules(root)).toEqual([]);
+  });
+});
+
+describe("16. a Swift file whose comment masking went wrong", () => {
+  it("finds nothing in a file whose live NavigationView was masked by an interpolated comment marker", () => {
+    const root = project({
+      "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
+      "Sources/V.swift": [
+        "import SwiftUI",
+        'let label = "a\\(f("open /*")) still"',
+        "struct V: View {",
+        "  var body: some View {",
+        '    NavigationView { Text("x") }',
+        "  }",
+        "}",
+        "/* an ordinary comment */",
+        "let after = 1",
+      ].join("\n"),
+    });
+    expect(rules(root)).toEqual([]);
+
+    // The identical file without that one line reports the NavigationView, so
+    // the silence above is the masking gap and not an unrelated mismatch.
+    const control = project({
+      "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
+      "Sources/V.swift": [
+        "import SwiftUI",
+        "struct V: View {",
+        "  var body: some View {",
+        '    NavigationView { Text("x") }',
+        "  }",
+        "}",
+        "/* an ordinary comment */",
+        "let after = 1",
+      ].join("\n"),
+    });
+    expect(rules(control)).toEqual(["navigationview-deprecated"]);
+  });
+});
+
+describe("17. the shapes the Swift rules do not match", () => {
+  it("draws nothing from an iOS file carrying all four of them", () => {
+    const root = project({
+      "Info.plist": plist("<key>UILaunchStoryboardName</key>\n<string>LaunchScreen</string>"),
+      "Sources/V.swift": [
+        "import SwiftUI",
+        "import UIKit",
+        "let f = UIFont.systemFont(ofSize: 17)",
+        'let g = Font.custom("Inter", fixedSize: 17)',
+        'let c = Color(hex: "#FF3B30")',
+        'let symbol = isOn ? "pause.fill" : "play.fill"',
+        "let b = Button(action: toggle) { Image(systemName: symbol) }",
+      ].join("\n"),
+    });
+    expect(appleReport(root).text).toContain("**Platform: iOS**");
+    expect(rules(root)).toEqual([]);
+  });
+});
+
+describe("18. the difference between code and a string that looks like code", () => {
+  it("reports NavigationView written inside a string literal", () => {
+    const root = project({
+      "Info.plist": plist("<key>CFBundleName</key>\n<string>Ledger</string>"),
+      "Sources/V.swift": 'import SwiftUI\nText("NavigationView is deprecated")\n',
+    });
+    expect(ruleLines(root)).toEqual(["navigationview-deprecated@2"]);
+  });
+});
+
+describe("19. what a colorset resolves to", () => {
+  it("passes a colorset whose declared dark value is identical to its light one", () => {
+    const components = { red: "0.900", green: "0.900", blue: "0.900", alpha: "1.000" };
+    const root = project({
+      "Assets.xcassets/Brand.colorset/Contents.json": JSON.stringify({
+        colors: [
+          { idiom: "universal", color: { "color-space": "srgb", components } },
+          { idiom: "universal", appearances: [{ appearance: "luminosity", value: "dark" }], color: { "color-space": "srgb", components } },
+        ],
+      }),
+    });
+    expect(rules(root)).toEqual([]);
+  });
+});
+
+// The form, not the effort. v0.24.0 shipped six false absence claims and every
+// round that corrected them by hand wrote more; the sentence form is what is
+// enforced. These are the patterns `tests/integrity.test.ts` applies to the
+// Apple documents, applied here to the disclosure list and to the report's own
+// prose, plus two forms specific to this list: a claim about the project rather
+// than about what was read, and a claim about how an Apple page renders.
+describe("the disclosure list never states an absence in the unbounded form", () => {
+  const ABSENCE_VERBS = [
+    "publish", "publishes", "published", "assign", "assigns", "assigned",
+    "define", "defines", "defined", "state", "states", "stated",
+    "document", "documents", "documented", "specify", "specifies", "specified",
+    "give", "gives", "given", "gave", "list", "lists", "listed",
+    "provide", "provides", "provided", "carry", "carries", "carried",
+    "name", "names", "named", "say", "says", "said", "ship", "ships", "shipped",
+    "mention", "mentions", "mentioned", "record", "records", "recorded",
+    "declare", "declares", "declared",
+  ].join("|");
+  const NEW_SUBJECT = [
+    "\\.", "\\bthe\\b", "\\bits\\b", "\\ba\\b", "\\ban\\b", "\\bthis\\b", "\\bthat\\b",
+    "\\bthese\\b", "\\bthose\\b", "\\bHIG\\b", "\\bpage\\b", "\\btable\\b",
+    "\\bsection\\b", "\\bguidelines\\b",
+  ].join("|");
+  const GAP = `(?:(?!${NEW_SUBJECT})[^.\\n]){0,80}?`;
+  const APPLE = "(?<![\\w-])Apple(?![\\w-])";
+
+  const FORMS: Array<{ name: string; re: RegExp }> = [
+    { name: "Apple as the subject of a negated publication verb", re: new RegExp(`${APPLE}${GAP}\\b(?:${ABSENCE_VERBS})\\s+(?:no|none|nothing|nowhere)\\b`, "g") },
+    { name: "Apple does not <publication verb>", re: new RegExp(`${APPLE}${GAP}\\b(?:does\\s+not|doesn't|do\\s+not|don't)\\s+(?:${ABSENCE_VERBS})\\b`, "g") },
+    { name: "<subject> never <publication verb>", re: new RegExp(`\\b\\w+\\s+never\\s+(?:${ABSENCE_VERBS})\\b`, "gi") },
+    { name: "<publication verb> nowhere", re: new RegExp(`\\b(?:${ABSENCE_VERBS})\\s+(?:it\\s+|them\\s+)?nowhere\\b`, "gi") },
+    { name: "any/every/no Apple page", re: /\b(?:any|every|no|all)\s+Apple\s+(?:page|pages|surface|surfaces|document|documents|documentation|source|sources)\b(?!\s+(?:searched|checked|read|fetched|listed))/gi },
+    // Specific to this list: an absence claim whose subject is the audited
+    // project rather than the files that were read. "The project does not
+    // declare a dark variant" is unfalsifiable from a partial scan; "no dark
+    // variant was found in the colorsets read here" is a claim about the search.
+    { name: "an absence claimed of the project rather than of what was read", re: /\b(?:the|this|your)\s+(?:project|app|target|codebase)\s+(?:does\s+not|doesn't|has\s+no|never|declares\s+no|carries\s+no)\b/gi },
+    // Carried over from Task 4: this module reads JSON and has no standing to
+    // describe what a reader sees on Apple's rendered page.
+    { name: "a claim about how an Apple page renders", re: /\binvisible in the rendered\b|\blives only in\b|\bonly in the (?:page's )?JSON\b|\bnot (?:shown|visible) (?:in|on) the (?:rendered )?page\b/gi },
+  ];
+
+  it.each(FORMS)("rejects $name", ({ re }) => {
+    const offenders: string[] = [];
+    for (const entry of APPLE_NOT_VISIBLE) {
+      const stripped = entry.replace(/\*\*/g, "").replace(/\*/g, "");
+      for (const m of stripped.matchAll(re)) offenders.push(`${m[0]} — in: ${entry.slice(0, 70)}…`);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("holds the preamble, the closing and the report's own prose to the same forms", () => {
+    const r = appleReport(join(FIXTURES, "ios-findings"));
+    const prose = [APPLE_PREAMBLE, APPLE_CLOSING, r.text.slice(0, r.text.indexOf("## Not visible to this audit"))]
+      .join("\n").replace(/\*\*/g, "").replace(/\*/g, "");
+    const offenders: string[] = [];
+    for (const { re } of FORMS) for (const m of prose.matchAll(re)) offenders.push(m[0]);
+    expect(offenders).toEqual([]);
+  });
+
+  // The scoped form is the one this list is supposed to be written in, so it
+  // has to actually be present rather than merely not-absent.
+  it("writes the scoped form, naming what was read", () => {
+    const joined = APPLE_NOT_VISIBLE.join(" ");
+    expect(joined).toMatch(/what was read/i);
+    expect(joined).toMatch(/absent from this audit's view of the project rather than from the project/i);
+    expect(joined).toMatch(/read here/i);
+  });
+
+  it("never claims a shipped, signed or reviewed outcome", () => {
+    const forbidden = /\b(will be rejected|app review will|fails notarization|will fail notarization|guarantee)\b/i;
+    for (const entry of APPLE_NOT_VISIBLE) expect(forbidden.test(entry), entry.slice(0, 60)).toBe(false);
   });
 });
