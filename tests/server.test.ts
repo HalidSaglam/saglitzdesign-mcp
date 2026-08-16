@@ -68,11 +68,18 @@ const SMOKE: Record<string, Record<string, unknown>> = {
     code: `<!doctype html><html lang="en"><head><script src="/js/tag.js"></script></head><body><main><img src="/hero.jpg" alt="Hero" loading="lazy" fetchpriority="high"></main></body></html>`,
     filename: "index.html",
   },
+  // Directory only — this tool has no snippet mode, because half its rules and
+  // the platform verdict all come from configuration files. The fixture is a
+  // small iOS project carrying one finding from each half, so the `file` probe
+  // below has a Swift finding to find and the summary probe has something to
+  // count.
+  audit_apple_ui: { path: join(root, "tests", "fixtures", "apple", "ios-findings") },
 };
 
 /** Every tool that declares an outputSchema. */
 const STRUCTURED_TOOLS = [
   "audit_seo_geo", "audit_performance", "design_lint", "audit_security", "audit_generic_design", "audit_project",
+  "audit_apple_ui",
 ];
 
 /**
@@ -89,6 +96,7 @@ const STRUCTURED_TOOLS = [
 const EXTRA_SCHEMA_PROPS: Record<string, string[]> = {
   audit_generic_design: ["score", "scan"],
   audit_project: ["scan"],
+  audit_apple_ui: ["scan"],
 };
 
 /**
@@ -104,6 +112,10 @@ const EXTRA_SCHEMA_PROPS: Record<string, string[]> = {
 const EXTRA_REQUIRED_PROPS: Record<string, string[]> = {
   audit_generic_design: ["score"],
   audit_project: ["scan"],
+  // Required for the same reason audit_project's is: no snippet mode, so every
+  // successful call scanned a directory and there is no shape in which the
+  // block is legitimately absent.
+  audit_apple_ui: ["scan"],
 };
 
 /**
@@ -221,6 +233,25 @@ describe("server handshake", () => {
       // representation, not the wrapper's arguments.
       expect("outputSchema" in t, t.name).toBe(STRUCTURED_TOOLS.includes(t.name));
     }
+  });
+
+  // The README's headline count was written by hand and pinned by nothing:
+  // integrity.test.ts checks one tool's row and the document count, never the
+  // count against the registrations. It went stale the moment a 34th tool was
+  // registered, and would have gone stale again on the 35th. Read off the live
+  // server rather than off the source, so it is the advertised number that is
+  // checked.
+  it("agrees with the tool count the README advertises", async () => {
+    const readme = await import("node:fs").then((fs) => fs.readFileSync(join(root, "README.md"), "utf8"));
+    const claimed = /·\s*(\d+)\s+tools\s*·/.exec(readme);
+    expect(claimed, "README no longer states a tool count in the expected shape").toBeTruthy();
+    expect(Number(claimed![1])).toBe(toolNames.length);
+  });
+
+  it("gives the newest tool a row in the README's tool table", async () => {
+    const readme = await import("node:fs").then((fs) => fs.readFileSync(join(root, "README.md"), "utf8"));
+    const missing = toolNames.filter((n) => !readme.includes(`\`${n}\``));
+    expect(missing, "registered but absent from the README").toEqual([]);
   });
 
   it("reports the package version", async () => {
@@ -678,6 +709,95 @@ describe("audit_project answers a bad path as an error, not an empty audit", () 
   }, 20_000);
 });
 
+// audit_apple_ui is directory-only and the first tool here with no snippet
+// mode at all — `code` is declared solely so that passing it is answered with
+// an explanation of why a snippet cannot work rather than with a bare schema
+// rejection, which tells a caller nothing. All four shapes below must be error
+// results with no structuredContent; the two successful cases after them prove
+// the guard did not overreach into the normal path.
+describe("audit_apple_ui is directory-only and says so", () => {
+  it("returns an error result for a `code` argument, naming configuration as the reason", async () => {
+    const result = (await client.callTool({
+      name: "audit_apple_ui",
+      arguments: { code: 'import SwiftUI\nNavigationView { Text("x") }\n' },
+    })) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    const body = textOf(result);
+    expect(body).toMatch(/no snippet mode/i);
+    expect(body).toMatch(/configuration is the backbone/i);
+    expect(body).toMatch(/information property list/i);
+  });
+
+  it("returns an error result for a path that does not exist", async () => {
+    const result = (await client.callTool({
+      name: "audit_apple_ui",
+      arguments: { path: "/nonexistent-apple-xyz" },
+    })) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(textOf(result)).toMatch(/There is no directory at/);
+  });
+
+  it("returns an error result for a path that is a file, and says why one file cannot do", async () => {
+    const result = (await client.callTool({
+      name: "audit_apple_ui",
+      arguments: { path: join(root, "package.json") },
+    })) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    const body = textOf(result);
+    expect(body).toMatch(/is a file, not a directory/);
+    expect(body).toMatch(/no single-file mode/i);
+  });
+
+  it("returns an error result when nothing at all is passed", async () => {
+    const result = (await client.callTool({
+      name: "audit_apple_ui",
+      arguments: {},
+    })) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(textOf(result)).toMatch(/Pass `path`/);
+  });
+
+  it("still returns structuredContent for a real audit", async () => {
+    const result = (await client.callTool({
+      name: "audit_apple_ui",
+      arguments: SMOKE.audit_apple_ui,
+    })) as {
+      isError?: boolean;
+      structuredContent?: { scan: { filesRead: number }; findings: Array<{ file?: string; line?: number }> };
+    };
+    expect(result.isError ?? false).toBe(false);
+    expect(result.structuredContent).toBeTruthy();
+    expect(result.structuredContent!.scan.filesRead).toBeGreaterThan(0);
+    // Both halves reached the wire: a configuration finding with no file, and
+    // a Swift finding carrying one.
+    expect(result.structuredContent!.findings.some((f) => f.file === undefined)).toBe(true);
+    expect(result.structuredContent!.findings.some((f) => typeof f.file === "string")).toBe(true);
+  }, 20_000);
+
+  // An empty directory is a real, successful audit and must still carry
+  // structuredContent — with a scan saying it read nothing, which is exactly
+  // what tells the caller apart from the four error cases above.
+  it("returns a successful, structured audit for an empty directory", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "saglitz-empty-apple-"));
+    const result = (await client.callTool({
+      name: "audit_apple_ui",
+      arguments: { path: empty },
+    })) as {
+      isError?: boolean;
+      structuredContent?: { scan: { filesRead: number }; findings: unknown[]; notVisible: string[] };
+    };
+    expect(result.isError ?? false).toBe(false);
+    expect(result.structuredContent!.scan.filesRead).toBe(0);
+    expect(result.structuredContent!.findings).toEqual([]);
+    expect(result.structuredContent!.notVisible.length).toBeGreaterThan(4);
+    rmSync(empty, { recursive: true, force: true });
+  }, 20_000);
+});
+
 // The cross-cutting gate: every task above added its own coverage as it wired
 // up structured output for one more tool, but nothing yet asserts the six as
 // a set — that this exact list, no more and no fewer, advertises a schema,
@@ -689,7 +809,7 @@ describe("audit_project answers a bad path as an error, not an empty audit", () 
 // past silently. SMOKE already carries a minimal, real argument set for
 // every registered tool, so it doubles as the sample-args table here rather
 // than duplicating one.
-describe("the six structured auditors, asserted together", () => {
+describe("the structured auditors, asserted together", () => {
   it("advertises an outputSchema on exactly the findings-producing auditors", async () => {
     const { tools } = await client.listTools();
     const withSchema = tools.filter((t) => t.outputSchema).map((t) => t.name).sort();

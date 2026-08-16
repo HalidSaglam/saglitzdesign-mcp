@@ -75,6 +75,81 @@ describe("scanning", () => {
     const withoutNames = scanProject(dir, [".css"]);
     expect(withoutNames.files.map((f) => f.path)).toEqual(["app.css"]);
   });
+
+  // A `filenames` entry carrying a `/` is a path tail rather than a basename.
+  // `audit_apple_ui` needs it because `Contents.json` is one file per asset
+  // entry in an Xcode catalog and only the colorsets among them are readable:
+  // matching the basename pulled in every imageset for nothing.
+  it("matches a filenames entry containing a slash against the end of the path", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-tail-"));
+    mkdirSync(join(dir, "Assets.xcassets", "Brand.colorset"), { recursive: true });
+    mkdirSync(join(dir, "Assets.xcassets", "Logo.imageset"), { recursive: true });
+    writeFileSync(join(dir, "Assets.xcassets", "Contents.json"), "{}");
+    writeFileSync(join(dir, "Assets.xcassets", "Brand.colorset", "Contents.json"), "{}");
+    writeFileSync(join(dir, "Assets.xcassets", "Logo.imageset", "Contents.json"), "{}");
+    writeFileSync(join(dir, "app.css"), "a { color: red }");
+
+    const tail = scanProject(dir, [".css"], [".colorset/Contents.json"]);
+    expect(tail.files.map((f) => f.path.replace(/\\/g, "/")).sort())
+      .toEqual(["Assets.xcassets/Brand.colorset/Contents.json", "app.css"]);
+
+    // The basename spelling is what it replaces, and it takes all three.
+    const basename = scanProject(dir, [".css"], ["Contents.json"]);
+    expect(basename.files).toHaveLength(4);
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Name matches are read *first*; they are not read *extra*. They were exempt
+  // from both caps until v0.25.0, on the assumption that configuration is a
+  // handful of small files — an assumption a caller can break by choosing a
+  // popular basename, and `audit_apple_ui` did. A cap a caller can lift is not
+  // a cap, and two shipped disclosure sentences stated it as absolute.
+  it("counts name matches against the file cap rather than exempting them", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-namecap-"));
+    for (let i = 0; i < MAX_FILES + 20; i++) {
+      mkdirSync(join(dir, `d${String(i).padStart(4, "0")}`));
+      writeFileSync(join(dir, `d${String(i).padStart(4, "0")}`, "_headers"), "/*\n");
+    }
+    writeFileSync(join(dir, "app.css"), "a { color: red }");
+
+    const scan = scanProject(dir, [".css"], ["_headers"]);
+    expect(scan.files).toHaveLength(MAX_FILES);
+    expect(scan.hitFileCap).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("counts name matches against the total-bytes cap rather than exempting them", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-namebytes-"));
+    const body = "/*\n" + "x".repeat(200 * 1024);
+    for (let i = 0; i < 20; i++) {
+      mkdirSync(join(dir, `d${String(i).padStart(4, "0")}`));
+      writeFileSync(join(dir, `d${String(i).padStart(4, "0")}`, "_headers"), body);
+    }
+
+    const scan = scanProject(dir, [".css"], ["_headers"]);
+    expect(scan.scannedBytes).toBeLessThanOrEqual(MAX_TOTAL_BYTES);
+    expect(scan.hitByteCap).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Priority is the half that has to survive: the whole reason name matches
+  // are read first is that alphabetical order otherwise pushes the one file
+  // declaring the security headers out of a 420-component project.
+  it("still reads a name match ahead of the source files that would have crowded it out", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sd-priority-"));
+    mkdirSync(join(dir, "app"));
+    for (let i = 0; i < MAX_FILES + 20; i++) {
+      writeFileSync(join(dir, "app", `c${String(i).padStart(4, "0")}.css`), "a { color: red }");
+    }
+    writeFileSync(join(dir, "next.config.js"), "module.exports = {};\n");
+
+    const scan = scanProject(dir, [".css"], ["next.config.js"]);
+    expect(scan.files.map((f) => f.path)).toContain("next.config.js");
+    expect(scan.files).toHaveLength(MAX_FILES);
+    expect(scan.hitFileCap).toBe(true);
+    rmSync(dir, { recursive: true, force: true });
+  });
 });
 
 describe("auditing", () => {

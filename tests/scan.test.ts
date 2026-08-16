@@ -25,6 +25,16 @@ describe("maskComments — length-preserving for every syntax it handles", () =>
     expect(maskComments(source, "app.js").length).toBe(source.length);
   });
 
+  it("line and block comments in a .swift file", () => {
+    const source = `import Foundation // trailing comment\n/* a block comment */\nlet x = 1\n`;
+    expect(maskComments(source, "App.swift").length).toBe(source.length);
+  });
+
+  it("a nested Swift block comment", () => {
+    const source = "/* outer /* inner */\nimport AppKit\n*/\n";
+    expect(maskComments(source, "App.swift").length).toBe(source.length);
+  });
+
   it("JSX comments {/* */}", () => {
     // `{` and `}` are not part of the comment syntax the masker recognises —
     // it is the `/* */` inside them that gets blanked — so this exercises the
@@ -80,6 +90,130 @@ describe("maskComments — length-preserving for every syntax it handles", () =>
       `</script>`,
     ].join("\n");
     expect(maskComments(source, "page.vue").length).toBe(source.length);
+  });
+});
+
+// `.swift` is the one `isJsLike` extension where a block comment can legally
+// nest — `/* /* */ */` is one comment in Swift, closed only by the outer
+// close, and nesting inside an existing comment is the idiom Swift
+// developers reach for to comment out a region that already has one. A
+// masker that stops at the first close would leave the inner content live,
+// which is exactly how a commented-out `import` decided a platform verdict
+// before this was fixed (see `appleconfig.test.ts`). Every other `isJsLike`
+// extension keeps first-close semantics, since C-family nesting isn't legal
+// syntax there.
+describe("maskComments — Swift block comments nest, unlike every other isJsLike language", () => {
+  it("closes only at the outer close when a block comment nests one level", () => {
+    const source = "/* outer /* inner */\nimport AppKit\n*/\n";
+    const masked = maskComments(source, "App.swift");
+    expect(masked).not.toContain("import AppKit");
+  });
+
+  it("closes only at the outer close on one line, too", () => {
+    const source = "/* a /* b */ import AppKit */";
+    const masked = maskComments(source, "App.swift");
+    expect(masked).not.toContain("import AppKit");
+  });
+
+  it("still masks a plain, non-nested Swift block comment, and leaves live code after it alone", () => {
+    const source = "/* import AppKit */\nimport UIKit\n";
+    const masked = maskComments(source, "App.swift");
+    expect(masked).not.toContain("import AppKit");
+    expect(masked).toContain("import UIKit");
+  });
+
+  it("does NOT depth-track a non-Swift JS-like file — closes at the first close, same as before this fix", () => {
+    const source = "/* /* */ still code */";
+    const masked = maskComments(source, "app.ts");
+    expect(masked).toContain("still code");
+  });
+
+  it("case-insensitive path match: APP.SWIFT and App.Swift are .swift paths too", () => {
+    const source = "/* outer /* inner */\nimport AppKit\n*/\n";
+    expect(maskComments(source, "APP.SWIFT")).not.toContain("import AppKit");
+    expect(maskComments(source, "App.Swift")).not.toContain("import AppKit");
+  });
+
+  // A prior version of this fix tracked nesting depth with no fallback: a
+  // block comment that never balances was masked all the way to the end of
+  // the file. Quote tracking resets at every newline, so text inside a
+  // `"""`-delimited multi-line string is only protected from being read as
+  // code on the line it opens on — a later line inside such a string that
+  // merely *looks* like block-comment markers (a glob pattern in a doc
+  // string, for instance) can leave the nesting counter one open short of
+  // balanced with no more closing markers anywhere in the file. A
+  // six-scanner differential against real Swift source reproduced exactly
+  // this: a live `import AppKit` after such a string went from a correct
+  // "macos" verdict to a fabricated `platform: null`. This is now fixed by
+  // falling back to the position a flat, non-nesting scan would find —
+  // this pins the fixed behaviour, not the old (broken) one.
+  it("does not let an unbalanced comment-opening-looking substring inside a Swift multi-line string swallow real code after it", () => {
+    const source = 'let doc = """\nglob: /* a /* b */ c\n"""\nimport AppKit\n';
+    const masked = maskComments(source, "App.swift");
+    expect(masked).toContain("import AppKit");
+  });
+
+  it("known gap, not fixed here: string-internal markers that balance without crossing a triple-quote still mask wider than a flat scan would, though not past the string in this instance", () => {
+    // Same per-line quote-reset blind spot as above, but here the
+    // string-internal text happens to look like a fully *balanced* nested
+    // comment that never touches the string's own `"""`, so
+    // `findNestedBlockCommentEnd` treats it as a real nested comment and
+    // masks the whole span — wider than a flat first-close scan would.
+    // This does not reach the real `import` two lines later, but that is
+    // this specific input's shape, not a general "stays inside the
+    // string" guarantee — see the next test, where a balanced span *does*
+    // cross a `"""` and is caught by the other fallback instead.
+    const source = 'let doc = """\n/* a /* b */ c */\n"""\nimport AppKit\n';
+    const masked = maskComments(source, "App.swift");
+    expect(masked).toContain("import AppKit");
+  });
+
+  // The nesting counter can also balance by counting markers that sit on
+  // *opposite sides* of a multi-line string's own `"""` boundary — nothing
+  // in the depth count itself knows a string closed in between. Before the
+  // second fallback existed, this masked everything from the first marker
+  // through the far side's matching one, swallowing a live `import` in
+  // between and fabricating a `null` platform verdict on a file that
+  // compiles and genuinely targets macOS. A six-scanner differential
+  // against real Swift source is what surfaced this: the first fallback
+  // (added for the case where nesting never balances at all) did not cover
+  // it, because here nesting balances just fine — the count is only wrong
+  // about what it's counting.
+  it("does not let markers that balance across a triple-quote string boundary swallow the real code between them", () => {
+    const source = 'let a = """\n/* /*\n*/\n"""\nimport AppKit\nlet b = """\n*/\n"""\n';
+    const masked = maskComments(source, "App.swift");
+    expect(masked).toContain("import AppKit");
+  });
+
+  it("a genuinely unterminated Swift block comment (no closing marker anywhere) still masks to the end of the file, same as every other isJsLike extension", () => {
+    const source = "/* never closes\nimport AppKit\n";
+    const masked = maskComments(source, "App.swift");
+    expect(masked).not.toContain("import AppKit");
+  });
+
+  // Known gap, pinned not fixed. The `"""` fallback above only catches a
+  // balanced span that crosses a multi-line string's own boundary; it has
+  // nothing to do with the quote tracker itself, which is a per-line,
+  // per-character toggle rather than a real tokenizer and does not
+  // understand Swift string interpolation. A nested, unescaped `"` inside
+  // an interpolated call — `f("open /*")` — closes what the tracker thinks
+  // is the outer string right there, exposing `open /*` as live code even
+  // though the real Swift compiler still sees it as string content. No
+  // `"""` is involved, so the existing fallback has no signal to catch it
+  // on. From that spurious opening, nesting walks into the genuine,
+  // well-formed `/* actual comment */` below it, counts it as real
+  // nesting, and keeps going past the real `import AppKit` until a second
+  // interpolated string supplies a spurious closer. This is the same "more
+  // than one thing has to line up" shape as `stripNestedContainers`'s known
+  // gap in `appleconfig.ts`, and is not fixed here for the same reason: a
+  // real fix needs a string-aware, interpolation-aware tokenizing pass, and
+  // a further targeted check would only trade this rare, compound failure
+  // for breaking the common, legitimate case of a comment that genuinely
+  // comments out code containing string literals.
+  it("known gap, not fixed here: a nested quote inside Swift string interpolation can expose a spurious comment marker that later swallows real code", () => {
+    const source = 'let s1 = "a\\(f("open /*")) still"\n/* actual comment */\nimport AppKit\nlet s2 = "b\\(f("close */")) done"\n';
+    const masked = maskComments(source, "App.swift");
+    expect(masked).not.toContain("import AppKit");
   });
 });
 

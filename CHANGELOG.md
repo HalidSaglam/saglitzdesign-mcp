@@ -4,6 +4,188 @@ All notable changes to SaglitzDesign MCP are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.25.0] — 2026-08-16
+
+v0.24.0 sourced this server's six Apple documents to Apple's own pages, and
+nothing here could read an Xcode project against them. A team could read every
+word of `apple-accessibility` and `apple-shipping-readiness` and still ship a
+custom colorset with no dark appearance, a deprecated `UIRequiresFullScreen`,
+a microphone entitlement declared under one capability and not its twin, and a
+`NavigationView` on every screen. This release adds the auditor that reads the
+project instead of trusting the reader remembered the document.
+
+### Added
+
+- **`audit_apple_ui` — the 34th tool, and the seventh to return structured
+  output.** Point it at the Xcode project directory. It reads the four
+  surfaces a project declares configuration on — the information property
+  list, `INFOPLIST_KEY_*` build settings in `project.pbxproj`, the
+  entitlements plist, and each colorset's `Contents.json` — infers whether the
+  target is iOS or macOS from those plus the Swift imports, and runs eight
+  rules over the text of the files it opened.
+  - **Configuration, four rules.** A custom colorset declaring no
+    `luminosity: dark` appearance; the deprecated `UIRequiresFullScreen`,
+    either spelling, with the misspelling called out as a key the system does
+    not read; one of the two Audio Input entitlement identifiers without the
+    other, which one Xcode checkbox label covering two different capabilities
+    makes easy to half-declare; and, on macOS only, no App Sandbox entitlement
+    — reported as a fact about the Mac App Store channel rather than as a
+    defect, because the requirement quoted in that finding is scoped by Apple
+    to that channel.
+  - **Swift, four rules.** `NavigationView`, whose reference page carries
+    `deprecatedAt: 27.0` on all seven of its platform rows and names
+    `NavigationStack` and `NavigationSplitView` as the replacements;
+    `.font(.system(size:))`, on an iOS verdict only, because that form has no
+    text style behind it to scale against and, in the HIG's own words under
+    Typography › Platform considerations › macOS, "macOS doesn't support
+    Dynamic Type"; a colour written as numbers rather than resolved from a
+    colorset; and a `Button` whose entire label is one `Image(systemName:)`,
+    reported as a label to check with VoiceOver rather than as a label found
+    missing.
+  - **The platform verdict is a gate, and its silence is printed.**
+    `fixed-font-size` runs on an iOS verdict and `sandbox-absent-macos` on a
+    macOS one. When the signals are absent or point both ways the verdict is
+    `not determined`, both rules stay quiet, and the report says so above the
+    findings — `**Platform: not determined**. Signals seen: none. **Every
+    platform-scoped rule stayed silent**, so their silence here is the gate
+    rather than a result.` A run on a SwiftPM package with no configuration at
+    all prints exactly that line and still reports its `NavigationView`, which
+    is not platform-scoped.
+  - **Directory only, and every other shape is an error result.** There is no
+    snippet mode, because configuration is the backbone of this audit and a
+    snippet carries none of it. A `code` argument, a missing `path`, a path
+    with nothing at it, and a path that is a file each come back with
+    `isError: true` and an explanation naming what to pass instead — never as
+    an empty audit a caller could read as a clean bill. `code` is declared on
+    the input schema for exactly this reason: every structured auditor here
+    that accepts a snippet at all spells it `code`, so an agent that has
+    learned the family will reach for it, and an undeclared key is stripped
+    before the handler can explain itself. `audit_project`, which has no
+    snippet mode either, leaves it undeclared and answers a `code` argument
+    with `MCP error -32602: … Required at path` — a schema rejection that
+    says nothing about why a snippet cannot work here.
+  - **Structured output on the same contract the other six auditors speak**
+    (v0.23.0): `findings` with rule, severity, message, fix and doc, a
+    severity `summary`, a machine-readable `notVisible` array, and a required
+    `scan` block. A Swift finding also carries `file` and a 1-based `line`; a
+    configuration finding carries no `file` key at all and `line: 0`, because
+    a key that is absent from a merged configuration map has no position — the
+    markdown prints no line for those, and a consumer reading the wire should
+    treat `0` as that same sentinel rather than as line one. `scan` declares
+    the same six fields `audit_project` does, and is required for the same
+    reason: no snippet mode, so every successful call scanned a directory.
+- **Six fixture projects, and 200 tests in `tests/apple.test.ts`.** A clean
+  iOS app and a clean macOS app that each report zero findings; an iOS app
+  that draws six of the eight rules; a deliberately broken project that draws
+  six too, trading that one's colour literal for the Audio Input mismatch; an
+  iOS project with no `Info.plist`, where every configuration key arrives out
+  of `INFOPLIST_KEY_*` build settings the way Xcode has written them since
+  `GENERATE_INFOPLIST_FILE` became the default; and a SwiftPM package whose
+  platform cannot be known, which is there to pin the silence rather than a
+  finding.
+
+### What this audit cannot see
+
+This is the longest `notVisible` list this server ships — 24 entries, printed
+in full under **Not visible to this audit** in every report and carried in
+`structuredContent.notVisible`. Each one was written after running the tool on
+a directory built to demonstrate it, and each demonstration is kept as a test.
+The list is longer than the rule list, and a reader who learns that here will
+not misread a clean report:
+
+- **Nothing is measured, and nothing is rendered.** No contrast ratio is
+  computed, no tap target sized, no simulator launched, no screenshot taken,
+  no build run. `colorset-no-dark-variant` fires on a declaration and settles
+  nothing about how that colour reads against anything;
+  `hardcoded-color-literal` fires on the numbers without computing a ratio
+  from them.
+- **Three extensions and three configuration shapes are opened, and the rest
+  of a project is outside what was read.** `.swift`, `.plist` and
+  `.entitlements`, plus `Info.plist` and `project.pbxproj` matched by name and
+  `*.colorset/Contents.json` matched by the end of its path. A screen laid out
+  in a storyboard or XIB, a view controller written in Objective-C, a
+  localised value in `InfoPlist.xcstrings` and a Swift file saved under
+  another suffix were each present in a run here and each drew nothing. An
+  asset-catalog member that is not a colorset — an imageset, an appiconset,
+  the catalog's own root `Contents.json` — is not opened either.
+- **A directory the walk never enters, and your own code with it if you keep
+  it under one of those names.** `Pods`, `Carthage` and `DerivedData` are
+  added for this audit, on top of the shared skip list every scanner here uses
+  — `node_modules`, `vendor`, `build`, `out`, `dist`, `target`, `coverage` and
+  more — and every directory whose name begins with a dot. It is a name test
+  rather than a provenance test, and the skip is silent in both registers: a
+  project whose own `Pods/MyOwnCode.swift` held a `NavigationView` came back
+  with one file read and no findings, and one keeping hand-written source in
+  `build/` came back with `filesRead: 2`, the `NavigationView` beside it
+  reported and the one inside `build/` dropped with nothing in the report
+  body marking it. Read the skip as coverage rather than as a clean bill on
+  your dependencies — this audit says nothing about them at all — and check
+  the path a finding carries, since a library checked in under `Vendor/` is
+  read as first-party.
+- **A plist value outside the small subset this reader covers.** `<string>`,
+  `<true/>`, `<false/>` and an `<array>` of direct `<string>` children are
+  read; a `<dict>`, `<integer>`, `<real>`, `<date>` or `<data>` value is
+  walked past rather than guessed at. A `UIRequiresFullScreen` nested one
+  dictionary down drew no finding in a run here. A binary plist is reported as
+  not parsed rather than as empty: a binary `Info.plist` beside a Swift file
+  took the platform verdict to `not determined` and every platform-scoped rule
+  with it.
+- **Everything in a `project.pbxproj` other than `INFOPLIST_KEY_*`.** That
+  prefix is what is read out of the file; the rest of the build configuration
+  is not parsed. `ENABLE_HARDENED_RUNTIME` is one of the settings outside it,
+  which is why no rule here reports on the Hardened Runtime in either
+  direction.
+- **Which target declared a key, or an entitlement.** Keys from every plist
+  and every `project.pbxproj` in the tree are merged into one map, and the
+  entitlement identifiers from every `.entitlements` file into one set, because
+  none of the four surfaces read here carries a target. A key declared by a
+  share extension alone was reported as a fact about "this project's
+  configuration"; a sandboxed app beside a hardened helper — each file correct
+  alone — drew `microphone-entitlement-mismatch` over a pair that appears in
+  neither, and the app's `com.apple.security.app-sandbox` kept
+  `sandbox-absent-macos` off the helper. The surfaces line names every file
+  that went into both.
+- **The written forms the Swift rules do not match.** Each rule is a presence
+  test over one shape: `.system(size:)` is matched and
+  `UIFont.systemFont(ofSize:)` is not; `Color(red:green:blue:)` is matched and
+  a project's own `Color(hex:)` is not; `Image(systemName: "bell")` is matched
+  and `Image(systemName: symbol)` is not. One iOS file carrying five such
+  lines — those three, plus `Font.custom("Inter", fixedSize: 17)` and a
+  `Button` whose label closure is a bare identifier — drew zero findings here,
+  so a clean result on a UIKit target, or on a codebase with its own colour
+  and symbol helpers, is coverage rather than restraint.
+- **A Swift file whose comment masking went wrong, which reads exactly like a
+  file with nothing to find.** `maskComments` tracks quotes per character
+  rather than tokenizing, so a `/*` or `//` inside an interpolated string can
+  be exposed as live code and a well-formed comment further down then blanks
+  the real code in between. A file whose second line was
+  `let label = "a\(f("open /*")) still"` and whose fifth line held a live
+  `NavigationView` produced no findings, and the file counted as read in every
+  register — there is no signal for this anywhere in the output. A rule going
+  quiet on a file with an interpolated string like that may be meeting this
+  gap rather than finding nothing; it is pinned as a known, unfixed gap in
+  `tests/scan.test.ts`.
+- **Whether a Swift file is missing something.** No rule here claims an
+  absence in Swift source, because a modifier on a parent covers its children
+  and the code satisfying a requirement may live in another file.
+  `symbol-as-only-button-label` fired on a `Button` whose enclosing `VStack`
+  carried an `.accessibilityLabel`, which is why its own text calls it a risk
+  to check rather than a fault found.
+- **Whatever the scan stopped short of.** At most 400 files and 3 MB in total,
+  with nothing exempt — configuration is read *before* any Swift file, which
+  buys it priority and not an exemption — and any single file over 500 KB is
+  skipped whole rather than truncated. `scan.hitFileCap`, `scan.hitByteCap`,
+  `scan.skippedLarge` and `scan.unreadable` report each of those, and while a
+  cap was hit no absence in `findings` covers the part that was never opened.
+  A symlinked directory or file is stepped over and is counted in neither
+  `scan.unreadable` nor `scan.skippedLarge`, so that one shows up only in the
+  finding it did not produce.
+
+An empty findings list means no rule this audit runs matched the text of the
+files that were read — not that the project is sound, and not that it was all
+read. The `scan` block says how much of it was, and the platform line says
+which of the rules were allowed to run at all.
+
 ## [0.24.0] — 2026-08-15
 
 The three existing Apple documents — `macos-app-design`, `ios-app-design`,

@@ -303,7 +303,7 @@ Apple publishes each symbol's platform availability in the API reference. Every 
 | `ToolbarItemPlacement.navigationBarLeading` | iOS 14+, iPadOS, Mac Catalyst, tvOS, visionOS | **deprecated** — "Use `topBarLeading` instead." |
 | All of UIKit's app scaffolding — `UIViewController`, `UITabBarController`, `UIScreen`, `UIDevice`, `UIApplication.shared`, `UIImpactFeedbackGenerator` | iOS, iPadOS, Mac Catalyst (+ visionOS for some) | there is no macOS row on any of them |
 
-The last two deprecations are invisible in the rendered documentation page's prose — they live in the page's own JSON metadata, which is where an audit should read them from.
+The last two deprecations are read from the pages' own JSON metadata (`metadata.platforms[].deprecatedAt` and `deprecationSummary`), which is where an audit should read them from — `statusBarHidden(_:)` carries iOS/iPadOS/Mac Catalyst 13.0–27.0 and visionOS 1.0–27.0, `ToolbarItemPlacement.navigationBarLeading` iOS/iPadOS/Mac Catalyst/tvOS 14.0–27.0 and visionOS 1.0–27.0.
 
 ### B. Exists on macOS, but the HIG puts a different pattern there
 
