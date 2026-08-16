@@ -414,18 +414,20 @@ const SIGNAL = {
  *   raw source, which reopens the exact commented-out-import defect this
  *   comment describes. There is no error or signal for that fallback; it
  *   just happens.
- * - `maskComments` has a residual, bounded over-masking risk for `.swift`
- *   source containing a multi-line `"""`-delimited string: text inside such
- *   a string that only looks like block-comment markers can still get
- *   masked as if it were a real comment, extending the masked span as far
- *   as those string-internal markers happen to "close" against each other.
- *   It stops there — it cannot silently swallow a real signal arbitrarily
- *   far past the string the way an unbounded scan would, and a
- *   differential run against real Swift source confirmed a live `import`
- *   right after such a string is read correctly, not masked away. See the
+ * - `maskComments` has a residual over-masking risk for `.swift` source
+ *   containing a multi-line `"""`-delimited string: text inside such a
+ *   string that only looks like block-comment markers can still get masked
+ *   as if it were a real comment. The provable bound is that this can never
+ *   mask further into the file's real code than a flat, non-nesting scan
+ *   already would — the same gap every other `isJsLike` extension already
+ *   lives with for its own multi-line-string/template-literal blind spot,
+ *   no worse. Two differential runs against real Swift source each caught
+ *   a case where an earlier version of this bound did not hold (a live
+ *   `import` right after such a string was masked away, fabricating a
+ *   `null` verdict on a file that compiles and targets a real platform);
+ *   both are fixed and pinned by name in `tests/scan.test.ts`. See the
  *   over-masking paragraph on `maskComments`'s own doc comment in
- *   `src/scan.ts` for the full mechanism and why it is bounded rather than
- *   closed outright.
+ *   `src/scan.ts` for the full mechanism and the proof of the bound.
  * - The import/`#if` recognisers above are text patterns, not a parser:
  *   `@testable import Foo` is recognised, but `@_exported import Foo` and a
  *   submodule import like `import struct AppKit.NSRect` are not — neither

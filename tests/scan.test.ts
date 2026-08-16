@@ -153,14 +153,34 @@ describe("maskComments — Swift block comments nest, unlike every other isJsLik
     expect(masked).toContain("import AppKit");
   });
 
-  it("known, bounded gap, not fixed here: string-internal markers that happen to balance still mask wider than a flat scan would, but stop at the string", () => {
+  it("known gap, not fixed here: string-internal markers that balance without crossing a triple-quote still mask wider than a flat scan would, though not past the string in this instance", () => {
     // Same per-line quote-reset blind spot as above, but here the
     // string-internal text happens to look like a fully *balanced* nested
-    // comment, so `findNestedBlockCommentEnd` treats it as one and masks
-    // the whole span — wider than a flat first-close scan would, but
-    // bounded to the markers actually present. It does not reach the real
-    // `import` two lines later.
+    // comment that never touches the string's own `"""`, so
+    // `findNestedBlockCommentEnd` treats it as a real nested comment and
+    // masks the whole span — wider than a flat first-close scan would.
+    // This does not reach the real `import` two lines later, but that is
+    // this specific input's shape, not a general "stays inside the
+    // string" guarantee — see the next test, where a balanced span *does*
+    // cross a `"""` and is caught by the other fallback instead.
     const source = 'let doc = """\n/* a /* b */ c */\n"""\nimport AppKit\n';
+    const masked = maskComments(source, "App.swift");
+    expect(masked).toContain("import AppKit");
+  });
+
+  // The nesting counter can also balance by counting markers that sit on
+  // *opposite sides* of a multi-line string's own `"""` boundary — nothing
+  // in the depth count itself knows a string closed in between. Before the
+  // second fallback existed, this masked everything from the first marker
+  // through the far side's matching one, swallowing a live `import` in
+  // between and fabricating a `null` platform verdict on a file that
+  // compiles and genuinely targets macOS. A six-scanner differential
+  // against real Swift source is what surfaced this: the first fallback
+  // (added for the case where nesting never balances at all) did not cover
+  // it, because here nesting balances just fine — the count is only wrong
+  // about what it's counting.
+  it("does not let markers that balance across a triple-quote string boundary swallow the real code between them", () => {
+    const source = 'let a = """\n/* /*\n*/\n"""\nimport AppKit\nlet b = """\n*/\n"""\n';
     const masked = maskComments(source, "App.swift");
     expect(masked).toContain("import AppKit");
   });

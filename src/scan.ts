@@ -23,28 +23,34 @@
  * marker met before the next closing marker as opening a comment of its
  * own rather than treating that first closing marker as the end. `from` is
  * the index right after the comment's own opening marker (depth already at
- * 1). Returns the index just past the matching close on a comment that
- * actually balances.
+ * 1).
  *
- * When it does not balance — depth never returns to zero before the source
- * runs out of closing markers — this falls back to the position a
- * *non*-nesting scan would have found: the very first closing marker after
- * `from`, or the end of the source if there is none at all. That fallback
- * matters more than it looks: depth tracking on its own is monotonic
- * toward masking *more*, never less, than the non-nesting scan would, and
- * `.swift`'s per-line-reset quote tracking (see `maskComments`'s own doc
- * comment) means a `"""`-delimited multi-line string can contain
- * comment-marker-looking text this scanner has no way to know is inside a
- * string. A source there with an extra unmatched opening marker and one
- * closing marker inside such a string — legal, compiling Swift, since none
- * of it is really comment syntax — would otherwise never balance and get
- * masked to the end of the file: a fabricated absence on a file with
- * nothing wrong with it, not a call this function gets to make. Falling
- * back to the same
- * first-close answer the non-nesting scan already gives keeps the nesting
- * win on every comment that actually balances, without opening a
- * masks-to-EOF failure mode nesting depth tracking would otherwise
- * introduce that a flat, non-nesting scan never had.
+ * Two fallbacks, both routing to the position a *flat*, non-nesting scan
+ * would have found instead — the very first closing marker after `from`,
+ * or the end of the source if there is none at all — because depth
+ * tracking on its own is monotonic toward masking *more*, never less, than
+ * a flat scan would, and `.swift`'s per-line-reset quote tracking (see
+ * `maskComments`'s own doc comment) means a `"""`-delimited multi-line
+ * string can contain comment-marker-looking text this function has no way
+ * to know is inside a string:
+ *
+ * 1. **Never balances** — depth never returns to zero before the source
+ *    runs out of closing markers. Left untreated this masks to the end of
+ *    the file on a source with a stray opening marker inside a multi-line
+ *    string and nothing after it that happens to close it — a fabricated
+ *    absence on a file with nothing wrong with it.
+ * 2. **Balances, but only by crossing a `"""`** — the depth-tracking loop
+ *    does reach zero, but the matched span contains a `"""`, meaning the
+ *    markers that balanced it may sit on either side of a string boundary
+ *    and are not really one comment. Left untreated, real code right after
+ *    the string can get masked away as if it were still inside the
+ *    comment — see the over-masking paragraph on `maskComments`'s own doc
+ *    comment for the reproduction that first found this.
+ *
+ * Both fallbacks keep the nesting win on every comment that actually
+ * balances without crossing a string boundary, while never letting depth
+ * tracking mask further into the file's real code than a flat scan already
+ * would.
  *
  * Kept as its own function, ahead of `maskComments`'s own doc comment
  * below, so that doc comment stays attached to the function it documents —
@@ -70,7 +76,12 @@ function findNestedBlockCommentEnd(source: string, from: number): number {
       i = nextClose + 2;
     }
   }
-  return i;
+  // Depth tracking is only trustworthy while the span contains no `"""`.
+  // Quote tracking resets at every newline, so a multi-line string's contents
+  // are scanned as code; if the balanced span crossed one, the markers that
+  // balanced it may be string text, not comment syntax. Fall back to the flat
+  // answer — the same bound every other isJsLike extension already lives with.
+  return source.slice(from, i).includes('"""') ? nonNestingStop : i;
 }
 
 /**
@@ -132,35 +143,36 @@ function findNestedBlockCommentEnd(source: string, from: number): number {
  * (no `'`-delimited literal exists in Swift; raw (`#"..."#`) string forms
  * are out of scope) — the existing approximation, not a Swift-specific one.
  *
- * **A residual, bounded over-masking risk in `.swift`'s multi-line
- * `"""`-delimited strings, deliberately left unhandled rather than
- * half-fixed:** quote tracking resets at every newline, so text inside a
- * `"""` string is only protected from being read as code on the line it
- * opens on — a later line inside such a string can contain text that only
- * looks like block-comment markers and this scanner has no way to know
- * it's inside a string. What happens next depends on whether that
- * string-internal text happens to "balance" as nesting-shaped text (a
- * coincidence, since none of it is real comment syntax):
- *   - If it does not balance — an opening marker inside the string with no
- *     further closing marker anywhere in the rest of the file, or the
- *     reverse — `findNestedBlockCommentEnd` falls back to the position a
- *     flat, non-nesting scan would find: the very first closing marker
- *     after the opening one, the same bound every other `isJsLike`
- *     extension already lives with for its own multi-line-string/template-
- *     literal blind spot. This is the specific failure mode (masking ran
- *     to the end of the file, silently dropping a real `import` after it)
- *     a six-scanner differential run against real Swift source reproduced
- *     and this fallback closes; verified against that exact input.
- *   - If it does balance — again, only by coincidence — the masked span
- *     can still run wider than a flat scan would produce, out to wherever
- *     the string-internal markers finish "closing" each other. It cannot
- *     reach past the string into a caller's real code on its own; doing
- *     that needs the string's fake markers to be miscounted together with
- *     genuine comment markers the caller's own code contains, the same
- *     "two independent malformations have to line up" shape as the
- *     pre-existing gap documented on `stripNestedContainers` in
- *     `appleconfig.ts` — not a single-input, easily-reachable defect the
- *     way the EOF case was.
+ * **A residual over-masking risk in `.swift`'s multi-line `"""`-delimited
+ * strings, deliberately left unhandled rather than half-fixed, with a
+ * provable bound rather than an assumed one:** quote tracking resets at
+ * every newline, so text inside a `"""` string is only protected from
+ * being read as code on the line it opens on — a later line inside such a
+ * string can contain text that only looks like block-comment markers and
+ * this scanner has no way to know it's inside a string. The bound after
+ * `findNestedBlockCommentEnd`'s two fallbacks (the unbalanced one, and the
+ * one added for a balanced span that crosses a `"""`): masking triggered
+ * inside an untracked multi-line string can never reach further into the
+ * file's real, live code than a flat, non-nesting scan already would — the
+ * same known blind spot every other `isJsLike` extension already lives
+ * with for its own multi-line-string/template-literal gap, no worse. This
+ * is provable directly from the fallback condition: the only way a
+ * balanced span could extend past the string's own closing `"""` into
+ * subsequent live code is for that span to contain the `"""` characters
+ * themselves, which is exactly the condition that routes it to the flat
+ * answer instead. Two concrete cases, both pinned by name in
+ * `tests/scan.test.ts`:
+ *   - A balanced span that crosses a `"""` — depth returned to zero, but
+ *     only by counting markers on both sides of a string boundary as one
+ *     comment, which they are not — falls back to the flat answer. This is
+ *     the case a six-scanner differential run against real Swift source
+ *     first reproduced as a *fabricated* `null` platform verdict on a file
+ *     that compiles and genuinely targets macOS; fixed by this fallback.
+ *   - A balanced span that stays entirely inside a string, never touching
+ *     its `"""` boundary, still masks by the nesting rule rather than the
+ *     flat one — which can mask more of that string's own content than a
+ *     flat scan would, but, per the proof above, cannot on its own reach
+ *     the live code after the string closes.
  * Not fixed further because doing so correctly needs the file read
  * top-to-bottom as one string-aware pass instead of the current
  * per-character scan with per-line quote reset — a larger change than
