@@ -6,6 +6,7 @@ import { CATEGORIES, PLATFORMS, DESIGN_LANGUAGES, REVIEW_MAP, FOCUS_MAP, ROADMAP
 import { loadRecipes } from "../dist/recipes.js";
 import { loadExamples } from "../dist/examples.js";
 import { securityReport, HEADER_SOURCE_TOKENS, HEADER_SOURCES_SENTENCE } from "../dist/security.js";
+import { liveToolNames } from "./helpers/liveServer.js";
 
 // Structural guarantees for the curated content. These are the checks that
 // would have caught the v0.14.0 bug where roadmaps referenced pattern docs by
@@ -15,21 +16,24 @@ import { securityReport, HEADER_SOURCE_TOKENS, HEADER_SOURCES_SENTENCE } from ".
 const root = join(__dirname, "..");
 const docs = loadKnowledge(join(root, "knowledge"));
 
-/** Mirrors the registered tool set; server.test.ts proves this list is complete. */
-const TOOL_NAMES = new Set([
-  "list_design_knowledge", "search_design_knowledge", "get_design_doc", "get_component_guidance",
-  "get_design_language", "design_review_checklist", "get_design_roadmap", "seo_geo_guide",
-  "get_design_examples", "knowledge_freshness", "generate_design_tokens", "audit_accessibility",
-  "get_component_recipe", "generate_color_system", "suggest_font_pairing", "fix_contrast",
-  "suggest_icon_library", "generate_type_scale", "generate_elevation_system", "generate_motion",
-  "design_lint", "audit_ux_copy", "create_design_system", "audit_design_system",
-  "generate_layout_system", "compare_design_languages", "measure_screenshot", "import_design_tokens", "audit_project",
-  "audit_security", "audit_generic_design", "audit_seo_geo", "audit_performance",
-]);
+/** Derived, never mirrored: a hand-written copy went stale at 33 while 34 shipped,
+ *  under a comment claiming another file proved it complete. Nothing did. */
+const TOOL_NAMES = new Set(await liveToolNames());
+
+/**
+ * The document count, in one place. `loads every markdown document` pins it to
+ * what `knowledge/` actually holds, and the README checks read it from here, so
+ * a package that adds a document updates this line and nothing else — and a
+ * package that loses one is told by both checks at once.
+ */
+const DOC_COUNT = 96;
 
 describe("knowledge base metadata", () => {
   it("loads every markdown document", () => {
-    expect(docs.length).toBeGreaterThanOrEqual(83);
+    // An equality, not a floor. The floor sat at 83 through thirteen documents
+    // being added and could not have noticed one being deleted, which is the
+    // failure it was written to catch.
+    expect(docs.length).toBe(DOC_COUNT);
   });
 
   it("has unique ids", () => {
@@ -285,6 +289,40 @@ describe("skills distribution", () => {
     const readme = readFileSync(join(skillsDir, "README.md"), "utf8");
     const missing = names.filter((n) => !readme.includes(n));
     expect(missing).toEqual([]);
+  });
+
+  it("counts every skill directory, not at least five of them", () => {
+    const rootReadme = readFileSync(join(root, "README.md"), "utf8");
+    const skillsReadme = readFileSync(join(skillsDir, "README.md"), "utf8");
+    // A floor passed while the root README said five and six shipped. An
+    // equality is the only shape that notices a seventh skill being added.
+    for (const [label, text] of [["README.md", rootReadme], ["skills/README.md", skillsReadme]]) {
+      const stated = /\b(?:(\d+)|(Five|Six|Seven|Eight|Nine|Ten))\s+skills\b/i.exec(text);
+      expect(stated, `${label} states no skill count`).toBeTruthy();
+      const WORDS: Record<string, number> = { five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+      const claimed = stated![1] ? Number(stated![1]) : WORDS[stated![2].toLowerCase()];
+      expect(claimed, `${label} skill count`).toBe(names.length);
+    }
+  });
+
+  it("names every skill in both READMEs", () => {
+    for (const [label, path] of [["README.md", join(root, "README.md")], ["skills/README.md", join(skillsDir, "README.md")]]) {
+      const text = readFileSync(path, "utf8");
+      expect(names.filter((n) => !text.includes(n)), label).toEqual([]);
+    }
+  });
+
+  it("states document and tool counts that match the live registry", () => {
+    const texts: [string, string][] = [
+      ["README.md", readFileSync(join(root, "README.md"), "utf8")],
+      ["skills/README.md", readFileSync(join(skillsDir, "README.md"), "utf8")],
+    ];
+    for (const [label, text] of texts) {
+      for (const m of text.matchAll(/\b(\d+)\s+(documents?|knowledge documents?|tools?)\b/g)) {
+        const expected = /tool/.test(m[2]) ? TOOL_NAMES.size : DOC_COUNT;
+        expect(Number(m[1]), `${label}: "${m[0]}"`).toBe(expected);
+      }
+    }
   });
 });
 

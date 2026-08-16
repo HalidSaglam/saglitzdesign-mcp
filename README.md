@@ -236,10 +236,10 @@ skills into any [skills](https://skills.sh)-compatible agent:
 npx skills@latest add HalidSaglam/saglitzdesign-mcp
 ```
 
-Five skills — `clean-interface-design`, `landing-page-conversion`,
-`design-review`, `motion-and-animation`, `apple-platform-design` — each
-standalone guidance that also points to the full MCP for depth. See
-[`skills/`](skills/).
+Six skills — `clean-interface-design`, `landing-page-conversion`,
+`design-review`, `motion-and-animation`, `apple-platform-design`,
+`design-system-audit` — each standalone guidance that also points to the full
+MCP for depth. See [`skills/`](skills/).
 
 ### Dev & debug
 
