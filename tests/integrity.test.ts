@@ -284,6 +284,35 @@ describe("skills distribution", () => {
     }
   });
 
+  /**
+   * The `sources:` frontmatter binds a skill to the base documents it condenses,
+   * so a later check can hold the skill against something that moves.
+   *
+   * What this asserts is narrow: every id a skill names resolves to a document
+   * `loadKnowledge` returns, and every skill names at least one. It does not
+   * judge whether the list is the *right* list — from the file alone, an id the
+   * skill should have named but did not is indistinguishable from a skill that
+   * genuinely condenses fewer documents, so this check cannot separate them.
+   *
+   * The declaration is judged by the ids it parses to, not by the presence of
+   * the line: a missing field, an empty one, and one holding only separators all
+   * declare nothing, and all report the same way. `.filter(Boolean)` alone would
+   * have passed the last two by looping zero times and finding no problem.
+   */
+  it("binds every skill to knowledge documents that exist", () => {
+    const ids = new Set(docs.map((d) => d.id));
+    const problems: string[] = [];
+    for (const n of names) {
+      const declared = read(n).match(/^sources: (.+)$/m)?.[1] ?? "";
+      const named = declared.split(",").map((s) => s.trim()).filter(Boolean);
+      if (named.length === 0) { problems.push(`${n}: no sources declared`); continue; }
+      for (const id of named) {
+        if (!ids.has(id)) problems.push(`${n} → ${id}`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
   it("never points at a tool that does not exist", () => {
     const phantom: string[] = [];
     for (const n of names) {

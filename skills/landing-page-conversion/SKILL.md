@@ -1,6 +1,7 @@
 ---
 name: landing-page-conversion
 description: Build or improve landing pages and marketing sites that convert, not just look good. Use when writing a hero, structuring a page, choosing a CTA, adding social proof, or diagnosing why a page isn't converting. Covers positioning, copy-first workflow, the above-the-fold contract, page narrative, CTAs, trust, and pricing — grounded in StoryBrand, Cialdini, and conversion research.
+sources: conversion-ux, positioning-messaging, value-proposition-jtbd, storybrand-copywriting, influence-persuasion, ethical-design, growth-frameworks, web-hero-sections, forms-inputs
 ---
 
 # Landing Page Conversion

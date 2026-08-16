@@ -1,6 +1,7 @@
 ---
 name: apple-platform-design
 description: Design iOS, iPadOS, and macOS apps that feel native, in the Liquid Glass era. Use when building or reviewing Apple-platform UI — navigation, controls, sheets, materials, typography, haptics — or deciding what must change when porting from web/Android. Covers Apple's HIG, the Liquid Glass design language (iOS 26 / macOS Tahoe), fluid-interface principles, and "Mac-assed" native conventions.
+sources: apple-hig-liquid-glass, ios-app-design, macos-app-design, wwdc-design-principles, apple-accessibility, apple-shipping-readiness
 ---
 
 # Apple Platform Design

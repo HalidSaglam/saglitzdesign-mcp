@@ -1,6 +1,7 @@
 ---
 name: design-system-audit
 description: Find out whether a codebase actually has a design system or is re-deciding the basics on every screen — count the distinct colors, sizes, radii, shadows and spacings, collapse the near-duplicates, and migrate onto tokens. Use when inheriting a codebase, before a redesign, when a UI "feels inconsistent but I can't say why", or when someone claims a design system exists and you want to verify it.
+sources: design-systems-methodology, design-tokens-theming, design-engineering, theming-off-the-shelf, color-systems, spacing-layout, typography, visual-craft-standards
 ---
 
 # Design System Audit

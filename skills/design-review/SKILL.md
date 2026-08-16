@@ -1,6 +1,7 @@
 ---
 name: design-review
 description: Critique a UI (screenshot, live page, or code) like a rigorous senior designer — grounded, reproducible, element-citing, and ranked by severity. Use when someone asks "review this design", "what's wrong with this screen", or wants feedback on a mockup/site/app. Avoids the failure modes of typical AI critique (hallucinated issues, padded lists, critiquing the description instead of the pixels).
+sources: design-critique-scoring, principles-heuristics, accessibility, visual-craft-standards, clean-app-design, ux-writing, motion-microinteractions
 ---
 
 # Design Review
