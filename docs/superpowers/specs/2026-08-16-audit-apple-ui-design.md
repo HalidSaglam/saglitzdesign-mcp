@@ -140,10 +140,13 @@ tool. A sentence that cannot be demonstrated is not written.
 
 ## Testing
 
-- **The repository's nine SwiftUI recipes are a free correct-work matrix.** They
-  are written to the standard the knowledge documents describe —
-  `accessibilityElement(children: .combine)`, `accessibilityReduceMotion`,
-  44 pt targets. Every one must return zero findings.
+- **The repository's four SwiftUI recipes are a free correct-work matrix** —
+  `button`, `card`, `input`, `list-row`. They are written to the standard the
+  knowledge documents describe: `accessibilityElement(children: .combine)`,
+  `accessibilityReduceMotion`, 44 pt targets, border **or** shadow but never
+  both. Every one must return zero findings. Four is thin for a matrix, so the
+  deliberately-broken project and the platform fixtures below carry more of the
+  weight than they would on the web side.
 - **A deliberately broken project** asserting a specific finding set, so the
   matrix proves it can tell the difference.
 - **One iOS project and one macOS project**, each asserting that the other
