@@ -21,10 +21,18 @@ const docs = loadKnowledge(join(root, "knowledge"));
 const TOOL_NAMES = new Set(await liveToolNames());
 
 /**
- * The document count, in one place. `loads every markdown document` pins it to
- * what `knowledge/` actually holds, and the README checks read it from here, so
- * a package that adds a document updates this line and nothing else — and a
- * package that loses one is told by both checks at once.
+ * The document count this suite asserts, in one place rather than repeated at
+ * each assertion. `loads every markdown document` pins it to what `knowledge/`
+ * actually holds, and the README count check reads the same constant, so the
+ * two can never disagree about what the number is.
+ *
+ * It is not a single point of edit, and an earlier draft of this comment said
+ * it was. Adding a document means editing this line *and* every README sentence
+ * stating the count — today `README.md:12`, `:53`, `:69`, `:159` and
+ * `skills/README.md:11`. That is the coupling working as intended: the point of
+ * the check is that published prose cannot drift from the base. The checks name
+ * every sentence they want changed, quoting the matched text, so the edit is
+ * enumerated rather than hunted for.
  */
 const DOC_COUNT = 96;
 
@@ -291,17 +299,28 @@ describe("skills distribution", () => {
     expect(missing).toEqual([]);
   });
 
+  const WORDS: Record<string, number> = { five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+  const SKILL_COUNT = /\b(?:(\d+)|(five|six|seven|eight|nine|ten))\s+skills\b/gi;
+
   it("counts every skill directory, not at least five of them", () => {
     const rootReadme = readFileSync(join(root, "README.md"), "utf8");
     const skillsReadme = readFileSync(join(skillsDir, "README.md"), "utf8");
     // A floor passed while the root README said five and six shipped. An
     // equality is the only shape that notices a seventh skill being added.
+    //
+    // Every occurrence, not the first: a page can state the count twice, and a
+    // draft of this check that stopped at the first match let a second, wrong
+    // sentence ("All nine skills are MIT-licensed") sit below a correct one.
     for (const [label, text] of [["README.md", rootReadme], ["skills/README.md", skillsReadme]]) {
-      const stated = /\b(?:(\d+)|(Five|Six|Seven|Eight|Nine|Ten))\s+skills\b/i.exec(text);
-      expect(stated, `${label} states no skill count`).toBeTruthy();
-      const WORDS: Record<string, number> = { five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
-      const claimed = stated![1] ? Number(stated![1]) : WORDS[stated![2].toLowerCase()];
-      expect(claimed, `${label} skill count`).toBe(names.length);
+      const stated = [...text.matchAll(SKILL_COUNT)];
+      expect(stated.length, `${label} states no skill count`).toBeGreaterThan(0);
+      for (const m of stated) {
+        // `m[1] !== undefined`, not `m[1] ?`: "0 skills" is a number this should
+        // assert on, and a truthiness test sends it down the word branch to
+        // throw a TypeError instead.
+        const claimed = m[1] !== undefined ? Number(m[1]) : WORDS[m[2].toLowerCase()];
+        expect(claimed, `${label}: "${m[0]}"`).toBe(names.length);
+      }
     }
   });
 
@@ -312,15 +331,103 @@ describe("skills distribution", () => {
     }
   });
 
+  /**
+   * Every place a README states how many documents or how many tools ship.
+   *
+   * Two shapes, because the pages write the count both ways:
+   *
+   *   "96 curated knowledge documents"                number, then the noun,
+   *   "34 tools"                                      with up to three words of
+   *   "Of the 96 documents"                           description in between
+   *
+   *   "One knowledge document in full (96 of them)"   noun first, count in a
+   *                                                   trailing parenthesis
+   *
+   * The first draft of this guard required the digit to sit directly against
+   * the noun. It therefore read every count sentence on the page *except the
+   * banner* — the first number a reader sees — because the word `curated` sits
+   * in that gap, and a review changed 96 to 83 there with the suite still
+   * green. The lesson is the one this whole task is about: the draft was
+   * checked for numbers it wrongly caught and never for count statements it
+   * missed.
+   *
+   * This is a regression guard over these two files, not a general reader of
+   * English. Counts written in words ("ninety-six documents"), across a
+   * sentence boundary, or with more than three words of description before the
+   * noun are not seen; the non-vacuity assertion below is what keeps a
+   * rewritten sentence from silently leaving the guard's view.
+   */
+  const COUNT_BEFORE_NOUN = /\b(\d+)(?:\s+[\w-]+){0,3}?\s+(documents?|tools?)\b/g;
+  const COUNT_AFTER_NOUN = /\b(documents?|tools?)\b[^.\n]{0,80}?\((\d+) of them\)/g;
+
+  /**
+   * "The other 85 documents are curated but not yet checked" is a true sentence
+   * about *part* of the set, and a guard that forces every number beside the
+   * noun to equal the total makes it unwritable. Partitives are recognised from
+   * the sentence's own words rather than from a marker an author could attach
+   * to anything — and they are not waved through: a part is still asserted to
+   * be smaller than the whole, so the exemption cannot be used to state a wrong
+   * total in partitive clothing.
+   */
+  const PARTITIVE = /\b(?:other|another|remaining|rest\s+of(?:\s+the)?)\s*$/i;
+
+  type CountClaim = { kind: "documents" | "tools"; number: number; matched: string; partitive: boolean };
+
+  const countClaims = (text: string): CountClaim[] => {
+    const claims: CountClaim[] = [];
+    for (const m of text.matchAll(COUNT_BEFORE_NOUN)) {
+      claims.push({
+        kind: /tool/.test(m[2]) ? "tools" : "documents",
+        number: Number(m[1]),
+        matched: m[0],
+        partitive: PARTITIVE.test(text.slice(Math.max(0, m.index! - 24), m.index!)),
+      });
+    }
+    for (const m of text.matchAll(COUNT_AFTER_NOUN)) {
+      claims.push({
+        kind: /tool/.test(m[1]) ? "tools" : "documents",
+        number: Number(m[2]),
+        matched: m[0],
+        partitive: false,
+      });
+    }
+    return claims;
+  };
+
   it("states document and tool counts that match the live registry", () => {
     const texts: [string, string][] = [
       ["README.md", readFileSync(join(root, "README.md"), "utf8")],
       ["skills/README.md", readFileSync(join(skillsDir, "README.md"), "utf8")],
     ];
     for (const [label, text] of texts) {
-      for (const m of text.matchAll(/\b(\d+)\s+(documents?|knowledge documents?|tools?)\b/g)) {
-        const expected = /tool/.test(m[2]) ? TOOL_NAMES.size : DOC_COUNT;
-        expect(Number(m[1]), `${label}: "${m[0]}"`).toBe(expected);
+      const claims = countClaims(text);
+      // `matchAll` over nothing asserts nothing, so a page that stops stating a
+      // count — by deleting the number, or by rewording past the patterns —
+      // would go quiet rather than fail. Both READMEs advertise both numbers
+      // today; requiring them here is what turns "the count is right" into "the
+      // count is stated and right", the same non-vacuity `server.test.ts` keeps
+      // over the README's tool count.
+      //
+      // Per file, not per sentence: README.md states its document count in four
+      // places, and emptying one of them leaves this satisfied by the other
+      // three. What it rules out is a file going silent altogether, which is
+      // how skills/README.md could otherwise drop "34 tools" and take the
+      // guard with it. Pinning individual sentences would mean naming them
+      // here, and a list of sentences is the hand-written mirror this task
+      // exists to delete.
+      for (const kind of ["documents", "tools"] as const) {
+        expect(
+          claims.filter((c) => c.kind === kind && !c.partitive).length,
+          `${label} no longer states a ${kind} count in a shape this check can see`,
+        ).toBeGreaterThan(0);
+      }
+      for (const c of claims) {
+        const total = c.kind === "tools" ? TOOL_NAMES.size : DOC_COUNT;
+        if (c.partitive) {
+          expect(c.number, `${label}: "${c.matched}" — a part larger than the whole`).toBeLessThan(total);
+        } else {
+          expect(c.number, `${label}: "${c.matched}"`).toBe(total);
+        }
       }
     }
   });

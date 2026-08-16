@@ -8,6 +8,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { z } from "zod";
 import { encodePng, canvasRows } from "./helpers/pngFixture.js";
+import { connectLiveServer } from "./helpers/liveServer.js";
 
 // End-to-end smoke test over the real stdio server. Everything else in the
 // suite tests pure functions; this is the layer that proves the 23 tools are
@@ -140,13 +141,10 @@ let transport: StdioClientTransport;
 let toolNames: string[] = [];
 
 beforeAll(async () => {
-  transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [join(root, "dist", "index.js")],
-    stderr: "ignore",
-  });
-  client = new Client({ name: "saglitzdesign-tests", version: "1.0.0" }, { capabilities: {} });
-  await client.connect(transport);
+  // Spawned through the shared helper rather than inline, so `liveToolNames`
+  // (used by integrity.test.ts to derive the tool set) and this file boot the
+  // server exactly one way.
+  ({ client, transport } = await connectLiveServer("saglitzdesign-tests"));
   toolNames = (await client.listTools()).tools.map((t) => t.name);
 }, 30_000);
 
