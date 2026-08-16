@@ -489,6 +489,39 @@ describe("hardcoded-color-literal", () => {
   it("names the initialiser it matched, so the reader knows which one fired", () => {
     expect(swift(`let a = #colorLiteral(red: 1, green: 0, blue: 0, alpha: 1)`)[0].message).toContain("#colorLiteral");
   });
+
+  // `COLOR_LITERAL` allows `\s` between `Color(`, `red` and `:`, and `\s`
+  // matches a newline — so the Xcode/SwiftFormat idiom of wrapping a long
+  // argument list used to put a raw newline inside the quoted text. The
+  // markdown bullet broke at it and `findings[].message` carried it on the
+  // wire.
+  it.each([
+    ["Color", "SwiftUI"],
+    ["UIColor", "UIKit"],
+    ["NSColor", "AppKit"],
+  ])("quotes a wrapped %s( initialiser on one line, with no newline in the message", (type) => {
+    const found = swift(`let brand = ${type}(\n    red: 0.10,\n    green: 0.20,\n    blue: 0.30\n)\n`);
+    expect(found).toHaveLength(1);
+    expect(found[0].message).not.toMatch(/[\n\r]/);
+    expect(found[0].message).toContain(`\`${type}(red:…)\``);
+    // The line the match starts on, unchanged by the collapsing.
+    expect(found[0].line).toBe(1);
+  });
+
+  it("renders a wrapped initialiser as one markdown bullet", () => {
+    const root = project({ "Sources/V.swift": `import SwiftUI\nlet brand = Color(\n    red: 0.10,\n    green: 0.20,\n    blue: 0.30\n)\n` });
+    const r = appleReport(root);
+    const bullet = r.text.split("\n").find((l) => l.includes("hardcoded-color-literal"))!;
+    expect(bullet).toContain("`Color(red:…)` starts on this line.");
+    // The whole sentence is on the bullet's own line rather than spilling into
+    // a sibling paragraph after it.
+    expect(bullet).toContain("resolving one from a resource");
+    expect(r.structured.findings[0].message).not.toMatch(/[\n\r]/);
+  });
+
+  it("still quotes an unwrapped initialiser exactly as it always did", () => {
+    expect(swift(`let a = Color(red: 0.1, green: 0.2, blue: 0.3)`)[0].message).toContain("`Color(red:…)`");
+  });
 });
 
 describe("symbol-as-only-button-label", () => {

@@ -534,12 +534,21 @@ export function appleSwiftRules(
     // ── hardcoded-color-literal ─────────────────────────────────────────────
     COLOR_LITERAL.lastIndex = 0;
     for (let m = COLOR_LITERAL.exec(masked); m; m = COLOR_LITERAL.exec(masked)) {
-      const written = m[0].startsWith("#") ? "#colorLiteral(…)" : `${m[0].replace(/\s*$/, "")}…)`;
+      // Every run of whitespace inside the match is removed, not just the
+      // trailing one. `COLOR_LITERAL` allows `\s` between `Color(`, `red` and
+      // `:`, and `\s` matches a newline — so the Xcode/SwiftFormat idiom of
+      // wrapping a long argument list put a raw newline inside the message.
+      // The markdown bullet broke at it (everything after rendered as a
+      // sibling paragraph outside the list) and `findings[].message` carried
+      // it on the wire. Collapsing gives the canonical single-line spelling of
+      // the form, `Color(red:…)`, from either layout; the match and the line
+      // number were already right and are untouched.
+      const written = m[0].startsWith("#") ? "#colorLiteral(…)" : `${m[0].replace(/\s+/g, "")}…)`;
       found.push({
         line: lineOf(m.index),
         severity: "info",
         rule: "hardcoded-color-literal",
-        message: `\`${written}\` appears on this line. That form writes a colour as numbers rather than resolving one from a resource, and a colour in an Apple app is normally a resource: \`Color(_:bundle:)\` loads "a color from a color set stored in an Asset Catalog", and "the system determines which color within the set to use based on the environment at render time". A literal has no light, dark or increased-contrast variant to resolve to, so it renders the same value in every appearance and under Increase Contrast. This says nothing about the colour's contrast ratio — that depends on what it is drawn against, which this line does not carry.`,
+        message: `\`${written}\` starts on this line. That form writes a colour as numbers rather than resolving one from a resource, and a colour in an Apple app is normally a resource: \`Color(_:bundle:)\` loads "a color from a color set stored in an Asset Catalog", and "the system determines which color within the set to use based on the environment at render time". A literal has no light, dark or increased-contrast variant to resolve to, so it renders the same value in every appearance and under Increase Contrast. This says nothing about the colour's contrast ratio — that depends on what it is drawn against, which this line does not carry.`,
         fix: `Move the value into a colorset in \`Assets.xcassets\` and reference it as \`Color("Name")\`, giving it light, dark and increased-contrast variants — or reach for a system semantic colour (\`.primary\`, \`.secondary\`, \`labelColor\`, \`windowBackgroundColor\`, \`controlAccentColor\`), which carries those variants already and follows the user's accent. If this literal is deliberately fixed — a brand swatch reproduced exactly, a chart series, a value that must not adapt — it is doing what it was written to do.`,
         doc: "apple-accessibility",
       });
