@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readPlist, readBuildSettingKeys, readEntitlements, readAssetCatalog } from "../dist/appleconfig.js";
+import { readPlist, readBuildSettingKeys, readEntitlements, readAssetCatalog, inferPlatform } from "../dist/appleconfig.js";
 
 describe("readPlist", () => {
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -142,5 +142,47 @@ describe("readAssetCatalog", () => {
       { path: "Assets.xcassets/Broken.colorset/Contents.json", source: "{ not json" },
     ]);
     expect(sets).toEqual([]);
+  });
+});
+
+describe("inferPlatform", () => {
+  const swift = (s: string) => [{ path: "App.swift", source: s }];
+  const none = { keys: new Map(), entitlements: new Set<string>(), swiftSources: [] };
+
+  it("reads sandbox as macOS", () => {
+    const v = inferPlatform({ ...none, entitlements: new Set(["com.apple.security.app-sandbox"]) });
+    expect(v.platform).toBe("macos");
+    expect(v.signals).toContain("com.apple.security.app-sandbox in entitlements");
+  });
+
+  it("reads an iOS-only plist key as iOS", () => {
+    expect(inferPlatform({ ...none, keys: new Map([["UIRequiresFullScreen", true]]) }).platform).toBe("ios");
+  });
+
+  it("reads imports when configuration says nothing", () => {
+    expect(inferPlatform({ ...none, swiftSources: swift("import AppKit\n") }).platform).toBe("macos");
+    expect(inferPlatform({ ...none, swiftSources: swift("import UIKit\n") }).platform).toBe("ios");
+  });
+
+  it("returns null and says so when signals conflict", () => {
+    const v = inferPlatform({
+      keys: new Map([["LSMinimumSystemVersion", "13.0"]]),
+      entitlements: new Set(),
+      swiftSources: swift("import UIKit\n"),
+    });
+    expect(v.platform).toBeNull();
+    expect(v.conflicted).toBe(true);
+    expect(v.signals.length).toBeGreaterThan(1);
+  });
+
+  it("returns null with no signals at all rather than guessing", () => {
+    const v = inferPlatform({ ...none, swiftSources: swift("import SwiftUI\n") });
+    expect(v.platform).toBeNull();
+    expect(v.conflicted).toBe(false);
+    expect(v.signals).toEqual([]);
+  });
+
+  it("does not read `import SwiftUI` as either platform", () => {
+    expect(inferPlatform({ ...none, swiftSources: swift("import SwiftUI\nimport Foundation\n") }).signals).toEqual([]);
   });
 });

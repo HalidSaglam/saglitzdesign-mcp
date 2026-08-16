@@ -77,8 +77,14 @@ function findMatchingClose(source: string, from: number, tag: string): number | 
  * indistinguishable from one another — a wrongly populated key, not a
  * merely incomplete one. Self-closed containers (`<array/>`) hold nothing
  * and are left as-is; a container missing its matching close is left in
- * place too rather than guessed at, since that only happens on malformed
- * input the outer scan will also stop on shortly after.
+ * place too, along with the rest of the body, rather than guessed at. That
+ * does not, on its own, guarantee the caller's outer scan stops shortly
+ * after: an unrelated stray close tag later in the document can rebalance
+ * the outer scan's own counting and let it run to completion, in which case
+ * whatever this function left unstripped is still there for a later
+ * `<string>` scan to pick up. Reaching that needs two independent
+ * malformations to line up; it is a known gap, not one this function
+ * guards against.
  */
 function stripNestedContainers(body: string): string {
   let out = "";
@@ -321,4 +327,133 @@ export function readAssetCatalog(files: Array<{ path: string; source: string }>)
     out.push({ path: file.path, hasDarkVariant });
   }
   return out;
+}
+
+// ── platform inference ──────────────────────────────────────────────────────
+
+export type ApplePlatform = "ios" | "macos";
+
+export interface PlatformVerdict {
+  platform: ApplePlatform | null;
+  /** Every signal seen, named, whichever way it pointed. */
+  signals: string[];
+  /** Set when signals pointed both ways. */
+  conflicted: boolean;
+}
+
+/**
+ * Named so the exact wording that lands in `signals` — and, later, in a
+ * disclosure list — is defined once, next to the check it names.
+ */
+const SIGNAL = {
+  sandbox: "com.apple.security.app-sandbox in entitlements",
+  lsMinimumSystemVersion: "LSMinimumSystemVersion key present",
+  lsUIElement: "LSUIElement key present",
+  iosOrientation: "UIRequiresFullScreen or UISupportedInterfaceOrientations key present",
+  iosLaunchScreen: "UILaunchScreen / UILaunchStoryboardName key present",
+  importAppKit: "import AppKit in any Swift file",
+  importUIKit: "import UIKit in any Swift file",
+  conflictingOsChecks: "#if os(macOS) and #if os(iOS) both present",
+} as const;
+
+/**
+ * Decides which Apple platform a project targets from the configuration
+ * Task 1's readers already pulled out, or admits it cannot.
+ *
+ * Most of what an Apple UI audit knows is platform-scoped — macOS does not
+ * support Dynamic Type at all, a tap target is 44×44 on iOS but 28×28 (with
+ * a 20×20 floor) in macOS's control-size table, and a tab bar is normal
+ * chrome on iOS but out of place on macOS — so guessing wrong does not
+ * merely miss a finding, it fires a rule on code that is correct for its
+ * actual platform. `platform: null` is therefore not a failure mode this
+ * function tries to avoid; it is the correct answer whenever the signals
+ * available do not settle the question, and every platform-specific rule
+ * downstream is expected to stay silent when it sees one.
+ *
+ * Every signal checked is recorded in `signals` by name — win, lose, or
+ * draw — because a later disclosure of "why we could not tell" and a
+ * reader's trust in a "macos"/"ios" verdict both rest on seeing the full
+ * set of evidence, not just the part that decided it.
+ *
+ * The verdict is a set membership test, not a vote: if any signal points to
+ * macOS and any other points to iOS, the answer is `null` with
+ * `conflicted: true`, regardless of how many signals landed on each side.
+ * Two weak iOS signals do not outweigh one strong macOS one — counting them
+ * against each other would be a guess dressed up as a measurement, exactly
+ * the kind of confident wrong answer the readers in this file already
+ * refuse to produce for a single unreadable surface.
+ *
+ * `#if os(macOS)` and `#if os(iOS)` are read only as a pair: by themselves
+ * neither says anything about which platform the *project* targets (both
+ * branches of a `#if` commonly exist in code that is itself
+ * platform-agnostic), but both present together names conditional
+ * compilation for two platforms at once, which is direct evidence the
+ * question this function is asking does not have one answer for this
+ * project — so it is recorded as its own signal, pointing straight at
+ * `conflicted`, rather than being folded into the macOS/iOS tally.
+ */
+export function inferPlatform(input: {
+  keys: Map<string, string | boolean | string[]>;
+  entitlements: Set<string>;
+  swiftSources: Array<{ path: string; source: string }>;
+}): PlatformVerdict {
+  const signals: string[] = [];
+  const pointsTo = new Set<ApplePlatform>();
+  let conflicted = false;
+
+  if (input.entitlements.has("com.apple.security.app-sandbox")) {
+    signals.push(SIGNAL.sandbox);
+    pointsTo.add("macos");
+  }
+  if (input.keys.has("LSMinimumSystemVersion")) {
+    signals.push(SIGNAL.lsMinimumSystemVersion);
+    pointsTo.add("macos");
+  }
+  if (input.keys.has("LSUIElement")) {
+    signals.push(SIGNAL.lsUIElement);
+    pointsTo.add("macos");
+  }
+  if (input.keys.has("UIRequiresFullScreen") || input.keys.has("UISupportedInterfaceOrientations")) {
+    signals.push(SIGNAL.iosOrientation);
+    pointsTo.add("ios");
+  }
+  if (input.keys.has("UILaunchScreen") || input.keys.has("UILaunchStoryboardName")) {
+    signals.push(SIGNAL.iosLaunchScreen);
+    pointsTo.add("ios");
+  }
+
+  let sawAppKit = false;
+  let sawUIKit = false;
+  let sawOsMacOS = false;
+  let sawOsIOS = false;
+  for (const file of input.swiftSources) {
+    if (/(^|\n)\s*(@testable\s+)?import\s+AppKit\b/.test(file.source)) sawAppKit = true;
+    if (/(^|\n)\s*(@testable\s+)?import\s+UIKit\b/.test(file.source)) sawUIKit = true;
+    if (/#if\s+os\(macOS\)/.test(file.source)) sawOsMacOS = true;
+    if (/#if\s+os\(iOS\)/.test(file.source)) sawOsIOS = true;
+  }
+  if (sawAppKit) {
+    signals.push(SIGNAL.importAppKit);
+    pointsTo.add("macos");
+  }
+  if (sawUIKit) {
+    signals.push(SIGNAL.importUIKit);
+    pointsTo.add("ios");
+  }
+  if (sawOsMacOS && sawOsIOS) {
+    signals.push(SIGNAL.conflictingOsChecks);
+    conflicted = true;
+  }
+
+  if (pointsTo.has("macos") && pointsTo.has("ios")) conflicted = true;
+
+  const platform: ApplePlatform | null = conflicted
+    ? null
+    : pointsTo.has("macos")
+      ? "macos"
+      : pointsTo.has("ios")
+        ? "ios"
+        : null;
+
+  return { platform, signals, conflicted };
 }
