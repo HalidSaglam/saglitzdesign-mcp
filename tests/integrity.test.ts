@@ -30,9 +30,12 @@ const TOOL_NAMES = new Set(await liveToolNames());
  * it was. Adding a document means editing this line *and* every README sentence
  * stating the count — today `README.md:12`, `:53`, `:69`, `:159` and
  * `skills/README.md:11`. That is the coupling working as intended: the point of
- * the check is that published prose cannot drift from the base. The checks name
- * every sentence they want changed, quoting the matched text, so the edit is
- * enumerated rather than hunted for.
+ * the check is that published prose cannot drift from the base.
+ *
+ * Bumping this number reports all of those sentences in one failure, each
+ * quoted — `states document and tool counts` collects offenders rather than
+ * asserting inside its loop, precisely so the edit is enumerated in one run
+ * instead of serialized across one re-run per sentence.
  */
 const DOC_COUNT = 96;
 
@@ -343,20 +346,44 @@ describe("skills distribution", () => {
    *   "One knowledge document in full (96 of them)"   noun first, count in a
    *                                                   trailing parenthesis
    *
-   * The first draft of this guard required the digit to sit directly against
-   * the noun. It therefore read every count sentence on the page *except the
-   * banner* — the first number a reader sees — because the word `curated` sits
-   * in that gap, and a review changed 96 to 83 there with the suite still
-   * green. The lesson is the one this whole task is about: the draft was
-   * checked for numbers it wrongly caught and never for count statements it
-   * missed.
+   * The first draft required the digit to sit directly against the noun, and so
+   * missed two of the seven count statements on these pages — the banner at
+   * `README.md:12`, the first number a reader sees, and the resource table's
+   * `(96 of them)` at `:159`. A review changed both to 83 with the suite still
+   * green. The second draft widened the gap but spelled it `[\w-]+`, which
+   * admits neither `*` nor `,`, so `**83** curated knowledge documents` and
+   * `83 curated, versioned knowledge documents` both dropped back out of view
+   * — a *false* number surviving, not merely an unwatched one.
    *
-   * This is a regression guard over these two files, not a general reader of
-   * English. Counts written in words ("ninety-six documents"), across a
-   * sentence boundary, or with more than three words of description before the
-   * noun are not seen; the non-vacuity assertion below is what keeps a
-   * rewritten sentence from silently leaving the guard's view.
+   * The lesson each time was the same, and is the one this whole task is about:
+   * the draft was checked for numbers it wrongly caught and never for count
+   * statements it missed.
+   *
+   * Hence `plain()`: emphasis, backticks, commas and dashes are punctuation,
+   * not content, and are blanked to spaces before matching — the same move
+   * `scanLine` makes further down this file, and for the same reason. Blanking
+   * rather than deleting keeps offsets aligned with the original, which is what
+   * lets the partitive look-behind read the text preceding a match.
+   *
+   * WHAT THIS DOES NOT SEE, each shape measured against these patterns rather
+   * than reasoned about. A count carrying more than three words of description
+   * before its noun ("83 curated and carefully versioned knowledge documents"),
+   * or written in words ("eighty-three curated knowledge documents"), is
+   * invisible — and a sentence reworded into either shape leaves the guard
+   * silently, *taking any wrong number in it along*. The non-vacuity assertion
+   * below does not save that case: it fires only when a whole file stops
+   * stating a count, and README.md states its document count four times.
+   *
+   * WHAT IT OVER-CATCHES, same method. Blanking punctuation lets a number bind
+   * across a clause break to a later noun: "8 workflows — the tools are
+   * separate" is reported as an "8 tools" claim. That is the cost of the
+   * blanking, and it is the cost worth paying, because it is *loud* — someone
+   * rewrites a sentence — where the failure it replaces was silent: a false 83
+   * on the banner, shipped, with the suite green.
+   *
+   * This is a regression guard over two files, not a reader of English.
    */
+  const plain = (text: string) => text.replace(/[*_`,—–]/g, " ");
   const COUNT_BEFORE_NOUN = /\b(\d+)(?:\s+[\w-]+){0,3}?\s+(documents?|tools?)\b/g;
   const COUNT_AFTER_NOUN = /\b(documents?|tools?)\b[^.\n]{0,80}?\((\d+) of them\)/g;
 
@@ -368,6 +395,11 @@ describe("skills distribution", () => {
    * to anything — and they are not waved through: a part is still asserted to
    * be smaller than the whole, so the exemption cannot be used to state a wrong
    * total in partitive clothing.
+   *
+   * It knows four words. A true subset phrased without one of them — "11
+   * documents have their sources checked", "11 of the 96 documents have …" —
+   * is read as a total and still cannot be written. That is a known cost of
+   * keeping the exemption keyed on visible grammar rather than on a marker.
    */
   const PARTITIVE = /\b(?:other|another|remaining|rest\s+of(?:\s+the)?)\s*$/i;
 
@@ -399,37 +431,44 @@ describe("skills distribution", () => {
       ["README.md", readFileSync(join(root, "README.md"), "utf8")],
       ["skills/README.md", readFileSync(join(skillsDir, "README.md"), "utf8")],
     ];
+    // Collected and asserted once, rather than a loop of `expect`s: a failing
+    // `expect` aborts the test, so a loop reports the first wrong sentence and
+    // hides the rest — a document added to the base would have to be found one
+    // re-run at a time. Every count statement on both pages is judged in one
+    // run and the whole list is printed, which is also the idiom the rest of
+    // this file uses.
+    const offenders: string[] = [];
     for (const [label, text] of texts) {
-      const claims = countClaims(text);
-      // `matchAll` over nothing asserts nothing, so a page that stops stating a
+      const claims = countClaims(plain(text));
+      // `matchAll` over nothing asserts nothing, so a file that stops stating a
       // count — by deleting the number, or by rewording past the patterns —
       // would go quiet rather than fail. Both READMEs advertise both numbers
       // today; requiring them here is what turns "the count is right" into "the
       // count is stated and right", the same non-vacuity `server.test.ts` keeps
       // over the README's tool count.
       //
-      // Per file, not per sentence: README.md states its document count in four
-      // places, and emptying one of them leaves this satisfied by the other
-      // three. What it rules out is a file going silent altogether, which is
-      // how skills/README.md could otherwise drop "34 tools" and take the
-      // guard with it. Pinning individual sentences would mean naming them
-      // here, and a list of sentences is the hand-written mirror this task
-      // exists to delete.
+      // Per file, not per sentence, and that boundary is real: this fires when
+      // skills/README.md drops "34 tools" and takes the tool guard with it, and
+      // does not fire when one of README.md's four document sentences is
+      // reworded out of view — including out of view with a wrong number in it.
+      // Pinning individual sentences would mean listing them here, and a
+      // hand-written list of sentences is the mirror this task exists to
+      // delete. The doc-block above states the shapes that escape.
       for (const kind of ["documents", "tools"] as const) {
-        expect(
-          claims.filter((c) => c.kind === kind && !c.partitive).length,
-          `${label} no longer states a ${kind} count in a shape this check can see`,
-        ).toBeGreaterThan(0);
+        if (!claims.some((c) => c.kind === kind && !c.partitive)) {
+          offenders.push(`${label}: states no ${kind} count in a shape this check can see`);
+        }
       }
       for (const c of claims) {
         const total = c.kind === "tools" ? TOOL_NAMES.size : DOC_COUNT;
         if (c.partitive) {
-          expect(c.number, `${label}: "${c.matched}" — a part larger than the whole`).toBeLessThan(total);
-        } else {
-          expect(c.number, `${label}: "${c.matched}"`).toBe(total);
+          if (c.number >= total) offenders.push(`${label}: "${c.matched}" — a part not smaller than the whole (${total})`);
+        } else if (c.number !== total) {
+          offenders.push(`${label}: "${c.matched}" — should be ${total}`);
         }
       }
     }
+    expect(offenders, "a README count no longer agrees with what ships").toEqual([]);
   });
 });
 
