@@ -359,20 +359,43 @@ describe("skills distribution", () => {
    * the draft was checked for numbers it wrongly caught and never for count
    * statements it missed.
    *
-   * Hence `plain()`: emphasis, backticks, commas and dashes are punctuation,
-   * not content, and are blanked to spaces before matching — the same move
-   * `scanLine` makes further down this file, and for the same reason. Blanking
-   * rather than deleting keeps offsets aligned with the original, which is what
-   * lets the partitive look-behind read the text preceding a match.
+   * Hence `plain()`. It normalises **exactly six marks** — `*`, `_`, backtick,
+   * `,`, em dash, en dash — and nothing else. It blanks them to spaces rather
+   * than deleting them because a mark can be the only thing separating the
+   * number from its noun: `**83**documents` blanks to `83  documents` and is
+   * read, while deleting gives `83documents` and is not. (Measured both ways;
+   * on today's files the two are indistinguishable, so this is about the
+   * sentences someone may write next. It is the same reason `scanLine` blanks
+   * further down this file.)
    *
-   * WHAT THIS DOES NOT SEE, each shape measured against these patterns rather
-   * than reasoned about. A count carrying more than three words of description
-   * before its noun ("83 curated and carefully versioned knowledge documents"),
-   * or written in words ("eighty-three curated knowledge documents"), is
-   * invisible — and a sentence reworded into either shape leaves the guard
-   * silently, *taking any wrong number in it along*. The non-vacuity assertion
-   * below does not save that case: it fires only when a whole file stops
-   * stating a count, and README.md states its document count four times.
+   * WHAT THIS DOES NOT SEE. Three classes, the first of them a rule rather than
+   * a list, because a list here would read as a boundary and is not one:
+   *
+   *   1. ANY OTHER PUNCTUATION between the number and its noun hides the count
+   *      entirely — the gap is spelled `[\w-]+`, which admits no punctuation at
+   *      all beyond the hyphen, and only those six marks are normalised away
+   *      before matching. `83 curated/versioned knowledge documents` survives
+   *      with a false 83, and that is not a contrived shape: the banner line
+   *      itself already writes `8 build/review/port workflows` in exactly that
+   *      idiom. Parentheses, quotation marks, ampersands and a markdown link
+   *      wrapped round the number behave the same way.
+   *
+   *      This is deliberately not closed by adding marks to `plain()`. Blanking
+   *      `(` and `)` would destroy `COUNT_AFTER_NOUN`'s own `(96 of them)`
+   *      anchor, and each further mark widens the clause-break over-catch below.
+   *      Treat it as a boundary to know when writing these sentences, not a gap
+   *      awaiting one more pass.
+   *
+   *   2. More than three words of description before the noun: "83 curated and
+   *      carefully versioned knowledge documents".
+   *
+   *   3. A count written in words: "eighty-three curated knowledge documents".
+   *
+   * Each of the three is measured against these patterns rather than reasoned
+   * about, and a sentence reworded into any of them leaves the guard silently,
+   * *taking any wrong number in it along*. The non-vacuity assertion below does
+   * not save that case: it fires only when a whole file stops stating a count,
+   * and README.md states its document count four times.
    *
    * WHAT IT OVER-CATCHES, same method. Blanking punctuation lets a number bind
    * across a clause break to a later noun: "8 workflows — the tools are
