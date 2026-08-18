@@ -701,10 +701,15 @@ describe("skills distribution", () => {
    * would otherwise leave the guard behind with nothing noticing. Measured both
    * ways: an absolute planted in a new `reference.md` was silent under the list
    * and is reported under the walk, and one nested at
-   * `apple-platform-design/refs/deep.md` is reported too, so the walk is not
-   * depth-one. Its boundary is the extension: `.md` only, so a `.mdx` beside a
-   * skill is not scanned — measured, and the assertion below would not notice,
-   * since it only pins the files that must be covered.
+   * `apple-platform-design/refs/deep.md` is reported too. That second one is a
+   * measurement of today's walk, not a property the clause below asserts:
+   * nothing here pins the depth. The clause names a depth-1 `README.md` and
+   * depth-2 `SKILL.md`, so a walk capped at two path segments satisfies it
+   * while missing a nested directory whole — measured green, with the absolute
+   * in `refs/deep.md` unseen. The same limit takes the other boundary: coverage
+   * keys on the `.md` extension, so a `.mdx` beside a skill is not scanned, and
+   * the clause cannot notice because it only pins the files that must be
+   * covered, never the ones that must not be missed.
    *
    * Stricter than the Apple guard in two deliberate ways, both measured rather
    * than reasoned about:
@@ -741,13 +746,20 @@ describe("skills distribution", () => {
    *      match*, which is narrower than carrying none.
    *   2. A claim split across two lines. `Apple publishes\nno guidance on this.`
    *      is silent; the scan is per line, as the corpus above is.
-   *   3. A verb outside `ABSENCE_VERBS`, which is a fixed list of sixteen
-   *      lemmas. A synonym escapes even when the sentence is plainly absolute:
+   *   3. A verb outside `ABSENCE_VERBS`, a fixed list of sixteen lemmas in 49
+   *      inflections. A synonym escapes however absolute the sentence is:
    *      `Apple offers no guidance on this.` is silent while `provides` fires,
-   *      and so are `Apple's documentation contains no minimum.`, `There is no
-   *      Apple guidance on this.` and `Nothing in Apple's docs defines a
-   *      minimum.` — the last two because they also move Apple out of the
-   *      subject position the first two forms require.
+   *      and `Apple's documentation contains no minimum.` is silent the same
+   *      way.
+   *   4. A negation that does not sit where forms 1 and 2 look for it. Both
+   *      require `no|none|nothing|nowhere` immediately *after* the verb, so
+   *      `Nothing in Apple's docs defines a minimum.` is silent even though
+   *      `defines` is in the list and does follow `Apple` — the negation is in
+   *      front of the verb instead. `Apple's docs define no minimum.` fires:
+   *      same verb, negation moved. `There is no Apple guidance on this.` is
+   *      silent for the plainer reason that no publication verb follows `Apple`
+   *      at all. Neither is a fact about which word is the grammatical subject
+   *      — see the next paragraph.
    *
    * THE `NEW_SUBJECT` GAP, which is one mechanism with two directions and is
    * the thing to understand before trusting a green run. Forms 1 and 2 allow up
@@ -755,7 +767,14 @@ describe("skills distribution", () => {
    * dead at any token in `NEW_SUBJECT` — a literal list: `.`, `the`, `its`,
    * `a`, `an`, `this`, `that`, `these`, `those`, `HIG`, `page`, `table`,
    * `section`, `guidelines`. It is not a test of whether the grammatical
-   * subject changed; it is that list of strings. So:
+   * subject changed; it is that list of strings. Nor does form 1 require Apple
+   * to be the subject, whatever its name says — all three of these fire with
+   * Apple as an object:
+   *     `The screenshots from Apple carry no watermark.`
+   *     `We wrote to Apple, who publishes no minimum.`
+   *     `A note beside Apple says nothing about it.`
+   * What the forms require is the token `Apple`, then a gap no `NEW_SUBJECT`
+   * token truncates, then a negated publication verb. Measured, all three. So:
    *
    *   LOUD, on any inflection of a `NEW_SUBJECT` noun that the list does not
    *   spell. `\bpage\b` truncates the gap and `pages` does not, so a scoped
