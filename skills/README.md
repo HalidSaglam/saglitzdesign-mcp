@@ -19,7 +19,7 @@ npx saglitzdesign-mcp
 
 ## Skills
 
-Six skills ship here, one directory each:
+Seven skills ship here, one directory each:
 
 | Skill | Use it for |
 |---|---|
@@ -29,6 +29,7 @@ Six skills ship here, one directory each:
 | **motion-and-animation** | Adding motion that feels great — easing, springs, interruptibility, the details agents get wrong. |
 | **apple-platform-design** | Designing native-feeling iOS / iPadOS / macOS apps in the Liquid Glass era. |
 | **design-system-audit** | Measuring whether a codebase has a design system or is re-deciding the basics per screen — and migrating it onto tokens. |
+| **ship-quality-gate** | Running the deterministic auditors over a real project before it ships — and reading what each one discloses it could not see. |
 
 The skills are a condensed on-ramp; the MCP server is the full system. Both are
 MIT-licensed and free.

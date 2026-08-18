@@ -13,7 +13,7 @@ Most AI design feedback guesses: it flags issues inconsistently, pads the list t
 ## Method
 
 1. **Look first, judge second.** Describe what you actually see — layout, hierarchy, the primary action, which states are shown. If you're unsure what an element is, say so; don't invent.
-2. **Apply the fixed rubric.** Score each of Nielsen's 10 heuristics 0–4 (total /40). Use the same rubric every time so scores are reproducible. Bands: 34–40 excellent, 26–33 solid, 18–25 needs work, <18 rework.
+2. **Apply the fixed rubric.** Score each of Nielsen's 10 heuristics 0–4 (total /40). Use the same rubric every time so scores are reproducible. Bands, as `design-critique-scoring` publishes them: 36–40 excellent (polish only, ship it), 28–35 good, 20–27 acceptable, 12–19 poor, 0–11 critical.
 3. **Cite specific elements.** Every finding points to a concrete element: "the secondary 'Learn more' button competes with the primary CTA — two filled buttons," not "improve hierarchy."
 4. **No padding.** Report only real issues. If the screen is genuinely good, a short list is the correct answer.
 5. **Rank by severity** P0→P3, each with one concrete fix and the rule it comes from.
