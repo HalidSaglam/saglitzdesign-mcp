@@ -342,19 +342,23 @@ describe("skills distribution", () => {
   // still scanned — against no heading, which denies. An unclosed fence
   // therefore withholds permission from everything after it rather than freezing
   // the last permission it saw. That direction is deliberate, and every clause
-  // of the fence rules below was added after an input the version without it
-  // read wrongly: three earlier versions of this matcher each let a `#` line
-  // that exists only inside a code block grant a permission to prose outside
-  // it, and one prose line that is not a fence at all cost every line after it
-  // its heading path.
+  // of the fence rules below is justified by an input this guard reads wrongly
+  // without it — each was confirmed by reverting it alone and watching that
+  // input flip. Not all of them were *added* after such an input: the `{3,}`
+  // run length has been there since fence handling was introduced. Three
+  // earlier versions of this matcher each let a `#` line that exists only
+  // inside a code block grant a permission to prose outside it, and one prose
+  // line that is not a fence at all cost every line after it its heading
+  // path.
   //
-  // The indent allowance is CommonMark's and is not a safety margin in either
-  // direction. A fence indented four spaces or more is not a fence — correctly,
-  // since CommonMark reads it as indented code — but a `#` line at column 0
-  // after it is then a heading and can grant. And a heading is recognised here
-  // only at column 0, while CommonMark allows three spaces, so `  ### macOS
-  // notes` does not withdraw the permission its parent gave. Both are measured;
-  // neither is closed.
+  // The indent allowance is CommonMark's three spaces, for headings as well as
+  // fences, and it is not a safety margin in either direction. A fence indented
+  // four spaces or more is not a fence — correctly, since CommonMark reads it
+  // as indented code — but a `#` line at column 0 after it is then a heading
+  // and can grant. The matching allowance on headings closes a gap that ran in
+  // the silent direction: while headings were recognised at column 0 only,
+  // `  ### macOS notes` did not withdraw the permission its parent gave, so two
+  // spaces of indent defeated the nested-heading rule above. Both measured.
   //
   // WHAT THIS DOES NOT CATCH, measured rather than assumed:
   //
@@ -388,7 +392,13 @@ describe("skills distribution", () => {
       scope: /\b(iOS|iPadOS|iPhone|iPad)\b/i,
       // The names this repository's headings actually use for the platform the
       // correction excluded. `\bmac\b` does not match "macOS" — no word boundary
-      // between the "c" and the "O" — so both spellings are listed.
+      // between the "c" and the "O" — so both spellings are listed. Any other
+      // word for the platform leaks, and the nearest instance is one word away
+      // from shipping: rewrite the live heading `## Liquid Glass (iOS 26 /
+      // macOS Tahoe)` to `(iOS 26 / Tahoe)` and this guard goes silent on the
+      // exact sentence it was written to catch. Measured, and in the silent
+      // direction — so an entry's `excluded` has to name every spelling the
+      // headings might use, and nothing here checks that it does.
       excluded: /\b(macOS|Mac)\b/i,
       source: "apple-accessibility",
     },
@@ -422,9 +432,17 @@ describe("skills distribution", () => {
         // `openFence` holds the whole opening run because the length clause
         // needs it.
         //
-        // §4.5 says more than this — how an info string is interpreted, how
-        // content indentation is stripped — and none of it is implemented,
-        // because all this needs to know is which lines sit inside a block.
+        // §4.5 says more than this, and the remainder splits in two. How an
+        // info string is interpreted and how content indentation is stripped do
+        // not bear on which lines sit inside a block, so nothing here needs
+        // them. **Container scoping does**, and it is not implemented: a fence
+        // opened inside a list item is closed by the end of that container,
+        // while this matcher is flat and will pair a list-item fence with a
+        // document-level one. A hand-built document doing exactly that — a
+        // parser confirms the trailing bullet is real prose outside every code
+        // block, and the `#` above it is code — is silent here. A limit stated,
+        // not closed: no skill ships a fence today, and closing it means a
+        // block-container parser rather than a line matcher.
         //
         // The info capture is deliberately not anchored with `$`: `.` does not
         // match a carriage return, so on a CRLF file an anchored capture makes
@@ -436,7 +454,7 @@ describe("skills distribution", () => {
         if (fence && openFence === null && (fence[1][0] === "~" || !info.includes("`"))) { openFence = fence[1]; outside = path; path = []; }
         else if (fence && openFence !== null && fence[1][0] === openFence[0] && fence[1].length >= openFence.length && /^[ \t]*$/.test(info)) { openFence = null; path = outside; }
         else if (openFence === null) {
-          const h = line.match(/^(#{1,6})\s/);
+          const h = line.match(/^ {0,3}(#{1,6})\s/);
           if (h) { path.length = h[1].length - 1; path[h[1].length - 1] = line; }
         }
         const where = path.filter(Boolean).join(" › ") || "(no heading)";
