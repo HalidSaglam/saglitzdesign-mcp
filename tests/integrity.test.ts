@@ -341,11 +341,12 @@ describe("skills distribution", () => {
   // neither grant a permission nor inherit one, and the lines inside a fence are
   // still scanned — against no heading, which denies. An unclosed fence
   // therefore withholds permission from everything after it rather than freezing
-  // the last permission it saw. That direction is deliberate and both halves of
-  // the close rule are load-bearing: two earlier versions each let a `#` that
-  // exists only inside a code block grant a permission to prose outside it, and
-  // each was, on its own input, weaker than the version with no fence handling
-  // at all.
+  // the last permission it saw. That direction is deliberate, and every clause
+  // of the fence rules below was added after an input the version without it
+  // read wrongly: three earlier versions of this matcher each let a `#` line
+  // that exists only inside a code block grant a permission to prose outside
+  // it, and one prose line that is not a fence at all cost every line after it
+  // its heading path.
   //
   // The indent allowance is CommonMark's and is not a safety margin in either
   // direction. A fence indented four spaces or more is not a fence — correctly,
@@ -400,15 +401,40 @@ describe("skills distribution", () => {
       let outside: string[] = [];
       let openFence: string | null = null; // the opening run itself, not just its character
       read(n).split("\n").forEach((line, i) => {
-        // CommonMark's close rule, both halves of it: a closing fence uses the
-        // character the block opened with AND is at least as long. Implementing
-        // only the character half closed a ```` block on the first ``` line
-        // *inside* it, restored the path there, and then read the `#` lines of
-        // that code as real headings — which is why `openFence` holds the whole
-        // run rather than its first character.
-        const fence = line.match(/^ {0,3}(`{3,}|~{3,})/);
-        if (fence && openFence === null) { openFence = fence[1]; outside = path; path = []; }
-        else if (fence && openFence !== null && fence[1][0] === openFence[0] && fence[1].length >= openFence.length) { openFence = null; path = outside; }
+        // CommonMark §4.5's two rules, each written out in full rather than a
+        // clause at a time — three rounds of this test shipped one more clause
+        // of these two sentences and a comment claiming the sentence was done.
+        //
+        // OPENS: a run of three or more backticks or tildes, indented at most
+        // three spaces, and — for a backtick run only — followed by text
+        // containing no backtick, because a backtick fence's info string may
+        // not contain one. Without that clause the prose line
+        // "```js `x` is a code span, not a fence" opened a block that never
+        // closed, and every line after it in the file lost its heading path.
+        //
+        // CLOSES: the same character as the opener, at least as long as it,
+        // and followed only by spaces or tabs. Each of the three matters and
+        // each was added after an input the version without it read wrongly:
+        // without the character clause a ``` closed a ~~~ block; without the
+        // length clause a ``` line *inside* a ```` block closed it; without
+        // the trailing clause a ```js line closed a ```text block, and in all
+        // three the `#` lines of that code were then read as real headings.
+        // `openFence` holds the whole opening run because the length clause
+        // needs it.
+        //
+        // §4.5 says more than this — how an info string is interpreted, how
+        // content indentation is stripped — and none of it is implemented,
+        // because all this needs to know is which lines sit inside a block.
+        //
+        // The info capture is deliberately not anchored with `$`: `.` does not
+        // match a carriage return, so on a CRLF file an anchored capture makes
+        // every fence line fail to match at all, and a `#` inside a code block
+        // becomes a heading again. Every skill is LF today; measured, not
+        // assumed — see the report.
+        const fence = line.match(/^ {0,3}(`{3,}|~{3,})(.*)/);
+        const info = fence?.[2] ?? "";
+        if (fence && openFence === null && (fence[1][0] === "~" || !info.includes("`"))) { openFence = fence[1]; outside = path; path = []; }
+        else if (fence && openFence !== null && fence[1][0] === openFence[0] && fence[1].length >= openFence.length && /^[ \t]*$/.test(info)) { openFence = null; path = outside; }
         else if (openFence === null) {
           const h = line.match(/^(#{1,6})\s/);
           if (h) { path.length = h[1].length - 1; path[h[1].length - 1] = line; }
