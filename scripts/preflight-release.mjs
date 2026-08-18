@@ -77,25 +77,29 @@ if (stale.length) {
 // marketplace entry pinned to a version the plugin no longer carries offers an
 // install that resolves to something else.
 const plugin = JSON.parse(read(".claude-plugin/plugin.json"));
-const market = JSON.parse(read("marketplace.json"));
+const market = JSON.parse(read(".claude-plugin/marketplace.json"));
+// `plugins`, not `entries`. An unrecognised key here is ignored at load time
+// rather than rejected, so a manifest listing its plugins under the wrong name
+// presents as an empty marketplace — which is why this reads the same key the
+// loader does and reports a name that matches nothing as a problem.
 const pluginVersions = [
   plugin.version,
-  ...(market.entries ?? [])
+  ...(market.plugins ?? [])
     .filter((e) => e.name === plugin.name)
     .map((e) => e.version),
 ];
 const pluginStale = pluginVersions.filter((v) => v !== version);
 if (pluginStale.length) {
   errors.push(
-    `.claude-plugin/plugin.json / marketplace.json still say ${[...new Set(pluginStale)].join(", ")} ` +
+    `.claude-plugin/plugin.json / .claude-plugin/marketplace.json still say ${[...new Set(pluginStale)].join(", ")} ` +
     `while the package is ${version}. Bump every version surface together.`,
   );
 } else if (pluginVersions.length < 2) {
   errors.push(
-    `marketplace.json has no entry named "${plugin.name}", so nothing pins the version a user installs`,
+    `.claude-plugin/marketplace.json lists no plugin named "${plugin.name}", so nothing pins the version a user installs`,
   );
 } else {
-  ok.push(`.claude-plugin/plugin.json + marketplace.json — ${pluginVersions.length} version field(s) agree`);
+  ok.push(`.claude-plugin/ plugin + marketplace — ${pluginVersions.length} version field(s) agree`);
 }
 
 // A release with no changelog entry is a release nobody can read.

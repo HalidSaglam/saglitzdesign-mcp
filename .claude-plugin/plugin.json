@@ -4,7 +4,14 @@
   "version": "0.25.0",
   "description": "Design knowledge and a ship-quality gate for coding agents: 96 documents, 34 tools, seven auditors and eight workflows.",
   "author": { "name": "Saglitz Design", "url": "https://github.com/HalidSaglam" },
+  "homepage": "https://saglitz.com/apps/saglitzdesign",
   "repository": "https://github.com/HalidSaglam/saglitzdesign-mcp",
   "license": "MIT",
-  "keywords": ["design", "ui", "ux", "design-system", "accessibility", "seo"]
+  "keywords": ["design", "ui", "ux", "design-system", "accessibility", "seo"],
+  "mcpServers": {
+    "saglitzdesign": {
+      "command": "npx",
+      "args": ["-y", "saglitzdesign-mcp@latest"]
+    }
+  }
 }
