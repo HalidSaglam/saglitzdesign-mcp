@@ -692,8 +692,19 @@ describe("skills distribution", () => {
    * extend it here is that a skill is read by an agent that will repeat what it
    * says, so a sentence a reader would have discounted gets restated as fact.
    *
-   * Scope: every `SKILL.md`, frontmatter included (measured — an absolute
-   * planted in a `description:` is reported), plus `skills/README.md`.
+   * Scope: every markdown file under `skills/`, found by walking the directory
+   * rather than by listing the files here, frontmatter included (measured — an
+   * absolute planted in a `description:` is reported). Today that walk finds
+   * exactly the six `SKILL.md` and `skills/README.md`, so it changed no result
+   * when it replaced the list. It is written this way because the guard's name
+   * asserts a class — every skill — and a skill that grows a `reference.md`
+   * would otherwise leave the guard behind with nothing noticing. Measured both
+   * ways: an absolute planted in a new `reference.md` was silent under the list
+   * and is reported under the walk, and one nested at
+   * `apple-platform-design/refs/deep.md` is reported too, so the walk is not
+   * depth-one. Its boundary is the extension: `.md` only, so a `.mdx` beside a
+   * skill is not scanned — measured, and the assertion below would not notice,
+   * since it only pins the files that must be covered.
    *
    * Stricter than the Apple guard in two deliberate ways, both measured rather
    * than reasoned about:
@@ -721,29 +732,78 @@ describe("skills distribution", () => {
    * the input and watching it stay silent — not reasoned about, and not a
    * complete list of what escapes:
    *
-   *   1. Every form `ABSENCE_FORMS` misses, which is the dominant one. That
-   *      list is written out above the patterns themselves — passive voice, a
+   *   1. Every form `ABSENCE_FORMS` misses, which is the dominant one. Those
+   *      are written out above the patterns themselves — passive voice, a
    *      synonym for the subject, an absolute split across two sentences,
    *      `has no published`, a hedge between `does not` and the verb, lowercase
-   *      `apple` — and it applies here unchanged. A green run of this test
-   *      means the skills carry no absolute *in those forms*.
+   *      `apple` — and that list applies here unchanged. A green run of this
+   *      test means the skills carry no absolute *in the forms the patterns
+   *      match*, which is narrower than carrying none.
    *   2. A claim split across two lines. `Apple publishes\nno guidance on this.`
    *      is silent; the scan is per line, as the corpus above is.
-   *   3. Any file in a skill directory other than `SKILL.md`. A planted
-   *      `skills/apple-platform-design/reference.md` full of absolutes is
-   *      silent. Skills are single-file today; a skill that grows a second
-   *      markdown file leaves this guard behind without any test noticing.
+   *   3. A verb outside `ABSENCE_VERBS`, which is a fixed list of sixteen
+   *      lemmas. A synonym escapes even when the sentence is plainly absolute:
+   *      `Apple offers no guidance on this.` is silent while `provides` fires,
+   *      and so are `Apple's documentation contains no minimum.`, `There is no
+   *      Apple guidance on this.` and `Nothing in Apple's docs defines a
+   *      minimum.` — the last two because they also move Apple out of the
+   *      subject position the first two forms require.
    *
-   * WHAT IT OVER-CATCHES, same method. Scoping a sentence while keeping Apple
-   * as its grammatical subject does not help: "Apple's own pages read here
-   * carry no such guidance" is scoped English and is reported, because the
-   * forms key on the subject. The rewrite is to move the subject onto the
-   * search — "no such guidance was found on the HIG pages read here", which is
-   * silent. Loud, and it pushes prose toward the shape the standard wants.
+   * THE `NEW_SUBJECT` GAP, which is one mechanism with two directions and is
+   * the thing to understand before trusting a green run. Forms 1 and 2 allow up
+   * to 80 characters between `Apple` and the negated verb, but the gap stops
+   * dead at any token in `NEW_SUBJECT` — a literal list: `.`, `the`, `its`,
+   * `a`, `an`, `this`, `that`, `these`, `those`, `HIG`, `page`, `table`,
+   * `section`, `guidelines`. It is not a test of whether the grammatical
+   * subject changed; it is that list of strings. So:
+   *
+   *   LOUD, on any inflection of a `NEW_SUBJECT` noun that the list does not
+   *   spell. `\bpage\b` truncates the gap and `pages` does not, so a scoped
+   *   sentence that keeps Apple in front is reported:
+   *     `Apple's own pages read here carry no such guidance.`  fires
+   *     `Apple's own page read here carries no such guidance.` silent
+   *   Apple sits in the identical position in both, so it is not the subject
+   *   that decides. All five nouns were probed in both spellings and every pair
+   *   splits the same way — and the split follows the list, not the number:
+   *   `guidelines` is the entry, so the *singular* `guideline` is what fires,
+   *   as `HIGs`, `tables` and `sections` do. The rewrite is to move the subject
+   *   onto the search itself — "no such guidance was found on the HIG pages
+   *   read here" — which is the shape the standard wants anyway.
+   *
+   *   SILENT, and this is the direction that matters, on an interposed article
+   *   or possessive. Four of these five plainly absolute sentences escape, with
+   *   Apple as the subject of every one:
+   *     `Apple, in the HIG, publishes no minimum.`                       silent
+   *     `Apple in its documentation publishes no minimum.`               silent
+   *     `Apple on this point publishes no minimum.`                      silent
+   *     `Apple, across the whole of its documentation, publishes no minimum.`
+   *                                                                     silent
+   *     `Apple, anywhere at all, publishes no minimum.`                   fires
+   *   None of them is blind spot 1's "split across two sentences" case, so the
+   *   delegation there does not cover them.
+   *
+   * `ABSENCE_FORMS` is deliberately not widened to close either direction. It
+   * is shared with the Apple-document guard above, so a change to it lands on
+   * both corpora at once and is its own task with its own blast radius. What
+   * this comment owes a later author is the mechanism and both of its
+   * directions, not a quiet fix.
    */
   it("holds every skill to the same narrowing-claim standard as the knowledge base", () => {
+    const files = readdirSync(skillsDir, { recursive: true })
+      .map(String)
+      .filter((p) => p.endsWith(".md"))
+      .map((p) => join(skillsDir, p));
+    // Non-vacuity. A walk that returned nothing — a renamed directory, a
+    // `recursive` option that stops working — would leave `hits` empty and this
+    // test green, which is the failure it exists to prevent. Asserted as a
+    // superset, not an equality: the files that must be covered are named, and
+    // anything else the walk finds is covered too rather than forbidden, which
+    // is the whole point of walking instead of listing.
+    for (const required of [...names.map((n) => join(skillsDir, n, "SKILL.md")), join(skillsDir, "README.md")]) {
+      expect(files, "the walk stopped seeing a file it must cover").toContain(required);
+    }
     const hits: string[] = [];
-    for (const n of [...names.map((n) => join(skillsDir, n, "SKILL.md")), join(skillsDir, "README.md")]) {
+    for (const n of files) {
       const text = readFileSync(n, "utf8");
       text.split("\n").forEach((line, i) => {
         for (const [form, span] of absenceHits(line, false)) hits.push(`${n}:${i + 1} [${form}] ${span}`);
