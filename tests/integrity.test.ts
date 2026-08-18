@@ -678,6 +678,89 @@ describe("skills distribution", () => {
     }
     expect(offenders, "a README count no longer agrees with what ships").toEqual([]);
   });
+
+  /**
+   * The narrowing-claim standard the Apple documents are held to, applied to
+   * the skills that condense them.
+   *
+   * The rule is one rule: an absence is stated as what a search found, not as
+   * what Apple publishes. "Apple publishes no minimum" is a claim about every
+   * page Apple has, which no reading of a few of them supports; "not found in
+   * X, having looked at Y" says the part that was established. The forms are
+   * `ABSENCE_FORMS` further down this file, shared verbatim — this test adds no
+   * pattern of its own, and gains every pattern added there. The reason to
+   * extend it here is that a skill is read by an agent that will repeat what it
+   * says, so a sentence a reader would have discounted gets restated as fact.
+   *
+   * Scope: every `SKILL.md`, frontmatter included (measured — an absolute
+   * planted in a `description:` is reported), plus `skills/README.md`.
+   *
+   * Stricter than the Apple guard in two deliberate ways, both measured rather
+   * than reasoned about:
+   *
+   *   NO QUOTATION EXEMPTION. `blankQuotes` is `false` for every file rather
+   *   than read per file. That exemption is earned by a document declaring
+   *   `Quotation convention:` in its own text, and no skill declares one, so
+   *   `false` and a per-file read agree on everything that ships today. Where
+   *   they would diverge — a skill that adopts the convention later — the
+   *   hard-coded `false` reports the quoted absolute instead of passing it.
+   *   Measured: the convention line and a quoted absolute planted together
+   *   still fire. That is the loud direction, and a skill quoting Apple on what
+   *   Apple does not publish is a sentence worth stopping at rather than one to
+   *   wave through.
+   *
+   *   NO FENCE SKIPPING. The Apple guard skips fenced blocks; this scans them.
+   *   No `SKILL.md` ships a fence and `skills/README.md` ships two `bash`
+   *   install blocks, so the difference is reachable only by planting, which is
+   *   how it was measured: an absolute planted inside the README's install
+   *   fence is reported. Scanning inside a fence can only over-report, and the
+   *   alternative is a second copy of the fence matcher the corrected-fact
+   *   corpus above maintains.
+   *
+   * WHAT THIS DOES NOT CATCH. Each measured against the live guard by planting
+   * the input and watching it stay silent — not reasoned about, and not a
+   * complete list of what escapes:
+   *
+   *   1. Every form `ABSENCE_FORMS` misses, which is the dominant one. That
+   *      list is written out above the patterns themselves — passive voice, a
+   *      synonym for the subject, an absolute split across two sentences,
+   *      `has no published`, a hedge between `does not` and the verb, lowercase
+   *      `apple` — and it applies here unchanged. A green run of this test
+   *      means the skills carry no absolute *in those forms*.
+   *   2. A claim split across two lines. `Apple publishes\nno guidance on this.`
+   *      is silent; the scan is per line, as the corpus above is.
+   *   3. Any file in a skill directory other than `SKILL.md`. A planted
+   *      `skills/apple-platform-design/reference.md` full of absolutes is
+   *      silent. Skills are single-file today; a skill that grows a second
+   *      markdown file leaves this guard behind without any test noticing.
+   *
+   * WHAT IT OVER-CATCHES, same method. Scoping a sentence while keeping Apple
+   * as its grammatical subject does not help: "Apple's own pages read here
+   * carry no such guidance" is scoped English and is reported, because the
+   * forms key on the subject. The rewrite is to move the subject onto the
+   * search — "no such guidance was found on the HIG pages read here", which is
+   * silent. Loud, and it pushes prose toward the shape the standard wants.
+   */
+  it("holds every skill to the same narrowing-claim standard as the knowledge base", () => {
+    const hits: string[] = [];
+    for (const n of [...names.map((n) => join(skillsDir, n, "SKILL.md")), join(skillsDir, "README.md")]) {
+      const text = readFileSync(n, "utf8");
+      text.split("\n").forEach((line, i) => {
+        for (const [form, span] of absenceHits(line, false)) hits.push(`${n}:${i + 1} [${form}] ${span}`);
+      });
+    }
+    expect(hits).toEqual([]);
+  });
+
+  // The pair the guard is defined by, kept as a test so both directions survive
+  // a later edit to `ABSENCE_FORMS`. The two sentences carry the same claim
+  // about the same subject matter and differ only in form, so a guard that went
+  // quiet on the first — or loud on the second — would be banning the topic
+  // rather than the shape, and the check above would go on passing either way.
+  it("reports the absolute form and not its scoped twin", () => {
+    expect(absenceHits("Apple publishes no guidance on this.", false).length).toBeGreaterThan(0);
+    expect(absenceHits("No guidance on this was found on the HIG pages read here.", false)).toEqual([]);
+  });
 });
 
 describe("release metadata is in sync", () => {
