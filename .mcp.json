@@ -2,7 +2,7 @@
   "mcpServers": {
     "saglitzdesign": {
       "command": "node",
-      "args": ["dist/index.js"]
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/bin.js"]
     }
   }
 }

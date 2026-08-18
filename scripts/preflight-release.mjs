@@ -2,13 +2,13 @@
 //
 // Refuse to release something inconsistent.
 //
-// A version lives in five places that have no way of noticing each other: the
-// package, its lockfile, the registry manifest, the changelog, and the git tag
-// that triggers the whole thing. Any pair can drift. The expensive one is the
-// tag — npm and
-// the MCP Registry both refuse to republish a version, so `v0.20.0` pushed
-// against a package still saying 0.19.1 does not fail loudly, it silently
-// re-ships the old release under a new name and there is no undo.
+// A version lives in six places that have no way of noticing each other: the
+// package, its lockfile, the registry manifest, the plugin manifest and its
+// marketplace entry, the changelog, and the git tag that triggers the whole
+// thing. Any pair can drift. The expensive one is the tag — npm and the MCP
+// Registry both refuse to republish a version, so `v0.20.0` pushed against a
+// package still saying 0.19.1 does not fail loudly, it silently re-ships the
+// old release under a new name and there is no undo.
 //
 // So this runs before anything is published, and says no.
 //
@@ -68,6 +68,34 @@ if (stale.length) {
   );
 } else {
   ok.push(`server.json — ${manifestVersions.length} version field(s) agree`);
+}
+
+// The plugin surface carries the version twice as well: `.claude-plugin/plugin.json`
+// is what Claude Code reads when the plugin loads, and the marketplace entry is
+// what a user sees before they install. Neither is on `npm version`'s path and
+// neither is imported by anything the suite runs, so both drift silently — and a
+// marketplace entry pinned to a version the plugin no longer carries offers an
+// install that resolves to something else.
+const plugin = JSON.parse(read(".claude-plugin/plugin.json"));
+const market = JSON.parse(read("marketplace.json"));
+const pluginVersions = [
+  plugin.version,
+  ...(market.entries ?? [])
+    .filter((e) => e.name === plugin.name)
+    .map((e) => e.version),
+];
+const pluginStale = pluginVersions.filter((v) => v !== version);
+if (pluginStale.length) {
+  errors.push(
+    `.claude-plugin/plugin.json / marketplace.json still say ${[...new Set(pluginStale)].join(", ")} ` +
+    `while the package is ${version}. Bump every version surface together.`,
+  );
+} else if (pluginVersions.length < 2) {
+  errors.push(
+    `marketplace.json has no entry named "${plugin.name}", so nothing pins the version a user installs`,
+  );
+} else {
+  ok.push(`.claude-plugin/plugin.json + marketplace.json — ${pluginVersions.length} version field(s) agree`);
 }
 
 // A release with no changelog entry is a release nobody can read.

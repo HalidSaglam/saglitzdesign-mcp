@@ -1,0 +1,11 @@
+{
+  "name": "saglitz",
+  "entries": [
+    {
+      "name": "saglitzdesign",
+      "version": "0.25.0",
+      "description": "Design knowledge and a ship-quality gate for coding agents.",
+      "source": { "type": "github", "owner": "HalidSaglam", "repo": "saglitzdesign-mcp" }
+    }
+  ]
+}
