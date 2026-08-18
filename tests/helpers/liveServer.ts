@@ -42,16 +42,39 @@ export async function connectLiveServer(
  * per test file: two files that both call this pay two spawns. That is the
  * cost of the guarantee, and one spawn is about a second.
  */
-let cached: Promise<string[]> | undefined;
+let cached: Promise<{ name: string; outputSchema?: unknown }[]> | undefined;
 
-export function liveToolNames(): Promise<string[]> {
+function liveTools(): Promise<{ name: string; outputSchema?: unknown }[]> {
   cached ??= (async () => {
     const { client } = await connectLiveServer("saglitzdesign-live-tools");
     try {
-      return (await client.listTools()).tools.map((t) => t.name);
+      return (await client.listTools()).tools;
     } finally {
       await client.close();
     }
   })();
   return cached;
+}
+
+export async function liveToolNames(): Promise<string[]> {
+  return (await liveTools()).map((t) => t.name);
+}
+
+/**
+ * The tools that publish a disclosure list, read off the same single spawn.
+ *
+ * The signal is the tool's own `outputSchema` declaring a `notVisible` property
+ * — the contract it advertises to a client — rather than a sentence in its
+ * description or a constant spelled `*_NOT_VISIBLE` in `src/`. A description is
+ * prose and can be edited without changing what the tool returns; a constant
+ * name is a convention this repository could rename tomorrow. The schema is
+ * what a caller can rely on, so it is what this reads.
+ *
+ * Narrow, deliberately: this says which tools *declare* the field, not that any
+ * of them fills it usefully, and not that the prose describing them is right.
+ */
+export async function liveDisclosureTools(): Promise<string[]> {
+  return (await liveTools())
+    .filter((t) => JSON.stringify(t.outputSchema ?? null).includes('"notVisible"'))
+    .map((t) => t.name);
 }

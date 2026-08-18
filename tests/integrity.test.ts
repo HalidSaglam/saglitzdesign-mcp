@@ -6,7 +6,7 @@ import { CATEGORIES, PLATFORMS, DESIGN_LANGUAGES, REVIEW_MAP, FOCUS_MAP, ROADMAP
 import { loadRecipes } from "../dist/recipes.js";
 import { loadExamples } from "../dist/examples.js";
 import { securityReport, HEADER_SOURCE_TOKENS, HEADER_SOURCES_SENTENCE } from "../dist/security.js";
-import { liveToolNames } from "./helpers/liveServer.js";
+import { liveToolNames, liveDisclosureTools } from "./helpers/liveServer.js";
 
 // Structural guarantees for the curated content. These are the checks that
 // would have caught the v0.14.0 bug where roadmaps referenced pattern docs by
@@ -19,6 +19,10 @@ const docs = loadKnowledge(join(root, "knowledge"));
 /** Derived, never mirrored: a hand-written copy went stale at 33 while 34 shipped,
  *  under a comment claiming another file proved it complete. Nothing did. */
 const TOOL_NAMES = new Set(await liveToolNames());
+
+/** Derived the same way, off the same spawn: the tools whose `outputSchema`
+ *  declares a `notVisible` property. */
+const DISCLOSURE_TOOLS = await liveDisclosureTools();
 
 /**
  * The document count this suite asserts, in one place rather than repeated at
@@ -479,6 +483,50 @@ describe("skills distribution", () => {
       }
     }
     expect(phantom).toEqual([]);
+  });
+
+  /**
+   * The auditors that publish a disclosure list, and the skill that catalogues
+   * them, held equal as sets.
+   *
+   * The left side comes off the running server: a tool publishes a disclosure
+   * list when its `outputSchema` declares `notVisible`. Seven do. The right side
+   * is the first column of `ship-quality-gate`'s table, which is the one place
+   * in `skills/` that enumerates them. Neither side is written out here.
+   *
+   * WHAT THIS CANNOT CATCH, and it is much the larger half: **a row that is
+   * present and wrong.** This compares two sets of names and reads not one word
+   * of the prose beside them. Three sentences in the first draft of that skill
+   * overstated an auditor's reach — `audit_security` "infers header state from
+   * wherever your stack declares it" against a closed list of five recognised
+   * declaration shapes, `audit_project` "every lint rule over every file"
+   * against a lint half that is still per-file, `design_lint` "line by line"
+   * against rules that read the whole snippet — and each of the three
+   * contradicted a `notVisible` entry that was already in `src/` when the
+   * sentence was written. This test passes on all three, and would pass on a
+   * row whose description was blank. The only thing that catches a wrong
+   * sentence is running the tool and reading its array against the paraphrase,
+   * which is how these three were found and what `LINT_NOT_VISIBLE`'s own
+   * header prescribes.
+   *
+   * So what it does catch is narrow, and worth having for it: an eighth auditor
+   * shipping with no row, a row for a tool that stopped publishing a list, and a
+   * tool renamed on one side only.
+   *
+   * The skill is named here, which is a hand-written coupling of one string. A
+   * union over every skill's tables was the alternative and is worse: it would
+   * go green the moment a second skill grew a tool table, and this equality
+   * would then be asserting something it does not mean. If this skill is renamed
+   * the read below throws, which is the loud direction.
+   */
+  it("keeps the disclosure-tool catalogue in step with the tools that publish one", () => {
+    const table = read("ship-quality-gate");
+    const rows = [...table.matchAll(/^\| `([a-z][a-z0-9_]+)` \|/gm)].map((m) => m[1]);
+    // Non-vacuity: a table reshaped so the matcher finds nothing would leave
+    // both lists empty against a seven-element left side, but a left side that
+    // also went empty would make the equality trivially true.
+    expect(DISCLOSURE_TOOLS.length, "no tool declares a `notVisible` output").toBeGreaterThan(0);
+    expect([...new Set(rows)].sort()).toEqual([...DISCLOSURE_TOOLS].sort());
   });
 
   it("lists every skill in the skills README", () => {
