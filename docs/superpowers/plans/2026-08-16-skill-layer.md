@@ -626,7 +626,9 @@ git commit -m "feat: the eight workflows as slash commands"
 ### Task 8: Release v0.26.0
 
 **Files:**
-- Modify: `package.json`, `package-lock.json`, `server.json`, `.claude-plugin/plugin.json`, `marketplace.json`, `CHANGELOG.md`, `README.md`
+- Modify: `package.json`, `package-lock.json`, `server.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `CHANGELOG.md`, `README.md`
+
+> **Corrected after Task 6.** The catalog lives at `.claude-plugin/marketplace.json` (discovery expects that path) and its entry list is keyed `plugins`, not `entries` — the `entries` key this plan originally specified is *ignored at load time*, so it presents as an empty marketplace rather than an error. The plugin declares its MCP server **inline in `plugin.json`** against the published npm package (`npx -y saglitzdesign-mcp@latest`); `.mcp.json` is the repository's own project-scoped dev config and is **not** part of the plugin.
 
 **Interfaces:**
 - Consumes: every earlier task.
@@ -634,7 +636,7 @@ git commit -m "feat: the eight workflows as slash commands"
 
 - [ ] **Step 1: Bump the version everywhere**
 
-Run: `npm version minor --no-git-tag-version` and confirm it writes `package.json` and `package-lock.json`. Then update `server.json` (two fields), `.claude-plugin/plugin.json` and `marketplace.json`'s entry by hand, or extend `scripts/sync-version.mjs` if that is where `server.json` is already synced — read it first.
+Run: `npm version minor --no-git-tag-version` and confirm it writes `package.json` and `package-lock.json`. Then update `server.json` (two fields), `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`'s entry by hand, or extend `scripts/sync-version.mjs` if that is where `server.json` is already synced — read it first.
 
 - [ ] **Step 2: Write the CHANGELOG entry**
 
