@@ -317,8 +317,11 @@ describe("skills distribution", () => {
     expect(problems).toEqual([]);
   });
 
-  // Every correction the knowledge base has made becomes an entry here, so a
-  // skill cannot go on repeating a fact we have already fixed elsewhere.
+  // POLICY: a correction the knowledge base makes should be entered here, so
+  // that no skill goes on repeating a fact we have already fixed elsewhere.
+  // That is the standing rule this corpus is kept under — it is not a claim
+  // about the corpus's current state, which blind spot 1 below measures and
+  // finds short of it.
   //
   // An entry is a rule about headings, not a list of them. A heading path
   // licenses a corrected fact only when it names a platform the fact still
@@ -331,10 +334,18 @@ describe("skills distribution", () => {
   //
   // The path is every heading above the line at any level, so a `### macOS
   // notes` nested inside `## iOS specifics` withdraws the permission its parent
-  // gave, while a neutral `### Details` leaves it standing. A `#` line inside a
-  // fenced block is not a heading — it must not be able to grant a permission —
-  // but the line is still scanned, so a restatement inside a fence is still read
-  // against whatever real heading encloses it.
+  // gave, while a neutral `### Details` leaves it standing.
+  //
+  // A fenced block (``` or ~~~, CommonMark's two spellings) clears the path for
+  // its duration and restores it at the close, so a `#` line inside a fence can
+  // neither grant a permission nor inherit one, and the lines inside a fence are
+  // still scanned — against no heading, which denies. An unclosed fence
+  // therefore withholds permission from everything after it rather than freezing
+  // the last permission it saw. That direction is deliberate and was a
+  // regression once: tracking fences with a file-wide boolean let an unbalanced
+  // fence under `## iOS specifics` carry that section's permission into
+  // `## macOS specifics`, which the version with no fence handling at all had
+  // caught.
   //
   // WHAT THIS DOES NOT CATCH, measured rather than assumed:
   //
@@ -377,12 +388,20 @@ describe("skills distribution", () => {
   it("never restates a corrected fact outside the scope the correction gave it", () => {
     const problems: string[] = [];
     for (const n of names) {
-      const path: string[] = [];
-      let fenced = false;
+      let path: string[] = [];
+      let outside: string[] = [];
+      let openFence: string | null = null;
       read(n).split("\n").forEach((line, i) => {
-        if (/^\s*```/.test(line)) { fenced = !fenced; return; }
-        const h = fenced ? null : line.match(/^(#{1,6})\s/);
-        if (h) { path.length = h[1].length - 1; path[h[1].length - 1] = line; }
+        // CommonMark allows a fence up to three spaces of indent, and closes it
+        // only with the character it opened with — so a ``` inside a ~~~ block
+        // is content, not a close.
+        const fence = line.match(/^ {0,3}(`{3,}|~{3,})/);
+        if (fence && openFence === null) { openFence = fence[1][0]; outside = path; path = []; }
+        else if (fence && fence[1][0] === openFence) { openFence = null; path = outside; }
+        else if (openFence === null) {
+          const h = line.match(/^(#{1,6})\s/);
+          if (h) { path.length = h[1].length - 1; path[h[1].length - 1] = line; }
+        }
         const where = path.filter(Boolean).join(" › ") || "(no heading)";
         for (const c of CORRECTED_FACTS) {
           const licensed = c.scope.test(where) && !c.excluded.test(where);
