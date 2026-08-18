@@ -341,11 +341,19 @@ describe("skills distribution", () => {
   // neither grant a permission nor inherit one, and the lines inside a fence are
   // still scanned — against no heading, which denies. An unclosed fence
   // therefore withholds permission from everything after it rather than freezing
-  // the last permission it saw. That direction is deliberate and was a
-  // regression once: tracking fences with a file-wide boolean let an unbalanced
-  // fence under `## iOS specifics` carry that section's permission into
-  // `## macOS specifics`, which the version with no fence handling at all had
-  // caught.
+  // the last permission it saw. That direction is deliberate and both halves of
+  // the close rule are load-bearing: two earlier versions each let a `#` that
+  // exists only inside a code block grant a permission to prose outside it, and
+  // each was, on its own input, weaker than the version with no fence handling
+  // at all.
+  //
+  // The indent allowance is CommonMark's and is not a safety margin in either
+  // direction. A fence indented four spaces or more is not a fence — correctly,
+  // since CommonMark reads it as indented code — but a `#` line at column 0
+  // after it is then a heading and can grant. And a heading is recognised here
+  // only at column 0, while CommonMark allows three spaces, so `  ### macOS
+  // notes` does not withdraw the permission its parent gave. Both are measured;
+  // neither is closed.
   //
   // WHAT THIS DOES NOT CATCH, measured rather than assumed:
   //
@@ -390,14 +398,17 @@ describe("skills distribution", () => {
     for (const n of names) {
       let path: string[] = [];
       let outside: string[] = [];
-      let openFence: string | null = null;
+      let openFence: string | null = null; // the opening run itself, not just its character
       read(n).split("\n").forEach((line, i) => {
-        // CommonMark allows a fence up to three spaces of indent, and closes it
-        // only with the character it opened with — so a ``` inside a ~~~ block
-        // is content, not a close.
+        // CommonMark's close rule, both halves of it: a closing fence uses the
+        // character the block opened with AND is at least as long. Implementing
+        // only the character half closed a ```` block on the first ``` line
+        // *inside* it, restored the path there, and then read the `#` lines of
+        // that code as real headings — which is why `openFence` holds the whole
+        // run rather than its first character.
         const fence = line.match(/^ {0,3}(`{3,}|~{3,})/);
-        if (fence && openFence === null) { openFence = fence[1][0]; outside = path; path = []; }
-        else if (fence && fence[1][0] === openFence) { openFence = null; path = outside; }
+        if (fence && openFence === null) { openFence = fence[1]; outside = path; path = []; }
+        else if (fence && openFence !== null && fence[1][0] === openFence[0] && fence[1].length >= openFence.length) { openFence = null; path = outside; }
         else if (openFence === null) {
           const h = line.match(/^(#{1,6})\s/);
           if (h) { path.length = h[1].length - 1; path[h[1].length - 1] = line; }
