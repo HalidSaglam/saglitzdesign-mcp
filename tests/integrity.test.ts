@@ -317,6 +317,46 @@ describe("skills distribution", () => {
     expect(problems).toEqual([]);
   });
 
+  // Every correction the knowledge base has made becomes an entry here, so a
+  // skill cannot go on repeating a fact we have already fixed elsewhere.
+  //
+  // WHAT THIS DOES NOT CATCH, measured rather than assumed: a contradiction we
+  // have not yet corrected anywhere (the corpus is a record of past fixes, not a
+  // model of the domain); a claim spread across two sentences; a paraphrase that
+  // avoids the matched words; and a correct scoped use that happens to sit under
+  // the wrong heading, which `scope` cannot see because it only reads headings.
+  //
+  // Each of those four was run against this guard rather than reasoned about,
+  // and each is a blind spot this guard is known to have — not the set of blind
+  // spots it has. The fourth is the false-positive direction: the guard reports
+  // a line whose own prose scopes the fact correctly, because the only scope it
+  // reads is the nearest `##` heading above.
+  const CORRECTED_FACTS: { fact: string; re: RegExp; scope: RegExp; source: string }[] = [
+    {
+      fact: "macOS does not support Dynamic Type",
+      re: /Dynamic Type/i,
+      scope: /^##\s.*\b(iOS|iPadOS|iPhone|iPad)\b/i,
+      source: "apple-accessibility",
+    },
+  ];
+
+  it("never restates a corrected fact outside the scope the correction gave it", () => {
+    const problems: string[] = [];
+    for (const n of names) {
+      const lines = read(n).split("\n");
+      let heading = "";
+      lines.forEach((line, i) => {
+        if (/^##\s/.test(line)) heading = line;
+        for (const c of CORRECTED_FACTS) {
+          if (c.re.test(line) && !c.scope.test(heading)) {
+            problems.push(`${n}:${i + 1} restates "${c.fact}" under "${heading || "(no heading)"}" — see ${c.source}`);
+          }
+        }
+      });
+    }
+    expect(problems).toEqual([]);
+  });
+
   it("never points at a tool that does not exist", () => {
     const phantom: string[] = [];
     for (const n of names) {
