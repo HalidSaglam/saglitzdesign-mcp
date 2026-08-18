@@ -8,7 +8,7 @@ sources: apple-hig-liquid-glass, ios-app-design, macos-app-design, wwdc-design-p
 
 Apple apps feel native because they respect platform conventions, use system materials and motion, and get the small physical details right. Copying a web or Android design onto iOS/macOS reads as foreign instantly.
 
-> Full depth is in the **SaglitzDesign MCP** (`npx saglitzdesign-mcp`). Documents this skill draws on include `apple-hig-liquid-glass`, `ios-app-design`, `macos-app-design`, `wwdc-design-principles`, `apple-accessibility`, `apple-shipping-readiness` and `apple-intelligence-design`; useful tools include `audit_apple_ui` (point it at the Xcode project directory — it reads configuration and Swift source; directory only, no snippet mode), `get_design_language`, `compare_design_languages` (what to port from Android and what not to) and `get_component_recipe(component, "swiftui")` for real SwiftUI code; and the `/build_mobile_app_ui` and `/port_to_platform` workflows.
+> Full depth is in the **SaglitzDesign MCP** (`npx saglitzdesign-mcp`). Related documents include `apple-hig-liquid-glass`, `ios-app-design`, `macos-app-design`, `wwdc-design-principles`, `apple-accessibility`, `apple-shipping-readiness` and `apple-intelligence-design`; useful tools include `audit_apple_ui` (point it at the Xcode project directory — it reads configuration and Swift source; directory only, no snippet mode), `get_design_language`, `compare_design_languages` (what to port from Android and what not to) and `get_component_recipe(component, "swiftui")` for real SwiftUI code; and the `/build_mobile_app_ui` and `/port_to_platform` workflows.
 
 ## Core HIG principles
 
@@ -40,7 +40,7 @@ Apple apps feel native because they respect platform conventions, use system mat
 - Full menu bar with real, discoverable commands; standard keyboard shortcuts; full keyboard access.
 - Resizable windows, multiple windows, proper selection semantics, undo everywhere, a document model where it fits.
 - Sidebar (source list) + toolbar + inspector; density suited to a pointer, not a finger.
-- Text does not scale on macOS the way it does on iPhone and iPad: the built-in text styles resolve to fixed points (Body 13 pt; Footnote and Caption 10 pt), so a Mac app that wants a text-size control ships its own. A Mac view with fixed text metrics is not a text-scaling failure.
+- Text does not scale on macOS the way it does on iPhone and iPad: the built-in text styles resolve to fixed points (Body 13 pt; Footnote and Caption 10 pt), so a Mac app that wants a text-size control ships its own. A Mac view with fixed text metrics is not a text-scaling failure — `apple-accessibility` names the feature Macs lack and quotes Apple on it.
 - Ship path: Developer ID signing + notarization. Electron/Catalyst ports that ignore these feel non-native.
 
 ## Typography (WWDC "The Details of UI Typography")

@@ -320,22 +320,56 @@ describe("skills distribution", () => {
   // Every correction the knowledge base has made becomes an entry here, so a
   // skill cannot go on repeating a fact we have already fixed elsewhere.
   //
-  // WHAT THIS DOES NOT CATCH, measured rather than assumed: a contradiction we
-  // have not yet corrected anywhere (the corpus is a record of past fixes, not a
-  // model of the domain); a claim spread across two sentences; a paraphrase that
-  // avoids the matched words; and a correct scoped use that happens to sit under
-  // the wrong heading, which `scope` cannot see because it only reads headings.
+  // An entry is a rule about headings, not a list of them. A heading path
+  // licenses a corrected fact only when it names a platform the fact still
+  // applies to (`scope`) AND names none of the platforms the correction took it
+  // away from (`excluded`). The second half is not belt-and-braces: with `scope`
+  // alone, `## Liquid Glass (iOS 26 / macOS Tahoe)` — a heading in the very file
+  // this guard was written for — was a standing permission zone, because a
+  // heading that names both platforms satisfies a test for either one, and the
+  // corrected sentence walked straight back in under it.
   //
-  // Each of those four was run against this guard rather than reasoned about,
-  // and each is a blind spot this guard is known to have — not the set of blind
-  // spots it has. The fourth is the false-positive direction: the guard reports
-  // a line whose own prose scopes the fact correctly, because the only scope it
-  // reads is the nearest `##` heading above.
-  const CORRECTED_FACTS: { fact: string; re: RegExp; scope: RegExp; source: string }[] = [
+  // The path is every heading above the line at any level, so a `### macOS
+  // notes` nested inside `## iOS specifics` withdraws the permission its parent
+  // gave, while a neutral `### Details` leaves it standing. A `#` line inside a
+  // fenced block is not a heading — it must not be able to grant a permission —
+  // but the line is still scanned, so a restatement inside a fence is still read
+  // against whatever real heading encloses it.
+  //
+  // WHAT THIS DOES NOT CATCH, measured rather than assumed:
+  //
+  // 1. A corrected fact that has no entry here. The probe was "enforce a 44×44
+  //    pt minimum control size on every Apple platform" — a claim the knowledge
+  //    base *has* corrected, in `apple-accessibility`'s Myth-check table, which
+  //    carries twelve rows against this corpus's one. Nothing keeps the corpus
+  //    in step with the corrections the knowledge base publishes: a correction
+  //    binds skills only once somebody enters it. Which of those rows are worth
+  //    guarding is a judgement, and it is deliberately not made here.
+  // 2. A claim spread across two lines — the scan is per-line.
+  // 3. A paraphrase that avoids the words `re` matches.
+  // 4. A line whose own prose scopes the fact correctly but which sits under a
+  //    heading path that does not. This is the false-positive direction, not a
+  //    miss: the only scope this reads is the headings.
+  //
+  // 3 and 4 compound, and the compound bounds what the corpus can be trusted
+  // for. The excluded platform's own section may not use the matched words at
+  // all — that is the rule above working as intended — so the other half of a
+  // correction has to be written as a paraphrase, and a paraphrase is item 3.
+  // The prose this guard *forces into existence* is prose it structurally cannot
+  // check: the macOS bullet in apple-platform-design can be replaced with its
+  // own negation, in the same register, and this test still passes.
+  //
+  // Each of the four was run against this guard rather than reasoned about.
+  // They are blind spots it is known to have, not the set of blind spots it has.
+  const CORRECTED_FACTS: { fact: string; re: RegExp; scope: RegExp; excluded: RegExp; source: string }[] = [
     {
       fact: "macOS does not support Dynamic Type",
       re: /Dynamic Type/i,
-      scope: /^##\s.*\b(iOS|iPadOS|iPhone|iPad)\b/i,
+      scope: /\b(iOS|iPadOS|iPhone|iPad)\b/i,
+      // The names this repository's headings actually use for the platform the
+      // correction excluded. `\bmac\b` does not match "macOS" — no word boundary
+      // between the "c" and the "O" — so both spellings are listed.
+      excluded: /\b(macOS|Mac)\b/i,
       source: "apple-accessibility",
     },
   ];
@@ -343,13 +377,17 @@ describe("skills distribution", () => {
   it("never restates a corrected fact outside the scope the correction gave it", () => {
     const problems: string[] = [];
     for (const n of names) {
-      const lines = read(n).split("\n");
-      let heading = "";
-      lines.forEach((line, i) => {
-        if (/^##\s/.test(line)) heading = line;
+      const path: string[] = [];
+      let fenced = false;
+      read(n).split("\n").forEach((line, i) => {
+        if (/^\s*```/.test(line)) { fenced = !fenced; return; }
+        const h = fenced ? null : line.match(/^(#{1,6})\s/);
+        if (h) { path.length = h[1].length - 1; path[h[1].length - 1] = line; }
+        const where = path.filter(Boolean).join(" › ") || "(no heading)";
         for (const c of CORRECTED_FACTS) {
-          if (c.re.test(line) && !c.scope.test(heading)) {
-            problems.push(`${n}:${i + 1} restates "${c.fact}" under "${heading || "(no heading)"}" — see ${c.source}`);
+          const licensed = c.scope.test(where) && !c.excluded.test(where);
+          if (c.re.test(line) && !licensed) {
+            problems.push(`${n}:${i + 1} restates "${c.fact}" under "${where}" — see ${c.source}`);
           }
         }
       });
