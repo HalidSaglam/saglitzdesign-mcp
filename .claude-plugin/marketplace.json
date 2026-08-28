@@ -6,7 +6,7 @@
     {
       "name": "saglitzdesign",
       "source": "./",
-      "version": "0.25.0",
+      "version": "0.26.0",
       "description": "Design knowledge and a ship-quality gate for coding agents.",
       "author": { "name": "Saglitz Design", "url": "https://github.com/HalidSaglam" },
       "homepage": "https://saglitz.com/apps/saglitzdesign",

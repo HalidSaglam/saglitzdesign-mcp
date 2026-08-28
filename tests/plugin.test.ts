@@ -3,7 +3,9 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROMPT_METADATA, type PromptMeta } from "../dist/prompts.js";
+import { loadKnowledge } from "../dist/knowledge.js";
 import { renderAllCommands } from "../scripts/generate-commands.mjs";
+import { liveToolNames, liveDisclosureTools } from "./helpers/liveServer.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const readJson = (p: string) => JSON.parse(readFileSync(join(root, p), "utf8"));
@@ -18,6 +20,75 @@ describe("the plugin manifest", () => {
   it("names the plugin and the marketplace exactly", () => {
     expect(readJson(".claude-plugin/plugin.json").name).toBe("saglitzdesign");
     expect(readJson(".claude-plugin/marketplace.json").name).toBe("saglitz");
+  });
+
+  /**
+   * Every number in the plugin description, held against the thing it counts.
+   *
+   * This description is the first and often the only sentence about this plugin
+   * a user reads — `claude plugin details` prints it, and a marketplace listing
+   * shows it before anything is installed. Nothing held it. A review falsified
+   * all four numbers at once, to "9000 documents, 3 tools, forty auditors and
+   * one workflow", and the whole suite and `preflight-release` stayed green.
+   *
+   * Each number is read from a live source, never from a constant here:
+   * `knowledge/` as `loadKnowledge` returns it, and the tools, the disclosure
+   * tools and the prompts as the running server registers them. A count written
+   * out in this file would be the same hand-written mirror that went stale at 33
+   * tools while 34 shipped.
+   *
+   * "auditors" is the set of tools whose `outputSchema` declares `notVisible` —
+   * which is what the description's own clause says they are, tools that publish
+   * what they could not see. It is deliberately not "tools whose name starts
+   * with `audit_`": that set has nine members today, so the same word under the
+   * other reading would make the sentence false. The description is worded to
+   * name the predicate rather than leave a reader to pick one.
+   *
+   * The last assertion is the one that keeps this from rotting: every digit run
+   * in the description has to belong to a claim matched above, so a fifth number
+   * added later cannot slip in unheld. A word-spelled number ("seven auditors",
+   * which is how this description read until 0.26.0) is matched too — dropping
+   * the digits would otherwise be a way to leave a count unguarded.
+   */
+  it("states no number in the plugin description that a live source does not hold", async () => {
+    const description: string = readJson(".claude-plugin/plugin.json").description;
+    const WORDS: Record<string, number> = {
+      one: 1, two: 2, three: 3, four: 4, five: 5,
+      six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+    };
+    const live: Record<string, number> = {
+      documents: loadKnowledge(join(root, "knowledge")).length,
+      tools: (await liveToolNames()).length,
+      auditors: (await liveDisclosureTools()).length,
+      workflows: PROMPT_METADATA.length,
+    };
+    // Non-vacuity, and it is not decoration: every one of these comes off a
+    // spawn or a directory read, so a helper that started returning nothing
+    // would otherwise let the description claim zero of everything.
+    for (const [kind, n] of Object.entries(live)) {
+      expect(n, `nothing live counts ${kind}`).toBeGreaterThan(0);
+    }
+    const NOUNS = Object.keys(live).join("|");
+    // Up to two words between the number and its noun, for "96 knowledge
+    // documents" and "7 of them auditors".
+    const CLAIM = new RegExp(String.raw`\b(?:(\d+)|(${Object.keys(WORDS).join("|")}))\b(?:\s+\w+){0,2}?\s+(${NOUNS})\b`, "gi");
+    const claims = [...description.matchAll(CLAIM)];
+    const problems: string[] = [];
+    const seen = new Set<string>();
+    for (const m of claims) {
+      const kind = m[3].toLowerCase();
+      seen.add(kind);
+      const claimed = m[1] !== undefined ? Number(m[1]) : WORDS[m[2].toLowerCase()];
+      if (claimed !== live[kind]) problems.push(`"${m[0]}" — ${kind} is ${live[kind]}`);
+    }
+    expect(problems, "the plugin description states a count the server does not").toEqual([]);
+    expect([...seen].sort(), "a counted noun vanished from the description").toEqual(Object.keys(live).sort());
+    // Every digit run has to have been one of the matched claims. Without this
+    // the guard covers the four numbers that happen to be here today and says
+    // nothing about a fifth.
+    const held = new Set(claims.map((m) => m[1]).filter(Boolean));
+    const unheld = [...description.matchAll(/\d+/g)].map((m) => m[0]).filter((n) => !held.has(n));
+    expect(unheld, "a number in the plugin description that nothing checks").toEqual([]);
   });
 
   // The plugin travels as a git checkout, and that decides what may be declared
@@ -167,9 +238,16 @@ describe("the workflow slash commands", () => {
    * `CHANGELOG.md`, with every test green (measured, both files).
    *
    * The set is the four directories whose markdown reaches a user plus the two
-   * root files: `knowledge/` is served to the model by the tools, `docs/` ships
-   * in the npm tarball, `commands/` is the generated menu text itself, and
-   * `skills/` is read aloud by an agent. Nothing here enumerates a file.
+   * root files: `knowledge/` is served to the model by the tools, `docs/` is
+   * tracked and so travels in the plugin checkout, `commands/` is the generated
+   * menu text itself, and `skills/` is read aloud by an agent. Nothing here
+   * enumerates a file.
+   *
+   * That `docs/` clause said "ships in the npm tarball" until 0.26.0 and was
+   * false: `files:` does not list `docs`, and `npm pack --dry-run` reports zero
+   * entries under it. The reason to walk it stands either way — 19 of its files
+   * are tracked, and a plugin installed from git carries every tracked file —
+   * but the reason given was not the true one.
    */
   const documentedMarkdown = (): string[] => {
     const walk = (rel: string) =>

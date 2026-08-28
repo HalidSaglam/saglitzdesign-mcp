@@ -223,6 +223,35 @@ Or, if you cloned the repo, point it at the built file:
 claude mcp add --scope user saglitzdesign node /absolute/path/to/saglitzdesign-mcp/dist/index.js
 ```
 
+### As a plugin
+
+One install brings all three pieces — the MCP server, the seven skills and a
+slash command for every workflow:
+
+```bash
+claude plugin marketplace add HalidSaglam/saglitzdesign-mcp
+claude plugin install saglitzdesign@saglitz
+```
+
+The plugin declares its server as `npx -y saglitzdesign-mcp@latest`, so the
+server itself still comes from npm; the skills and the commands are files inside
+the plugin. `claude plugin details saglitzdesign@saglitz` lists what arrived.
+
+**The three ways of installing do not carry the same payload:**
+
+| Install | Server, knowledge base, recipes | Skills | `/saglitzdesign:…` commands |
+|---|---|---|---|
+| `claude plugin install saglitzdesign@saglitz` | yes | the seven skills | one per workflow |
+| `npx saglitzdesign-mcp` / `claude mcp add` | yes | — | — |
+| `npx skills@latest add HalidSaglam/saglitzdesign-mcp` | — | the seven skills | — |
+
+The npm package's `files:` list covers `dist/`, `knowledge/` and `recipes/`, and
+does not name `skills/` or `commands/` — so an MCP-only install has every tool
+and every document and none of the skill or command files. The skills CLI is the
+mirror image: it copies each `SKILL.md` into your agent and brings no server, so
+the tools those skills point at are not there unless you also install one.
+Cloning the repository gets all of it — every one of these is a tracked file.
+
 ### Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
@@ -262,6 +291,10 @@ Seven skills — `clean-interface-design`, `landing-page-conversion`,
 `design-review`, `motion-and-animation`, `apple-platform-design`,
 `design-system-audit`, `ship-quality-gate` — each standalone guidance that also
 points to the full MCP for depth. See [`skills/`](skills/).
+
+Each skill is *copied* into your agent and its content hash pinned in
+`skills-lock.json`, so an installed skill does not change when this repository
+does. Re-run the command above to pick up a new skill or an edited one.
 
 ### Dev & debug
 
