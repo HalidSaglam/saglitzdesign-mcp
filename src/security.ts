@@ -564,7 +564,7 @@ export { maskComments };
 // `reply.header(...)` are at least as common as the bare `.set()` form, and
 // silently not recognising them produced a false `csp-missing` on a project
 // that sets its CSP correctly — the one direction this module refuses.
-const HEADER_METHOD_NAMES = new Set(["set", "setheader", "append", "header"]);
+export const HEADER_METHOD_NAMES = new Set(["set", "setheader", "append", "header"]);
 
 /**
  * Scan back from `idx` to the nearest statement/block boundary — `;`, `{`
@@ -1319,25 +1319,47 @@ export function securityConfigRules(
 // ── report ───────────────────────────────────────────────────────────────────
 
 /**
- * Every header-declaring shape this audit can read, as distinctive tokens.
+ * The distinctive tokens by which the four prose surfaces below describe what
+ * this audit reads.
  *
- * Three surfaces describe this list in prose, for three different readers:
+ * Not an enumeration of everything it reads, and it cannot be one: two of the
+ * recognised shapes are rules over any file rather than places — a quoted
+ * header-name property in any JSON or object literal, and any call whose
+ * method name is in `HEADER_METHOD_NAMES` whatever the object is called — so
+ * Hono's `c.header(…)`, Koa's `ctx.set(…)` and a hand-rolled `headers.json`
+ * are read without appearing here. The tokens are the places and the worked
+ * examples; each surface states those two rules in words beside them, which is
+ * what makes the skill row's "only" true rather than a closed list.
+ *
+ * The four, for four different readers:
  * the "Not visible to this audit" block below (the human reading a report),
  * the `audit_security` MCP tool description (the *client*, deciding whether
- * to call the tool at all), and the README's tool table. They have drifted
- * once already — the README was brought up to date and the tool description
- * was not, which is the more consequential of the two: an agent that reads
- * "next.config / vercel.json / netlify.toml / _headers / middleware" will not
- * reach for this tool on a Nuxt or Remix project, and the tool's reach is
- * exactly what the reader cannot otherwise find out.
+ * to call the tool at all), the README's tool table, and the `audit_security`
+ * row of `skills/ship-quality-gate/SKILL.md` (an agent, which repeats what
+ * that row says aloud). They have drifted twice — the README was brought up
+ * to date and the tool description was not, which is the more consequential
+ * of the two: an agent that reads "next.config / vercel.json / netlify.toml /
+ * _headers / middleware" will not reach for this tool on a Nuxt or Remix
+ * project, and the tool's reach is exactly what the reader cannot otherwise
+ * find out; then the skill row shipped a *closed* list ("only … : <tokens>")
+ * over an array that named no `HEADER_METHOD_NAMES` shape but `res.set` and
+ * `res.setHeader` — so the row told its reader that a Fastify project's
+ * `reply.header("Content-Security-Policy", …)` was not a shape this audit
+ * reads, when it is, and the audit had already read it.
  *
- * `tests/integrity.test.ts` asserts every token below appears in all three,
- * so a shape added to the extractor cannot be announced in one place only.
+ * `tests/integrity.test.ts` asserts every token below appears in all four, so
+ * a shape added to the extractor cannot be announced in one place only, and
+ * separately asserts that every method name in `HEADER_METHOD_NAMES` is named
+ * by a token here — the direction that catches a *removal*. It does not
+ * assert the converse for the prose surfaces: a surface naming a shape this
+ * array does not is invisible to it, which is how the Fastify gap survived a
+ * round. The guard's own comment states what that leaves uncovered.
  */
 export const HEADER_SOURCE_TOKENS = [
   "next.config", "vercel.json", "netlify.toml", "_headers", "staticwebapp.config.json",
-  "routeRules", "Remix", "hooks.server", "kit.csp", "middleware",
-  "new Response", "new Headers", "res.set", "res.setHeader", "meta http-equiv",
+  "firebase.json", "routeRules", "Remix", "hooks.server", "kit.csp",
+  "middleware", "proxy.ts", "new Response", "new Headers", "res.set",
+  "res.setHeader", "headers.set", "headers.append", "reply.header", "meta http-equiv",
 ] as const;
 
 /**
@@ -1348,10 +1370,14 @@ export const HEADER_SOURCE_TOKENS = [
  */
 export const HEADER_SOURCES_SENTENCE =
   "Header state is inferred from wherever your stack declares it — next.config, vercel.json, "
-  + "netlify.toml, _headers, staticwebapp.config.json, Nuxt routeRules, a Remix/React Router headers "
-  + "export, SvelteKit hooks.server.ts and kit.csp, Next.js and Astro middleware, new Response(body, "
-  + "{ headers }) and new Headers({…}) on Cloudflare Workers/Deno/Bun, Express res.set and "
-  + "res.setHeader, and <meta http-equiv> — read as text and never evaluated";
+  + "netlify.toml, _headers, staticwebapp.config.json, firebase.json, Nuxt routeRules, a Remix/React "
+  + "Router headers export, SvelteKit hooks.server.ts and kit.csp, Astro middleware and Next.js "
+  + "middleware or its Next 16 rename proxy.ts, new Response(body, { headers }) and new Headers({…}) "
+  + "on Cloudflare Workers/Deno/Bun — and, as rules rather than places, a quoted header-name "
+  + "property in any JSON or object literal, and any call whose method name is set, setHeader, append or "
+  + "header whatever the object is called (res.set, res.setHeader, headers.set, headers.append, "
+  + "Fastify reply.header, Hono c.header, Koa ctx.set) — and <meta http-equiv>, read as text and "
+  + "never evaluated";
 
 // The first four bullets all describe one axis — *mechanism*: things that
 // happen somewhere this audit cannot reach. None of them described the other
@@ -1362,9 +1388,9 @@ export const HEADER_SOURCES_SENTENCE =
 // last two bullets exist so that reader has somewhere to land.
 const RECOGNISED_SHAPES = [
   "`next.config` `headers()` `key`/`value` entries",
-  "`vercel.json`, `netlify.toml`, `_headers`, `staticwebapp.config.json`",
-  "quoted object properties (`{ \"Content-Security-Policy\": \"…\" }`) — Nuxt `routeRules`, a Remix/React Router `headers` export, `new Response(body, { headers })`, `new Headers({…})`, `res.set({…})`",
-  "`res.setHeader(…)`, `headers.set/append(…)`, `reply.header(…)` — including from Next.js and Astro `middleware`",
+  "`vercel.json`, `netlify.toml`, `_headers`, `staticwebapp.config.json`, `firebase.json`",
+  "a quoted header-name property in any JSON or object literal (`{ \"Content-Security-Policy\": \"…\" }`), wherever it sits — Nuxt `routeRules`, a Remix/React Router `headers` export, `new Response(body, { headers })`, `new Headers({…})`, `res.set({…})`, a hand-rolled `headers.json`",
+  "any call whose method name is `set`, `setHeader`, `append` or `header`, whatever the object is called — `res.set(…)`, `res.setHeader(…)`, `headers.set(…)`, `headers.append(…)`, Fastify `reply.header(…)`, Hono `c.header(…)`, Koa `ctx.set(…)` — including from Astro `middleware` and from Next.js `middleware` or its Next 16 rename `proxy.ts`",
   "SvelteKit's `hooks.server.ts` and `kit.csp.directives`, and `<meta http-equiv>`",
 ].join("; ");
 

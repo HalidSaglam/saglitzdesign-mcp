@@ -5,7 +5,7 @@ import { loadKnowledge, findDoc, platformMatches } from "../dist/knowledge.js";
 import { CATEGORIES, PLATFORMS, DESIGN_LANGUAGES, REVIEW_MAP, FOCUS_MAP, ROADMAPS, STALE_DAYS, APPLE_DOC_IDS, isSourceEnforced } from "../dist/catalog.js";
 import { loadRecipes } from "../dist/recipes.js";
 import { loadExamples } from "../dist/examples.js";
-import { securityReport, HEADER_SOURCE_TOKENS, HEADER_SOURCES_SENTENCE } from "../dist/security.js";
+import { securityReport, HEADER_SOURCE_TOKENS, HEADER_SOURCES_SENTENCE, HEADER_METHOD_NAMES } from "../dist/security.js";
 import { liveToolNames, liveDisclosureTools } from "./helpers/liveServer.js";
 
 // Structural guarantees for the curated content. These are the checks that
@@ -1499,11 +1499,31 @@ describe("security documents cite permitted sources only", () => {
 // now. The skill shipped saying header state is read "only in five recognised
 // declaration shapes", inferred from `RECOGNISED_SHAPES.length` in
 // `src/security.ts` — which is five semicolon-joined *prose groups*, whose
-// third group alone names five shapes. The extractor reads fifteen. A guard
-// whose name asserts "every surface" while its body checks three of four is
-// the shape this file exists to stop, so the surface is the whole set or the
-// name is wrong.
-describe("every surface that lists audit_security's header sources lists all of them", () => {
+// third group alone names five shapes. A guard whose name asserts "every
+// surface" while its body checks three of four is the shape this file exists
+// to stop, so the surface is the whole set or the name is wrong.
+//
+// **The direction this guard does not cover.** The first `it.each` below
+// iterates `HEADER_SOURCE_TOKENS` and asserts `token ∈ surface`. It never
+// asserts `surface ⊆ tokens`, so a surface naming a shape the array does not
+// is invisible here — and the array's own omission of Fastify's
+// `reply.header`, `headers.set` and `headers.append`, three shapes the report
+// bullet named and the extractor reads, therefore passed every run of this
+// guard until they were added. Nor is the converse enforceable as prose: of
+// the 26 backticked spans in that bullet,
+// four match no token — `headers()`, `key`, `value` and the object-literal
+// example `{ "Content-Security-Policy": "…" }` — and all four are correct
+// text, grammar rather than sources. "Every backticked span is a token"
+// therefore fails on a bullet that is right (measured on this tree).
+//
+// What *is* enforced in the other direction is the axis that drift ran along.
+// `HEADER_METHOD_NAMES` is code, not prose, and the second `it.each` asserts
+// every method name in it is named by some token; dropping `reply.header` or
+// `res.setHeader` from the array now goes red. Dropping a *file* token
+// (`firebase.json`, `kit.csp`) still does not — nothing enumerates the
+// extractor's file reach — and neither does dropping one of two tokens that
+// name the same method (`res.set` / `headers.set`).
+describe("every surface that lists audit_security's header sources lists all of them, and the array names every call shape the extractor accepts", () => {
   const securitySrc = readFileSync(join(root, "src", "security.ts"), "utf8");
   const indexSrc = readFileSync(join(root, "src", "index.ts"), "utf8");
   // The README uses non-breaking hyphens in its tool table; normalise them so
@@ -1517,11 +1537,20 @@ describe("every surface that lists audit_security's header sources lists all of 
   const skill = readFileSync(join(root, "skills", "ship-quality-gate", "SKILL.md"), "utf8").replace(/‑/g, "-");
   const skillRow = skill.split("\n").find((l) => l.includes("`audit_security`")) ?? "";
 
+  // Scoped to its own bullet for the same reason the README and the skill are
+  // scoped to their rows: a token satisfied by some other sentence of the
+  // report is a token nobody was actually told about. A bare `proxy` token
+  // would be satisfied by "reverse proxy" in the CDN bullet, which says the
+  // opposite of what the token would be claiming — measured with
+  // `firebase.json` moved out of the shapes bullet and into that one: the
+  // whole-report check passes, this one fails.
   const notVisible = securityReport({ root: join(root, "does-not-exist-so-only-the-boilerplate-renders") }).text;
+  const shapesBullet = notVisible.split("\n").find((l) => l.includes("Header shapes it does not recognise")) ?? "";
 
   it("the README and the skill each have an audit_security row to check", () => {
     expect(readmeRow, "README tool table row").not.toBe("");
     expect(skillRow, "ship-quality-gate table row").not.toBe("");
+    expect(shapesBullet, "report's recognised-shapes bullet").not.toBe("");
   });
 
   it("the tool description is built from the shared constant, not a copy of it", () => {
@@ -1532,8 +1561,21 @@ describe("every surface that lists audit_security's header sources lists all of 
   it.each(HEADER_SOURCE_TOKENS.map((t) => [t]))(
     "%s is named in the tool description, the report, the README and the skill", (token) => {
       expect(HEADER_SOURCES_SENTENCE, "MCP tool description").toContain(token);
-      expect(notVisible, "report's Not visible block").toContain(token);
+      expect(shapesBullet, "report's recognised-shapes bullet").toContain(token);
       expect(readmeRow, "README tool table row").toContain(token);
       expect(skillRow, "skills/ship-quality-gate/SKILL.md tool table row").toContain(token);
+    });
+
+  // `HEADER_METHOD_NAMES` is what `isHeaderDeclarationContext` actually
+  // accepts as a header-setting call. A name in it that no token spells out is
+  // reach the four surfaces above cannot describe, however faithfully they
+  // mirror the array — `append` and `header` were both in that state, which is
+  // what let a Fastify project's `reply.header("Content-Security-Policy", …)`
+  // be read while every surface implied it was not.
+  it.each([...HEADER_METHOD_NAMES].map((m) => [m]))(
+    "the .%s( call shape the extractor accepts is named by some token", (method) => {
+      const naming = HEADER_SOURCE_TOKENS.filter(
+        (t) => (t.split(".").pop() ?? "").toLowerCase() === method);
+      expect(naming, `no HEADER_SOURCE_TOKENS entry ends in .${method}`).not.toEqual([]);
     });
 });

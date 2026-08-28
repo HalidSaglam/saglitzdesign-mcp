@@ -115,6 +115,33 @@ Claude Code plugin, and reshapes the guards so the next drift fails a test.
 - **Six sentences that named a slash command nothing registers.** Four skill
   pointers, plus two in the README.
 
+- **The published list of `audit_security`'s header sources named fewer shapes
+  than the audit reads.** Four surfaces describe that reach — the MCP tool
+  description a client reads before deciding to call the tool at all, the
+  report's own recognised-shapes bullet, the README's tool row and
+  `ship-quality-gate`'s row — and all four listed the same fifteen shapes.
+  Five more were already being read and named nowhere: `headers.set(…)` and
+  `headers.append(…)`, Fastify's `reply.header(…)`, Firebase Hosting's
+  `firebase.json`, and Next 16's `proxy.ts`. Worse, a list of places could
+  never have been complete, because two of the shapes are *rules*: a quoted
+  header-name property is read in any JSON or object literal, and any call
+  whose method name is `set`, `setHeader`, `append` or `header` is read
+  whatever the object is called — so Hono's `c.header()`, Koa's `ctx.set()`
+  and a hand-rolled `headers.json` are all read too. Each of those seven was
+  measured against a control: a project declaring CSP and HSTS that way gets
+  no `csp-missing` and no `hsts-missing`, and the same project with those two
+  lines deleted gets both. The skill row's word *only* over the short list is
+  what made this a defect rather than a shortening — an agent was told to
+  discount a result the audit had read correctly.
+
+  All four surfaces now state the two rules and the five shapes. All five are
+  now exercised by three new hardened fixtures in the per-framework matrix, so
+  the reach is pinned as behaviour rather than as a sentence, and the guard
+  that binds the four surfaces additionally asserts that every header-setting
+  method the extractor accepts is named by one of the listed shapes — the
+  direction that catches a shape being dropped from the list, which used to
+  pass in silence.
+
 ### The drift check, and what it does not catch
 
 The skill count in both READMEs is now an equality against the directories on

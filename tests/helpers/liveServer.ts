@@ -16,7 +16,11 @@ const root = join(__dirname, "..", "..");
  * broader claim. `tests/bin.test.ts` spawns `dist/bin.js` and speaks MCP to it
  * by hand, deliberately: that is the published entry point, `dist/index.js` is
  * not, and a dead launcher would leave the rest of this suite green. Two entry
- * points are exercised; one client implementation exists.
+ * points are exercised; one client implementation attaches to *this* one.
+ * `tests/server.test.ts:340` constructs a second SDK `Client` — over
+ * `InMemoryTransport` against an in-process `McpServer`, nothing spawned — so
+ * `grep -rn 'new Client(' tests/` returns two, and the scope, not the count,
+ * is what makes the sentence above true.
  *
  * The caller owns the returned client and must close it; `server.test.ts` holds
  * one open for its whole run, `liveToolNames` below opens and closes its own.

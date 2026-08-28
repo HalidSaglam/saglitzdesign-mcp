@@ -324,11 +324,17 @@ describe("the workflow slash commands", () => {
       // legitimate prose. Both of those have a *letter* before the slash, so
       // `[A-Za-z0-9]` alone kills them; `.` is here for `./redesign`. Measured
       // across all 146 files of the surface above: this class reports zero
-      // offenders and the unguarded regex reports two — the citation in
-      // `knowledge/geo/geo-tactics-checklist.md` and, since 0.26.0, the
-      // CHANGELOG's own `./redesign` describing this very exclusion. (The
-      // comment said "one" until the whole-branch review; the second arrived
-      // when Task 8 wrote about the guard inside the surface the guard walks.)
+      // offenders and the unguarded regex reports three, from two files — the
+      // pricing citation in `knowledge/geo/geo-tactics-checklist.md`, and both
+      // halves of the sentence in this changelog's own drift-check section
+      // that describes this very exclusion, which contribute one match each.
+      // Offenders are counted one per match, which is what the loop below
+      // pushes. (The comment said "one" until the whole-branch review and
+      // "two" until the round after it — the CHANGELOG pair arrived when Task
+      // 8 wrote about the guard inside the surface the guard walks, and was
+      // then counted by file rather than by the unit the sentence beside it
+      // had just used. Line numbers are deliberately not cited: the previous
+      // attempt cited two that had already moved.)
       //
       // The class is deliberately no wider than that. An earlier version also
       // excluded `_`, `:` and `-`, which bought nothing measurable (zero
