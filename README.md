@@ -83,15 +83,19 @@ come back here to find out.
 ## Workflows (`/` prompts) — "build me a…"
 
 Beyond answering questions, SaglitzDesign ships **prompts** that orchestrate an
-entire build end‑to‑end. In Claude Code they appear in the `/` menu; invoke one
-and the agent runs the full method — roadmap → positioning & copy → **generates
+entire build end‑to‑end. In Claude Code they appear in the `/` menu under a name
+that depends on how you installed it: installed as the Claude Code plugin they
+are `/saglitzdesign:build_landing_page` and so on, and with the server installed
+on its own they are `/mcp__saglitzdesign__build_landing_page` (a stdio MCP server
+gets no short `server:prompt` alias — only remote http/sse ones do).
+Invoke one and the agent runs the full method — roadmap → positioning & copy → **generates
 the design system** (color, type, layout, elevation, tokens) → real examples →
 **writes the actual code** from the component recipes → runs the **deterministic
 verify gate** (`design_lint`, `audit_accessibility`, `audit_design_system`,
 `audit_ux_copy`) → opens it in a browser, screenshots, scores it against the
 critique rubric, and iterates until it passes.
 
-| Prompt | What it does |
+| Workflow | What it does |
 |---|---|
 | **`build_landing_page`** | Designs & builds a conversion‑focused landing page, copy‑first, with a visual critique loop. |
 | **`build_website`** | Builds a multi‑page marketing site — positioning, IA, SEO/GEO, shared design system. |
@@ -102,7 +106,13 @@ critique rubric, and iterates until it passes.
 | **`redesign`** | Improves an existing UI (bolder / quieter / higher‑converting) using the craft standards, with a **measured** before→after (consistency score, critique score, lint findings, contrast failures). |
 | **`port_to_platform`** | Takes an existing UI to another platform (iOS ↔ Android ↔ macOS ↔ web) surface by surface — porting the intent and IA, never the components. |
 
-> Just say, e.g., *"/build_landing_page for a SaaS invoicing tool for freelancers"* — the workflow asks for anything missing, then builds it.
+> Just type, e.g., `/saglitzdesign:build_landing_page a SaaS invoicing tool for
+> freelancers` — everything after the command name becomes the brief, and the
+> workflow asks for anything missing, then builds it. The `/mcp__saglitzdesign__…`
+> form takes only the first whitespace‑separated word as its brief, so use the
+> plugin command whenever the brief is a phrase. These are yours to type: the
+> model reaches the same method through the skills, and does not invoke the
+> commands on its own.
 >
 > The visual critique loop uses whatever browser tool is connected (Claude in
 > Chrome, Playwright, or chrome‑devtools MCP) to see and refine its own output.

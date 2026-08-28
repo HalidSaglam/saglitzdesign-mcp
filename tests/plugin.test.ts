@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PROMPT_METADATA, type PromptMeta } from "../dist/prompts.js";
+import { renderAllCommands } from "../scripts/generate-commands.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const readJson = (p: string) => JSON.parse(readFileSync(join(root, p), "utf8"));
@@ -71,5 +73,96 @@ describe("the plugin manifest", () => {
     expect(entry.version).toBe(pkg.version);
     // The plugin is this same repository, so the entry points at its own root.
     expect(entry.source).toBe("./");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The eight slash commands
+//
+// The workflows are MCP prompts, and an MCP prompt served over stdio is
+// registered as `mcp__<server>__<prompt>` — with a `plugin_<plugin>_` prefix on
+// the server name once the server arrives through a plugin. The short
+// `server:prompt` alias exists only for remote http/sse servers, so it does not
+// exist for this one. `commands/*.md` give each workflow a name a user can
+// actually type: a plugin's file commands are namespaced `/<plugin>:<command>`,
+// verified against v2.1.250 by installing a scratch command and running it
+// (`/saglitzdesign:zzprobe` ran; `/zzprobe` answered "Unknown command").
+//
+// `design_review` (this command) and `design-review` (the skill) are different
+// names and do not collide; the documented precedence rule is about a skill and
+// a command sharing one name. Their descriptions still have to say which is
+// which, because a user reading the menu will not weigh the hyphen.
+describe("the workflow slash commands", () => {
+  const commandsDir = join(root, "commands");
+  // Read lazily and tolerate the directory being absent: a missing `commands/`
+  // is exactly what the set-equality test exists to report, and a scandir throw
+  // during collection would take the whole file's tests down with it instead.
+  const listCommands = (): string[] =>
+    existsSync(commandsDir) ? readdirSync(commandsDir).filter((f) => f.endsWith(".md")).sort() : [];
+
+  /** The `description:` from a command file's frontmatter, or null. */
+  const frontmatterDescription = (file: string): string | null => {
+    const text = readFileSync(join(commandsDir, file), "utf8");
+    const block = /^---\n([\s\S]*?)\n---\n/.exec(text);
+    if (!block) return null;
+    const line = block[1].split("\n").find((l) => l.startsWith("description:"));
+    if (!line) return null;
+    const value = line.slice("description:".length).trim();
+    return value.startsWith('"') ? JSON.parse(value) : value;
+  };
+
+  it("ships exactly one command per registered workflow, and no others", () => {
+    const expected = PROMPT_METADATA.map((p: PromptMeta) => `${p.name}.md`).sort();
+    // Set equality in both directions: a workflow with no command is a workflow
+    // nobody can type, and a command with no workflow is a slash command that
+    // renders a prompt the server no longer serves.
+    expect(listCommands()).toEqual(expected);
+  });
+
+  it("carries each workflow's registered description verbatim", () => {
+    for (const p of PROMPT_METADATA as PromptMeta[]) {
+      // Read from the live export, never from a second copy of the text: the
+      // menu entry and the MCP client's listing describe one workflow, and two
+      // hand-maintained descriptions of one thing are a drift surface.
+      expect(frontmatterDescription(`${p.name}.md`), p.name).toBe(p.description);
+    }
+  });
+
+  it("is byte-identical to what the generator produces now", () => {
+    // Without this the generator is a one-time convenience: a hand-edit to a
+    // generated file would be invisible, and so would a prompt body that
+    // changed after the commands were last written.
+    for (const { file, content } of renderAllCommands()) {
+      expect(readFileSync(join(commandsDir, file), "utf8"), file).toBe(content);
+    }
+  });
+
+  it("gives every documented workflow a name a user can actually type", () => {
+    // The six sentences this guards once wrote each workflow as a bare
+    // `/design_review`, which is not a name Claude Code registers for a stdio
+    // MCP server. The rule, not the list: any `/`-prefixed token in the docs
+    // whose final segment is a registered workflow name must be written as the
+    // plugin-namespaced command — `/saglitzdesign:design_review` — and that
+    // command file must exist.
+    const plugin = readJson(".claude-plugin/plugin.json").name;
+    const workflows = new Set(PROMPT_METADATA.map((p: PromptMeta) => p.name));
+    const files = [
+      "README.md",
+      ...readdirSync(join(root, "skills"), { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => `skills/${d.name}/SKILL.md`),
+    ];
+    const offenders: string[] = [];
+    for (const rel of files) {
+      const text = readFileSync(join(root, rel), "utf8");
+      for (const m of text.matchAll(/\/([A-Za-z0-9_:-]+)/g)) {
+        const token = m[1];
+        const bare = token.slice(token.lastIndexOf(":") + 1);
+        if (!workflows.has(bare)) continue;
+        if (token !== `${plugin}:${bare}`) offenders.push(`${rel}: /${token}`);
+        else if (!listCommands().includes(`${bare}.md`)) offenders.push(`${rel}: /${token} has no command file`);
+      }
+    }
+    expect(offenders, "workflow references that name a command Claude Code does not register").toEqual([]);
   });
 });

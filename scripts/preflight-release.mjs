@@ -18,7 +18,7 @@
 //
 // In GitHub Actions the tag is read from GITHUB_REF when no argument is given.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -114,6 +114,47 @@ if (!heading.test(changelog)) {
   } else {
     ok.push(`CHANGELOG.md — an entry for ${version}`);
   }
+}
+
+// `commands/*.md` are generated from the prompt metadata in src/prompts.ts, and
+// they are the only name a plugin user can type for a workflow: a stdio MCP
+// server's prompts are registered as `mcp__<server>__<prompt>` with no short
+// alias, so `/saglitzdesign:design_review` is the usable one. The generator
+// reads `dist/`, so `npm run build` has to have run first — `prepublishOnly`
+// builds before it reaches here. A stale command file ships a menu entry
+// describing a workflow the server no longer serves under that description.
+// Imported dynamically so a missing build fails with an instruction rather than
+// an unhandled module-resolution error before the first check has printed.
+let renderAllCommands;
+try {
+  ({ renderAllCommands } = await import("./generate-commands.mjs"));
+} catch (e) {
+  console.error("preflight-release — could not load scripts/generate-commands.mjs.");
+  console.error("It reads dist/, so run `npm run build` first.\n");
+  console.error(e.message);
+  process.exit(1);
+}
+const wantedCommands = renderAllCommands();
+const commandsDir = join(root, "commands");
+const commandsOnDisk = existsSync(commandsDir)
+  ? readdirSync(commandsDir).filter((f) => f.endsWith(".md")).sort()
+  : [];
+const commandProblems = [];
+for (const f of commandsOnDisk) {
+  if (!wantedCommands.some((c) => c.file === f)) commandProblems.push(`${f} has no prompt of that name`);
+}
+for (const { file, content } of wantedCommands) {
+  const path = join(commandsDir, file);
+  if (!existsSync(path)) commandProblems.push(`${file} is missing`);
+  else if (readFileSync(path, "utf8") !== content) commandProblems.push(`${file} is stale`);
+}
+if (commandProblems.length) {
+  errors.push(
+    `commands/ does not match the prompts the server registers: ${commandProblems.join("; ")}. ` +
+    "Run `npm run build && node scripts/generate-commands.mjs` and commit the result.",
+  );
+} else {
+  ok.push(`commands/ — ${wantedCommands.length} generated command(s) match src/prompts.ts`);
 }
 
 // The tag is the trigger, so it is the one that must not be wrong.

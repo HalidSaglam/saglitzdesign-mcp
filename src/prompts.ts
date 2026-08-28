@@ -285,8 +285,25 @@ Finish with: a surface-by-surface mapping table (source pattern → target patte
 
 const ALL_PROMPTS = [...BUILD_PROMPTS, ...ACTION_PROMPTS];
 
+/**
+ * Exposed for the command generator and the tests: the exact metadata
+ * `registerPrompts` hands the server for each workflow. Anything that needs a
+ * workflow's name, title or description reads it from here rather than
+ * re-deriving it — a description written twice is a description that drifts,
+ * and the generated `commands/*.md` carry the same text a client sees over MCP.
+ */
+export interface PromptMeta {
+  name: string;
+  title: string;
+  description: string;
+}
+
+export const PROMPT_METADATA: readonly PromptMeta[] = ALL_PROMPTS.map(
+  ({ name, title, description }) => ({ name, title, description }),
+);
+
 /** Exposed for tests: the workflows this server advertises. */
-export const PROMPT_NAMES = ALL_PROMPTS.map((p) => p.name);
+export const PROMPT_NAMES = PROMPT_METADATA.map((p) => p.name);
 
 /** Exposed for tests: the rendered text of a workflow, without a running server. */
 export function buildPromptText(name: string, brief = ""): string {

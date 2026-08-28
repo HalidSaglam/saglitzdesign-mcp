@@ -8,7 +8,7 @@ sources: design-critique-scoring, principles-heuristics, accessibility, visual-c
 
 Most AI design feedback guesses: it flags issues inconsistently, pads the list to look thorough, and critiques a text description instead of the actual pixels. Do the opposite — a fixed rubric applied to what you actually see.
 
-> Full rubric + checklists are in the **SaglitzDesign MCP** (`npx saglitzdesign-mcp`): docs `design-critique-scoring`, `accessibility`, `principles-heuristics`; tools `design_review_checklist`, plus the deterministic auditors that turn opinions into numbers — `design_lint`, `audit_design_system`, `audit_accessibility`, `audit_ux_copy` — and the `/critique_screenshot` and `/design_review` workflows.
+> Full rubric + checklists are in the **SaglitzDesign MCP** (`npx saglitzdesign-mcp`): docs `design-critique-scoring`, `accessibility`, `principles-heuristics`; tools `design_review_checklist`, plus the deterministic auditors that turn opinions into numbers — `design_lint`, `audit_design_system`, `audit_accessibility`, `audit_ux_copy` — and the `/saglitzdesign:critique_screenshot` and `/saglitzdesign:design_review` workflows.
 
 ## Method
 

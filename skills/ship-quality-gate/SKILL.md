@@ -10,7 +10,7 @@ Design advice is cheap and unfalsifiable. The gate is the other half of the job:
 
 The trade they make is the whole thing to understand. **Each one reports what was *authored*, not what was *measured*.** They load no page, render nothing, time nothing, and make no request to your site. A finding is a fact about the text of a file that was read. That is why they are deterministic, offline and fast — and it is exactly what bounds them.
 
-> These ship in the **SaglitzDesign MCP** (`npx saglitzdesign-mcp`). The rules behind them live in the base: `get_design_doc("web-security-headers")`, `get_design_doc("frontend-attack-surface")`, `seo_geo_guide`, `get_design_doc("ai-default-aesthetic")`, `get_design_doc("apple-shipping-readiness")`. For what these tools structurally cannot reach, pair them with `measure_screenshot` (the render), `audit_accessibility` (contrast ratios and target sizes), `audit_ux_copy` (the words) and the `/design_review` workflow.
+> These ship in the **SaglitzDesign MCP** (`npx saglitzdesign-mcp`). The rules behind them live in the base: `get_design_doc("web-security-headers")`, `get_design_doc("frontend-attack-surface")`, `seo_geo_guide`, `get_design_doc("ai-default-aesthetic")`, `get_design_doc("apple-shipping-readiness")`. For what these tools structurally cannot reach, pair them with `measure_screenshot` (the render), `audit_accessibility` (contrast ratios and target sizes), `audit_ux_copy` (the words) and the `/saglitzdesign:design_review` workflow.
 
 ## The seven
 
