@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROMPT_METADATA, type PromptMeta } from "../dist/prompts.js";
 import { renderAllCommands } from "../scripts/generate-commands.mjs";
@@ -54,6 +54,14 @@ describe("the plugin manifest", () => {
   // `${CLAUDE_PLUGIN_ROOT}` path written for the plugin is left unsubstituted in
   // project scope, which breaks the dev config rather than serving two masters.
   // Declaring the server in plugin.json keeps the two apart.
+  //
+  // It is also the confound to know about before measuring anything about MCP
+  // command names in this working tree: this file registers a *bare*
+  // `saglitzdesign` server, so `/mcp__saglitzdesign__<prompt>` resolves from it
+  // whether or not a plugin is loaded, and a probe run from the repository root
+  // will report that the plugin's `plugin_<plugin>_` prefix does not apply. It
+  // did, and the report was wrong. Probe from a directory with no `.mcp.json`,
+  // or pass `--strict-mcp-config`.
   it("leaves .mcp.json to the project, not to the plugin", () => {
     expect(JSON.stringify(readJson(".mcp.json"))).not.toContain("CLAUDE_PLUGIN_ROOT");
   });
@@ -97,8 +105,21 @@ describe("the workflow slash commands", () => {
   // Read lazily and tolerate the directory being absent: a missing `commands/`
   // is exactly what the set-equality test exists to report, and a scandir throw
   // during collection would take the whole file's tests down with it instead.
+  //
+  // The walk is the load-bearing part. Claude Code registers a command in a
+  // subdirectory under the directory name — `commands/sub/rogue.md` is
+  // `/saglitzdesign:sub:rogue`, measured — so a non-recursive listing leaves a
+  // live slash command in this plugin's namespace that nothing in the repository
+  // can see. `recursive: true` returns nested paths (`sub/rogue.md`), which will
+  // not match any `<workflow>.md`, so the set-equality test below reports it.
   const listCommands = (): string[] =>
-    existsSync(commandsDir) ? readdirSync(commandsDir).filter((f) => f.endsWith(".md")).sort() : [];
+    existsSync(commandsDir)
+      ? readdirSync(commandsDir, { recursive: true })
+          .map(String)
+          .map((f) => f.split(sep).join("/"))
+          .filter((f) => f.endsWith(".md"))
+          .sort()
+      : [];
 
   /** The `description:` from a command file's frontmatter, or null. */
   const frontmatterDescription = (file: string): string | null => {
@@ -137,6 +158,29 @@ describe("the workflow slash commands", () => {
     }
   });
 
+  /**
+   * Every markdown file this repository puts in front of a reader — human or
+   * agent — found by walking rather than by listing. Listing is what let the
+   * first version of this guard cover `skills/<dir>/SKILL.md` and miss
+   * `skills/README.md`, the file that ships to the skills.sh registry: the
+   * defect this whole task exists to close could be reintroduced there, and in
+   * `CHANGELOG.md`, with every test green (measured, both files).
+   *
+   * The set is the four directories whose markdown reaches a user plus the two
+   * root files: `knowledge/` is served to the model by the tools, `docs/` ships
+   * in the npm tarball, `commands/` is the generated menu text itself, and
+   * `skills/` is read aloud by an agent. Nothing here enumerates a file.
+   */
+  const documentedMarkdown = (): string[] => {
+    const walk = (rel: string) =>
+      readdirSync(join(root, rel), { recursive: true })
+        .map(String)
+        .map((p) => p.split(sep).join("/"))
+        .filter((p) => p.endsWith(".md"))
+        .map((p) => `${rel}/${p}`);
+    return ["README.md", "CHANGELOG.md", ...walk("skills"), ...walk("commands"), ...walk("docs"), ...walk("knowledge")];
+  };
+
   it("gives every documented workflow a name a user can actually type", () => {
     // The six sentences this guards once wrote each workflow as a bare
     // `/design_review`, which is not a name Claude Code registers for a stdio
@@ -146,16 +190,26 @@ describe("the workflow slash commands", () => {
     // command file must exist.
     const plugin = readJson(".claude-plugin/plugin.json").name;
     const workflows = new Set(PROMPT_METADATA.map((p: PromptMeta) => p.name));
-    const files = [
-      "README.md",
-      ...readdirSync(join(root, "skills"), { withFileTypes: true })
-        .filter((d) => d.isDirectory())
-        .map((d) => `skills/${d.name}/SKILL.md`),
-    ];
+    const files = documentedMarkdown();
+    // Non-vacuity, and the reason the walk can be trusted: a renamed directory
+    // or a `recursive` option that stopped working would return nothing and
+    // leave this test green with every sentence unread. The files that must be
+    // covered are named as a subset, so anything else the walk finds is covered
+    // too — which is the point of walking instead of listing.
+    for (const required of ["README.md", "skills/README.md", "skills/design-review/SKILL.md", "commands/design_review.md"]) {
+      expect(files, "the walk stopped seeing a file it must cover").toContain(required);
+    }
     const offenders: string[] = [];
     for (const rel of files) {
       const text = readFileSync(join(root, rel), "utf8");
-      for (const m of text.matchAll(/\/([A-Za-z0-9_:-]+)/g)) {
+      // The slash has to open the token, or every URL and every relative path
+      // becomes a hit: `https://saglitz.com/services/redesign` and
+      // `node scripts/redesign` both end in a workflow name, and both are
+      // legitimate prose. The lookbehind requires the character before the
+      // slash to be something no path or URL puts there — measured across all
+      // 134 files of the surface above, where it is the difference between one
+      // false positive (`knowledge/geo/geo-tactics-checklist.md`) and none.
+      for (const m of text.matchAll(/(?<![A-Za-z0-9_./:-])\/([A-Za-z0-9_:-]+)/g)) {
         const token = m[1];
         const bare = token.slice(token.lastIndexOf(":") + 1);
         if (!workflows.has(bare)) continue;

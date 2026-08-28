@@ -19,7 +19,7 @@
 // In GitHub Actions the tag is read from GITHUB_REF when no argument is given.
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -136,8 +136,15 @@ try {
 }
 const wantedCommands = renderAllCommands();
 const commandsDir = join(root, "commands");
+// Walked, not listed: a command file in a subdirectory is a live slash command
+// (`commands/sub/rogue.md` registers as `/saglitzdesign:sub:rogue`, measured),
+// and a top-level listing would ship it without ever naming it.
 const commandsOnDisk = existsSync(commandsDir)
-  ? readdirSync(commandsDir).filter((f) => f.endsWith(".md")).sort()
+  ? readdirSync(commandsDir, { recursive: true })
+      .map(String)
+      .map((f) => f.split(sep).join("/"))
+      .filter((f) => f.endsWith(".md"))
+      .sort()
   : [];
 const commandProblems = [];
 for (const f of commandsOnDisk) {

@@ -86,8 +86,11 @@ Beyond answering questions, SaglitzDesign ships **prompts** that orchestrate an
 entire build end‑to‑end. In Claude Code they appear in the `/` menu under a name
 that depends on how you installed it: installed as the Claude Code plugin they
 are `/saglitzdesign:build_landing_page` and so on, and with the server installed
-on its own they are `/mcp__saglitzdesign__build_landing_page` (a stdio MCP server
-gets no short `server:prompt` alias — only remote http/sse ones do).
+on its own they are `/mcp__saglitzdesign__build_landing_page` (the menu labels it
+`saglitzdesign:build_landing_page (MCP)`, which is a label and not a name you can
+type — Claude Code hands out the short `server:prompt` alias to one first‑party
+Anthropic connector only, an https URL on `api.anthropic.com` under
+`/v1/design/`, so no MCP server you install gets one, stdio or remote).
 Invoke one and the agent runs the full method — roadmap → positioning & copy → **generates
 the design system** (color, type, layout, elevation, tokens) → real examples →
 **writes the actual code** from the component recipes → runs the **deterministic
@@ -110,9 +113,12 @@ critique rubric, and iterates until it passes.
 > freelancers` — everything after the command name becomes the brief, and the
 > workflow asks for anything missing, then builds it. The `/mcp__saglitzdesign__…`
 > form takes only the first whitespace‑separated word as its brief, so use the
-> plugin command whenever the brief is a phrase. These are yours to type: the
-> model reaches the same method through the skills, and does not invoke the
-> commands on its own.
+> plugin command whenever the brief is a phrase. These are yours to type: every
+> command carries `disable-model-invocation`, so the agent never starts one on
+> its own. Asked in prose it reaches for the skills instead, and they cover much
+> of the same ground — design review, landing‑page conversion, Apple platforms —
+> as guidance rather than as this orchestrated build. Nothing in them covers
+> `review_paywall`, which runs only when you type it.
 >
 > The visual critique loop uses whatever browser tool is connected (Claude in
 > Chrome, Playwright, or chrome‑devtools MCP) to see and refine its own output.
