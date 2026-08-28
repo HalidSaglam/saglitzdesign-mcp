@@ -49,8 +49,26 @@ detected fail loudly.**
 condensed paragraph contradicts the document it condenses. Three things can be
 tested, and this package builds exactly those three:
 
-1. **Referential** — every document, tool and count a skill names is checked
-   against the live registry.
+1. **Referential** — every document id a skill *declares in `sources:`*, every
+   tool name its body names, and every count in both READMEs is checked against
+   the live registry.
+
+   > **Narrowed after the whole-branch review.** This read "every document, tool
+   > and count a skill names", and document ids are the one third of that which
+   > is checked in the frontmatter only. Measured: renaming
+   > `` `apple-intelligence-design` `` in the body of
+   > `skills/apple-platform-design/SKILL.md` leaves all 83 integrity tests green,
+   > while breaking a declared `sources:` id turns `binds every skill to
+   > knowledge documents that exist` red. Two ids are body-only today —
+   > `apple-intelligence-design` and `growth-frameworks` — and they are precisely
+   > the two Task 2's review excluded from `sources:` under the ownership rule.
+   > The gap is left open rather than papered over: the obvious predicate
+   > (backticked kebab-case tokens) matches 27 tokens across the seven skills, of
+   > which six are ordinary prose — `img-no-alt`, `alt-missing`, `font-display`,
+   > `ease-in`, `transform-origin`, `prefers-reduced-motion` — so closing it that
+   > way buys a hand-written exemption list, which is the mirror this package
+   > exists to delete. Tool names in bodies *are* covered, by the phantom-tool
+   > guard.
 2. **Form** — the absolute-absence guard is extended over `skills/`, so skills
    are held to the same narrowing-claim standard as everything else.
 3. **A contradiction corpus** — every fact the knowledge base has *corrected*
@@ -89,6 +107,31 @@ does not catch**, in the test's own comment, the way the absence-form guard does
   where it is hosted is Halid's call and needs no code.
 
 ## The plugin
+
+> **Corrected after Task 6.** Three things this section specifies were measured
+> against the shipped Claude Code binary during Task 6 and do not hold; the text
+> below is left as written, and each falsified item is named here.
+>
+> **(a) The catalog is `.claude-plugin/marketplace.json`, not a root
+> `marketplace.json`** — discovery only looks under `.claude-plugin/`. Its entry
+> list is keyed `plugins`, and `owner` is required. The `entries` key this spec
+> implied is *ignored at load time*, so getting it wrong presents as an empty
+> marketplace rather than as an error.
+>
+> **(b) `.mcp.json` is not part of the plugin, and `${CLAUDE_PLUGIN_ROOT}` is
+> not how the server is launched.** `.mcp.json` has been tracked since the
+> initial commit as this repository's own *project-scoped* dev config, and in
+> project scope `${CLAUDE_PLUGIN_ROOT}` is not substituted — the literal path
+> does not resolve. The plugin declares its server **inline in `plugin.json`**,
+> against the published npm package (`npx -y saglitzdesign-mcp@latest`). A
+> bundled copy could not work anyway: `dist/` is gitignored, so a plugin
+> checkout has no built server and nothing builds one on install.
+>
+> **(c) The manifests are a fourth *version* surface, not "a sixth preflight
+> surface".** Preflight prints **seven** ✓ lines: four version surfaces
+> (`package.json`, `package-lock.json`, `server.json`, `.claude-plugin/` plugin
+> + marketplace), the CHANGELOG entry, the generated commands, and the tag
+> check.
 
 The repository is already in plugin layout — `skills/` sits at the root, which is
 where a Claude Code plugin expects it. What is added is thin:
@@ -152,7 +195,8 @@ because it is the first release that changes a skill.
 ## Testing
 
 - Every referential claim in every skill and in both READMEs resolves against the
-  live registry — document ids, tool names, and counts. The three known-stale
+  live registry — document ids as declared in `sources:` (see the narrowing under
+  class 1), tool names anywhere in a body, and counts. The three known-stale
   numbers are pinned so they cannot regress.
 - The absence-form guard runs over `skills/`.
 - The contradiction corpus fails on a planted unscoped restatement of a corrected

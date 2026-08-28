@@ -6,9 +6,17 @@ const root = join(__dirname, "..", "..");
 
 /**
  * Spawn the built server on stdio and connect a client to it. This is the only
- * place in the suite that does so — `server.test.ts` calls it from its
- * `beforeAll` rather than keeping its own copy, so "what does the live server
- * register?" has one implementation and cannot be answered two ways.
+ * place in the suite that attaches an SDK `Client` to it — `server.test.ts`
+ * calls it from its `beforeAll` rather than keeping its own copy, so "what does
+ * the live server register?" has one implementation and cannot be answered two
+ * ways.
+ *
+ * Not the only place that spawns the server, and this comment said "the only
+ * place in the suite that does so" until the whole-branch review, which is the
+ * broader claim. `tests/bin.test.ts` spawns `dist/bin.js` and speaks MCP to it
+ * by hand, deliberately: that is the published entry point, `dist/index.js` is
+ * not, and a dead launcher would leave the rest of this suite green. Two entry
+ * points are exercised; one client implementation exists.
  *
  * The caller owns the returned client and must close it; `server.test.ts` holds
  * one open for its whole run, `liveToolNames` below opens and closes its own.

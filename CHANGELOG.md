@@ -71,8 +71,13 @@ Claude Code plugin, and reshapes the guards so the next drift fails a test.
   never starts one on its own — these are yours to type.
 
 - **A `sources:` line in every skill's frontmatter**, naming the knowledge
-  documents that skill condenses, with a test that every id resolves to a
-  document the server can load.
+  documents behind that skill, with a test that every id resolves to a document
+  the server can load. "Behind" does not mean the same thing in all seven: six
+  of them condense the documents they name, while `ship-quality-gate`'s eighteen
+  are the documents its auditors cite rule ids from — it never condenses
+  `auth-and-session-ux`, it runs a tool that quotes it. The field carries both
+  readings today, and the test checks that the ids resolve, not which reading
+  produced them.
 
 ### Changed
 

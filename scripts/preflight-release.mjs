@@ -2,10 +2,14 @@
 //
 // Refuse to release something inconsistent.
 //
-// A version lives in six places that have no way of noticing each other: the
-// package, its lockfile, the registry manifest, the plugin manifest and its
+// A version lives in seven places that have no way of noticing each other: the
+// package, its lockfile, the registry manifest, the plugin manifest, its
 // marketplace entry, the changelog, and the git tag that triggers the whole
-// thing. Any pair can drift. The expensive one is the tag — npm and the MCP
+// thing. (Six until the whole-branch review, over seven nouns: Task 6 added two
+// places and incremented the count by one. The ✓ line below prints the plugin
+// manifest and the marketplace entry as one surface because they are one edit;
+// they are still two files that can disagree, which is what this number
+// counts.) Any pair can drift. The expensive one is the tag — npm and the MCP
 // Registry both refuse to republish a version, so `v0.20.0` pushed against a
 // package still saying 0.19.1 does not fail loudly, it silently re-ships the
 // old release under a new name and there is no undo.

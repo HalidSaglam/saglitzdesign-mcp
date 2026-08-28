@@ -32,9 +32,14 @@ const DISCLOSURE_TOOLS = await liveDisclosureTools();
  *
  * It is not a single point of edit, and an earlier draft of this comment said
  * it was. Adding a document means editing this line *and* every README sentence
- * stating the count — today `README.md:12`, `:53`, `:69`, `:159` and
- * `skills/README.md:11`. That is the coupling working as intended: the point of
- * the check is that published prose cannot drift from the base.
+ * stating the count — today four in `README.md` and one in `skills/README.md`.
+ * They are deliberately not cited by line: this comment named `README.md:159`
+ * until the whole-branch review, and Task 7 had inserted a section above it two
+ * commits earlier, so the citation pointed at the `design_lint` tool row, which
+ * states no count at all. `states document and tool counts` finds and quotes
+ * every one of them on failure; that is the address that cannot go stale. The
+ * coupling itself is working as intended: the point of the check is that
+ * published prose cannot drift from the base.
  *
  * Bumping this number reports all of those sentences in one failure, each
  * quoted — `states document and tool counts` collects offenders rather than
@@ -498,7 +503,7 @@ describe("skills distribution", () => {
    * present and wrong.** This compares two sets of names and reads not one word
    * of the prose beside them. Three sentences in the first draft of that skill
    * overstated an auditor's reach — `audit_security` "infers header state from
-   * wherever your stack declares it" against a closed list of five recognised
+   * wherever your stack declares it" against a closed list of recognised
    * declaration shapes, `audit_project` "every lint rule over every file"
    * against a lint half that is still per-file, `design_lint` "line by line"
    * against rules that read the whole snippet — and each of the three
@@ -580,11 +585,15 @@ describe("skills distribution", () => {
    *                                                   trailing parenthesis
    *
    * The first draft required the digit to sit directly against the noun, and so
-   * missed two of the seven count statements on these pages — the banner at
-   * `README.md:12`, the first number a reader sees, and the resource table's
-   * `(96 of them)` at `:159`. A review changed both to 83 with the suite still
-   * green. The second draft widened the gap but spelled it `[\w-]+`, which
-   * admits neither `*` nor `,`, so `**83** curated knowledge documents` and
+   * missed two of the seven count statements on these pages — README's opening
+   * banner, the first number a reader sees, and the resources table's "in full
+   * (96 of them)". A review changed both to 83 with the suite still green.
+   * (Quoted rather than cited by line. Both citations here read `README.md:159`
+   * and had been stale since Task 7 inserted a section above that line: 159 is
+   * now the `design_lint` row, which states no count.)
+   *
+   * The second draft widened the gap but spelled it `[\w-]+`, which admits
+   * neither `*` nor `,`, so `**83** curated knowledge documents` and
    * `83 curated, versioned knowledge documents` both dropped back out of view
    * — a *false* number surviving, not merely an unwatched one.
    *
@@ -743,9 +752,16 @@ describe("skills distribution", () => {
    * Scope: every markdown file under `skills/`, found by walking the directory
    * rather than by listing the files here, frontmatter included (measured — an
    * absolute planted in a `description:` is reported). Today that walk finds
-   * exactly the six `SKILL.md` and `skills/README.md`, so it changed no result
-   * when it replaced the list. It is written this way because the guard's name
-   * asserts a class — every skill — and a skill that grows a `reference.md`
+   * every skill's `SKILL.md` plus `skills/README.md`, and nothing else. It
+   * found six `SKILL.md` when it replaced the list, so it changed no result
+   * then — and then `ship-quality-gate` arrived two commits later and the walk
+   * covered it with no edit here, which is the whole point of walking. (This
+   * clause said "exactly the six" until the whole-branch review, two commits
+   * after the seventh skill shipped: a bare cardinality gone stale in the
+   * comment of a guard that exists to stop bare cardinalities. It states no
+   * count now, so there is none to go stale.) It is written this way because
+   * the guard's name asserts a class — every skill — and a skill that grows a
+   * `reference.md`
    * would otherwise leave the guard behind with nothing noticing. Measured both
    * ways: an absolute planted in a new `reference.md` was silent under the list
    * and is reported under the walk, and one nested at
@@ -1470,13 +1486,23 @@ describe("security documents cite permitted sources only", () => {
   });
 });
 
-// Three surfaces describe what audit_security can read, for three different
+// Four surfaces describe what audit_security can read, for four different
 // readers: the report's "Not visible to this audit" block (a human), the MCP
-// tool description (the client, deciding whether to call the tool at all), and
-// the README's tool table. They drifted once — the README was brought up to
-// date and the machine-facing description was not, which is the worse half to
-// miss: an agent reading the short list will not reach for this tool on a Nuxt
-// or Remix project.
+// tool description (the client, deciding whether to call the tool at all), the
+// README's tool table, and `ship-quality-gate`'s row for the tool (an agent,
+// which will repeat what it says aloud). They drifted once — the README was
+// brought up to date and the machine-facing description was not, which is the
+// worse half to miss: an agent reading the short list will not reach for this
+// tool on a Nuxt or Remix project.
+//
+// They drifted a second time, and the fourth surface is why it is checked here
+// now. The skill shipped saying header state is read "only in five recognised
+// declaration shapes", inferred from `RECOGNISED_SHAPES.length` in
+// `src/security.ts` — which is five semicolon-joined *prose groups*, whose
+// third group alone names five shapes. The extractor reads fifteen. A guard
+// whose name asserts "every surface" while its body checks three of four is
+// the shape this file exists to stop, so the surface is the whole set or the
+// name is wrong.
 describe("every surface that lists audit_security's header sources lists all of them", () => {
   const securitySrc = readFileSync(join(root, "src", "security.ts"), "utf8");
   const indexSrc = readFileSync(join(root, "src", "index.ts"), "utf8");
@@ -1484,11 +1510,18 @@ describe("every surface that lists audit_security's header sources lists all of 
   // a token like "meta http-equiv" is compared on its content, not its glyphs.
   const readme = readFileSync(join(root, "README.md"), "utf8").replace(/‑/g, "-");
   const readmeRow = readme.split("\n").find((l) => l.includes("**`audit_security`**")) ?? "";
+  // The agent-facing surface: `ship-quality-gate`'s table row for the tool.
+  // Row-scoped rather than whole-file, for the same reason the README is: a
+  // token named anywhere else in a long document would satisfy the check
+  // without the row a reader of that row ever seeing it.
+  const skill = readFileSync(join(root, "skills", "ship-quality-gate", "SKILL.md"), "utf8").replace(/‑/g, "-");
+  const skillRow = skill.split("\n").find((l) => l.includes("`audit_security`")) ?? "";
 
   const notVisible = securityReport({ root: join(root, "does-not-exist-so-only-the-boilerplate-renders") }).text;
 
-  it("the README has an audit_security row to check", () => {
-    expect(readmeRow).not.toBe("");
+  it("the README and the skill each have an audit_security row to check", () => {
+    expect(readmeRow, "README tool table row").not.toBe("");
+    expect(skillRow, "ship-quality-gate table row").not.toBe("");
   });
 
   it("the tool description is built from the shared constant, not a copy of it", () => {
@@ -1497,9 +1530,10 @@ describe("every surface that lists audit_security's header sources lists all of 
   });
 
   it.each(HEADER_SOURCE_TOKENS.map((t) => [t]))(
-    "%s is named in the tool description, the report and the README", (token) => {
+    "%s is named in the tool description, the report, the README and the skill", (token) => {
       expect(HEADER_SOURCES_SENTENCE, "MCP tool description").toContain(token);
       expect(notVisible, "report's Not visible block").toContain(token);
       expect(readmeRow, "README tool table row").toContain(token);
+      expect(skillRow, "skills/ship-quality-gate/SKILL.md tool table row").toContain(token);
     });
 });

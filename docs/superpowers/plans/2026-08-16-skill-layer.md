@@ -37,6 +37,13 @@
 | `tests/plugin.test.ts` (create) | Manifest validity, version equality, command↔prompt agreement. |
 | `scripts/preflight-release.mjs` (modify) | `plugin.json` as a sixth version surface. |
 
+> **Corrected after Task 6**, for the three rows above it falsifies: `.mcp.json`
+> is **not** part of the plugin (it is this repository's project-scoped dev
+> config, and was never created by this package); the catalog ships at
+> `.claude-plugin/marketplace.json`, not at the root; and the manifests are a
+> **fourth version surface**, with preflight printing seven ✓ lines in total.
+> The full correction is at the head of Task 6.
+
 ---
 
 ### Task 1: Make the existing skill guards bite
@@ -433,6 +440,38 @@ git commit -m "feat: a skill for the enforcement half, which the register never 
 
 ### Task 6: The plugin manifest
 
+> **Corrected after Task 6 ran.** Three things specified below were measured
+> against the shipped Claude Code binary and do not hold. The steps are left as
+> written; what shipped instead is here.
+>
+> **(a) `marketplace.json` goes in `.claude-plugin/`, and its list is keyed
+> `plugins`.** Discovery only looks under `.claude-plugin/`; `owner` is
+> required; and the `entries` key Step 3 specifies is *ignored at load time*, so
+> the wrong key presents as an **empty marketplace rather than an error**. Step
+> 1's `readJson("marketplace.json")` and Step 7's `git add … marketplace.json`
+> are wrong for the same reason. `claude plugin validate .` is the authority
+> here and rejects the file Step 3 writes.
+>
+> **(b) There is no `.mcp.json` step, and `${CLAUDE_PLUGIN_ROOT}` is not how the
+> server is launched.** `.mcp.json` has been tracked since the initial commit as
+> the *project-scoped* config for developing this repository, and in project
+> scope `${CLAUDE_PLUGIN_ROOT}` is not substituted — the literal path does not
+> resolve. Making one file serve both roles broke the repo's own dev config. The
+> plugin declares its server **inline in `plugin.json`** as `npx -y
+> saglitzdesign-mcp@latest`. Step 3's aside about "if the plugin ships without a
+> built `dist/`" has an answer, and it is not a packaging question to note in a
+> report: `dist/` is `.gitignore` line 2, a plugin checkout has neither `dist/`
+> nor `node_modules/`, and copying `dist/` in still fails on
+> `Cannot find package '@modelcontextprotocol/sdk'` because the build does not
+> bundle dependencies. **The plugin could not have started its server.** Three
+> gates were green while it could not.
+>
+> **(c) "The sixth preflight surface" is a fourth *version* surface**, and
+> preflight prints **seven** ✓ lines, not eight: four version surfaces
+> (`package.json`, `package-lock.json`, `server.json`, `.claude-plugin/` plugin
+> + marketplace), the CHANGELOG entry, the generated commands, the tag check.
+> Step 4's heading and Task 8's Step 4 both say otherwise.
+
 **Files:**
 - Create: `.claude-plugin/plugin.json`, `.mcp.json`, `marketplace.json`, `tests/plugin.test.ts`
 - Modify: `scripts/preflight-release.mjs`
@@ -674,7 +713,7 @@ Beside the existing `npx` and `claude mcp add` instructions, not replacing them 
 - [ ] **Step 4: Run every gate**
 
 Run: `npm test && npm run preflight && npm run smoke`
-Expected: all PASS. Preflight must report 0.26.0 across all eight surfaces (six from before plus the two added in Task 6).
+Expected: all PASS. Preflight must report 0.26.0 across all eight surfaces (six from before plus the two added in Task 6). *(Corrected after Task 6: preflight prints **seven** ✓ lines — four version surfaces, the CHANGELOG entry, the generated commands, and the tag check.)*
 
 - [ ] **Step 5: Re-read the new prose against the new behaviour**
 
@@ -691,7 +730,7 @@ git commit -m "docs: v0.26.0 — one plugin, a seventh skill, and a drift check 
 
 ## Self-Review
 
-**Spec coverage.** Plugin layer → Task 6 (manifest, `.mcp.json`, marketplace) and Task 7 (commands). Drift check part 1 referential → Tasks 1 and 2. Part 2 form → Task 4. Part 3 contradiction corpus → Task 3. Refreshing the six skills → Tasks 1 (counts), 2 (bindings), 3 (Apple content and pointer), 4 (any absence forms). Seventh skill → Task 5. Version as a preflight surface → Task 6 Step 4. The `design_review` collision → Task 7 Step 5. The skills-CLI frontmatter verification → Task 2 Step 1. Release notes telling skill users to re-run the add command → Task 8 Step 2. **No gaps.**
+**Spec coverage.** Plugin layer → Task 6 (manifest, `.mcp.json`, marketplace) and Task 7 (commands). Drift check part 1 referential → Tasks 1 and 2. Part 2 form → Task 4. Part 3 contradiction corpus → Task 3. Refreshing the six skills → Tasks 1 (counts), 2 (bindings), 3 (Apple content and pointer), 4 (any absence forms). Seventh skill → Task 5. Version as a preflight surface → Task 6 Step 4. The `design_review` collision → Task 7 Step 5. The skills-CLI frontmatter verification → Task 2 Step 1. Release notes telling skill users to re-run the add command → Task 8 Step 2. **One gap, and it was substituted rather than covered** *(recorded after Task 6)*: the spec's testing bullet asks that "`npm run smoke` is extended to confirm the packed artefact and the manifest agree", and `scripts/smoke-pack.mjs` is untouched on this branch (`git diff --stat main...HEAD -- scripts/` names only `generate-commands.mjs` and `preflight-release.mjs`). There is nothing there for smoke to compare: `npm pack --dry-run --json` reports 171 files and **zero** under `.claude-plugin/`, so the packed artefact does not carry the manifest. Preflight owns the version equality instead, and asserts it against the manifests on disk. The substitution is sound; announcing it as no gap was not.
 
 **Placeholder scan.** No "TBD", no "add appropriate error handling", no "similar to Task N". Every code step carries the code. Two steps deliberately defer a decision to the implementer with instructions to record it rather than guess — Task 2 Step 1 (which branch the CLI forces) and Task 6 Step 3 (whether the plugin ships a built `dist/`); both name what to do in each case and require the deciding run to be quoted.
 

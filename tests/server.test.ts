@@ -11,9 +11,13 @@ import { encodePng, canvasRows } from "./helpers/pngFixture.js";
 import { connectLiveServer } from "./helpers/liveServer.js";
 
 // End-to-end smoke test over the real stdio server. Everything else in the
-// suite tests pure functions; this is the layer that proves the 23 tools are
-// actually registered, described, and callable — the wiring that unit tests
-// cannot see.
+// suite tests pure functions; this is the layer that proves every tool the
+// server registers is actually described and callable — the wiring that unit
+// tests cannot see. It said "the 23 tools" until the whole-branch review; the
+// server registers 34 today. The number is deleted rather than corrected,
+// because the set is read off the running server below, and a second copy of
+// its size written here could only ever go stale against it — which is what it
+// did.
 
 const root = join(__dirname, "..");
 

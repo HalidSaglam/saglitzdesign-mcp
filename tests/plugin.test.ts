@@ -161,11 +161,20 @@ describe("the plugin manifest", () => {
 // The workflows are MCP prompts, and an MCP prompt served over stdio is
 // registered as `mcp__<server>__<prompt>` — with a `plugin_<plugin>_` prefix on
 // the server name once the server arrives through a plugin. The short
-// `server:prompt` alias exists only for remote http/sse servers, so it does not
-// exist for this one. `commands/*.md` give each workflow a name a user can
-// actually type: a plugin's file commands are namespaced `/<plugin>:<command>`,
-// verified against v2.1.250 by installing a scratch command and running it
-// (`/saglitzdesign:zzprobe` ran; `/zzprobe` answered "Unknown command").
+// `server:prompt` alias goes to first-party Anthropic connectors only. The gate
+// is a conjunction, read out of the binary at v2.1.250 and re-read unchanged at
+// v2.1.251: `d = (type==="http"||type==="sse") && rA(url)` and `aliases: d ?
+// [...] : undefined`, where `rA` wants `https:`, a host of exactly
+// `api.anthropic.com`, and a pathname starting `/v1/design/`. Being remote is
+// necessary and nowhere near sufficient, so no server a user installs gets one —
+// stdio or remote. (This comment said the alias "exists only for remote http/sse
+// servers" until the whole-branch review. `46dfe79` struck that clause from the
+// README as a class claim inferred from its true negative half, touched this
+// file in the same commit, and left the identical sentence standing here.)
+// `commands/*.md` give each workflow a name a user can actually type: a plugin's
+// file commands are namespaced `/<plugin>:<command>`, verified against v2.1.250
+// by installing a scratch command and running it (`/saglitzdesign:zzprobe` ran;
+// `/zzprobe` answered "Unknown command").
 //
 // `design_review` (this command) and `design-review` (the skill) are different
 // names and do not collide; the documented precedence rule is about a skill and
@@ -230,18 +239,37 @@ describe("the workflow slash commands", () => {
   });
 
   /**
-   * Every markdown file this repository puts in front of a reader — human or
-   * agent — found by walking rather than by listing. Listing is what let the
-   * first version of this guard cover `skills/<dir>/SKILL.md` and miss
-   * `skills/README.md`, the file that ships to the skills.sh registry: the
+   * The markdown a reader — human or agent — receives through one of the three
+   * install channels or a clone of this repository: seven directories walked
+   * whole, plus the four root documents. Walked rather than listed. Listing is
+   * what let the first version of this guard cover `skills/<dir>/SKILL.md` and
+   * miss `skills/README.md`, the file that ships to the skills.sh registry: the
    * defect this whole task exists to close could be reintroduced there, and in
    * `CHANGELOG.md`, with every test green (measured, both files).
    *
-   * The set is the four directories whose markdown reaches a user plus the two
-   * root files: `knowledge/` is served to the model by the tools, `docs/` is
-   * tracked and so travels in the plugin checkout, `commands/` is the generated
-   * menu text itself, and `skills/` is read aloud by an agent. Nothing here
-   * enumerates a file.
+   * Why each directory is here — one criterion each, and none of them "it is
+   * markdown": `knowledge/` is served to the model by the tools; `recipes/` is
+   * read into `Recipe.spec` by `src/recipes.ts` and handed back by
+   * `get_component_recipe`, and `files:` names it, so it reaches a reader by
+   * both routes; `commands/` is the generated menu text itself; `skills/` is
+   * read aloud by an agent; `docs/`, `scripts/` and `.claude/` are tracked and
+   * so travel in the plugin checkout, and `scripts/regenerate-examples.md` is
+   * additionally named in `files:`. Nothing here enumerates a file inside those
+   * directories.
+   *
+   * This is NOT every markdown file in the repository, and the sentence at the
+   * top of this block claimed it was until the whole-branch review — a class
+   * claim inferred from the four directories that had been read, while
+   * `recipes/` satisfied both of the criteria that sentence gave and was
+   * excluded anyway. What stays outside is one directory and only one, measured
+   * rather than assumed (`find . -name '*.md'` less `node_modules`, `.git` and
+   * `dist`): `.superpowers/`, the gitignored review scaffolding, which reaches
+   * no reader through any channel. (No file count here: this comment is written
+   * from inside that directory's own review, so any number it stated would be
+   * wrong by one before the commit landed.) `tests/` and `src/` are outside
+   * because they hold no markdown at all, not because a rule excludes them. If
+   * a directory of prose ever does reach a reader, it belongs in the list
+   * below, and this paragraph is the standard it has to meet.
    *
    * That `docs/` clause said "ships in the npm tarball" until 0.26.0 and was
    * false: `files:` does not list `docs`, and `npm pack --dry-run` reports zero
@@ -256,7 +284,11 @@ describe("the workflow slash commands", () => {
         .map((p) => p.split(sep).join("/"))
         .filter((p) => p.endsWith(".md"))
         .map((p) => `${rel}/${p}`);
-    return ["README.md", "CHANGELOG.md", ...walk("skills"), ...walk("commands"), ...walk("docs"), ...walk("knowledge")];
+    return [
+      "README.md", "CHANGELOG.md", "NOTICE.md", "RELEASING.md",
+      ...walk("skills"), ...walk("commands"), ...walk("docs"), ...walk("knowledge"),
+      ...walk("recipes"), ...walk("scripts"), ...walk(".claude"),
+    ];
   };
 
   it("gives every documented workflow a name a user can actually type", () => {
@@ -274,7 +306,13 @@ describe("the workflow slash commands", () => {
     // leave this test green with every sentence unread. The files that must be
     // covered are named as a subset, so anything else the walk finds is covered
     // too — which is the point of walking instead of listing.
-    for (const required of ["README.md", "skills/README.md", "skills/design-review/SKILL.md", "commands/design_review.md"]) {
+    for (const required of [
+      "README.md", "skills/README.md", "skills/design-review/SKILL.md", "commands/design_review.md",
+      // Named because they are the two the old sentence claimed and the old
+      // walk missed: if either directory drops out of the walk again, this goes
+      // red instead of going quiet.
+      "recipes/button/spec.md", "scripts/regenerate-examples.md",
+    ]) {
       expect(files, "the walk stopped seeing a file it must cover").toContain(required);
     }
     const offenders: string[] = [];
@@ -285,9 +323,12 @@ describe("the workflow slash commands", () => {
       // `node scripts/redesign` both end in a workflow name, and both are
       // legitimate prose. Both of those have a *letter* before the slash, so
       // `[A-Za-z0-9]` alone kills them; `.` is here for `./redesign`. Measured
-      // across all 133 files of the surface above: this class reports zero
-      // offenders and the unguarded regex reports one
-      // (`knowledge/geo/geo-tactics-checklist.md`).
+      // across all 146 files of the surface above: this class reports zero
+      // offenders and the unguarded regex reports two — the citation in
+      // `knowledge/geo/geo-tactics-checklist.md` and, since 0.26.0, the
+      // CHANGELOG's own `./redesign` describing this very exclusion. (The
+      // comment said "one" until the whole-branch review; the second arrived
+      // when Task 8 wrote about the guard inside the surface the guard walks.)
       //
       // The class is deliberately no wider than that. An earlier version also
       // excluded `_`, `:` and `-`, which bought nothing measurable (zero

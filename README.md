@@ -250,7 +250,10 @@ does not name `skills/` or `commands/` — so an MCP-only install has every tool
 and every document and none of the skill or command files. The skills CLI is the
 mirror image: it copies each `SKILL.md` into your agent and brings no server, so
 the tools those skills point at are not there unless you also install one.
-Cloning the repository gets all of it — every one of these is a tracked file.
+Cloning the repository gets the source of all of it — but not a runnable
+server: `dist/` is gitignored, so a clone needs `npm install && npm run build`
+before `node dist/index.js` starts. Everything else in the table is a tracked
+file and arrives with the clone.
 
 ### Claude Desktop
 
