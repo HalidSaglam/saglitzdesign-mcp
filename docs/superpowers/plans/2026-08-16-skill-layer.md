@@ -549,6 +549,25 @@ git commit -m "feat: ship the server, its skills and its workflows as one plugin
 
 ### Task 7: The eight slash commands
 
+> **Corrected before Task 7 ran.** The premise below — hand-written command files
+> that "invoke the corresponding MCP prompt" — was measured against the shipped
+> Claude Code binary (v2.1.250) and does not hold. An MCP prompt's command name is
+> `mcp__<server>__<prompt>`; the short `server:prompt` alias is emitted **only** for
+> remote http/sse servers (`aliases: d ? [...] : undefined`, `d = (type==="http" ||
+> type==="sse") && sT(url)`), so our stdio server gets none; and a plugin-installed
+> server carries a `plugin_<plugin>_` prefix, making the real name
+> `/mcp__plugin_saglitzdesign_saglitzdesign__build_landing_page`. Consequences:
+> **(a)** six shipped sentences write these workflows as bare `/name` commands and
+> are therefore false — four skill pointer lines plus `README.md:86` and `:105`;
+> **(b)** the command bodies must be **generated** from `buildPromptText`, not
+> hand-written, or the package ships two descriptions of one workflow; **(c)** the
+> name test must read the live `PROMPT_NAMES` export, not a regex over
+> `src/prompts.ts` — that is the drift class Task 1 closed for tool names; and
+> **(d)** Step 5's `design_review` / `design-review` collision is not one, since the
+> documented rule needs the *same* name. The executable version is
+> `.superpowers/sdd/2026-08-16-skill-layer/task-7-brief.md`.
+
+
 **Files:**
 - Create: `commands/*.md` (eight files)
 - Modify: `tests/plugin.test.ts`

@@ -36,7 +36,7 @@ describe("the plugin manifest", () => {
     // …and it must carry a registry spec, not the bare name. This plugin's root
     // *is* this package, `bin` and all, so when the working directory is the
     // plugin checkout `npx saglitzdesign-mcp` resolves the local bin — which
-    // points into the ungitignored `dist/` that a checkout does not have — and
+    // points into the gitignored `dist/` that a checkout does not have — and
     // exits `command not found` without ever reaching the registry. A version
     // spec forces the fetch. `@latest` keeps the auto-updating behaviour and is
     // the form verified to boot from inside the checkout and outside it alike.
