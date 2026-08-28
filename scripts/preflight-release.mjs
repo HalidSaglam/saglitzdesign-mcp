@@ -2,13 +2,17 @@
 //
 // Refuse to release something inconsistent.
 //
-// A version lives in five places that have no way of noticing each other: the
-// package, its lockfile, the registry manifest, the changelog, and the git tag
-// that triggers the whole thing. Any pair can drift. The expensive one is the
-// tag — npm and
-// the MCP Registry both refuse to republish a version, so `v0.20.0` pushed
-// against a package still saying 0.19.1 does not fail loudly, it silently
-// re-ships the old release under a new name and there is no undo.
+// A version lives in seven places that have no way of noticing each other: the
+// package, its lockfile, the registry manifest, the plugin manifest, its
+// marketplace entry, the changelog, and the git tag that triggers the whole
+// thing. (Six until the whole-branch review, over seven nouns: Task 6 added two
+// places and incremented the count by one. The ✓ line below prints the plugin
+// manifest and the marketplace entry as one surface because they are one edit;
+// they are still two files that can disagree, which is what this number
+// counts.) Any pair can drift. The expensive one is the tag — npm and the MCP
+// Registry both refuse to republish a version, so `v0.20.0` pushed against a
+// package still saying 0.19.1 does not fail loudly, it silently re-ships the
+// old release under a new name and there is no undo.
 //
 // So this runs before anything is published, and says no.
 //
@@ -18,8 +22,8 @@
 //
 // In GitHub Actions the tag is read from GITHUB_REF when no argument is given.
 
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { join, dirname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -70,6 +74,38 @@ if (stale.length) {
   ok.push(`server.json — ${manifestVersions.length} version field(s) agree`);
 }
 
+// The plugin surface carries the version twice as well: `.claude-plugin/plugin.json`
+// is what Claude Code reads when the plugin loads, and the marketplace entry is
+// what a user sees before they install. Neither is on `npm version`'s path and
+// neither is imported by anything the suite runs, so both drift silently — and a
+// marketplace entry pinned to a version the plugin no longer carries offers an
+// install that resolves to something else.
+const plugin = JSON.parse(read(".claude-plugin/plugin.json"));
+const market = JSON.parse(read(".claude-plugin/marketplace.json"));
+// `plugins`, not `entries`. An unrecognised key here is ignored at load time
+// rather than rejected, so a manifest listing its plugins under the wrong name
+// presents as an empty marketplace — which is why this reads the same key the
+// loader does and reports a name that matches nothing as a problem.
+const pluginVersions = [
+  plugin.version,
+  ...(market.plugins ?? [])
+    .filter((e) => e.name === plugin.name)
+    .map((e) => e.version),
+];
+const pluginStale = pluginVersions.filter((v) => v !== version);
+if (pluginStale.length) {
+  errors.push(
+    `.claude-plugin/plugin.json / .claude-plugin/marketplace.json still say ${[...new Set(pluginStale)].join(", ")} ` +
+    `while the package is ${version}. Bump every version surface together.`,
+  );
+} else if (pluginVersions.length < 2) {
+  errors.push(
+    `.claude-plugin/marketplace.json lists no plugin named "${plugin.name}", so nothing pins the version a user installs`,
+  );
+} else {
+  ok.push(`.claude-plugin/ plugin + marketplace — ${pluginVersions.length} version field(s) agree`);
+}
+
 // A release with no changelog entry is a release nobody can read.
 const changelog = read("CHANGELOG.md");
 const heading = new RegExp(`^## \\[${version.replace(/\./g, "\\.")}\\]`, "m");
@@ -82,6 +118,54 @@ if (!heading.test(changelog)) {
   } else {
     ok.push(`CHANGELOG.md — an entry for ${version}`);
   }
+}
+
+// `commands/*.md` are generated from the prompt metadata in src/prompts.ts, and
+// they are the only name a plugin user can type for a workflow: a stdio MCP
+// server's prompts are registered as `mcp__<server>__<prompt>` with no short
+// alias, so `/saglitzdesign:design_review` is the usable one. The generator
+// reads `dist/`, so `npm run build` has to have run first — `prepublishOnly`
+// builds before it reaches here. A stale command file ships a menu entry
+// describing a workflow the server no longer serves under that description.
+// Imported dynamically so a missing build fails with an instruction rather than
+// an unhandled module-resolution error before the first check has printed.
+let renderAllCommands;
+try {
+  ({ renderAllCommands } = await import("./generate-commands.mjs"));
+} catch (e) {
+  console.error("preflight-release — could not load scripts/generate-commands.mjs.");
+  console.error("It reads dist/, so run `npm run build` first.\n");
+  console.error(e.message);
+  process.exit(1);
+}
+const wantedCommands = renderAllCommands();
+const commandsDir = join(root, "commands");
+// Walked, not listed: a command file in a subdirectory is a live slash command
+// (`commands/sub/rogue.md` registers as `/saglitzdesign:sub:rogue`, measured),
+// and a top-level listing would ship it without ever naming it.
+const commandsOnDisk = existsSync(commandsDir)
+  ? readdirSync(commandsDir, { recursive: true })
+      .map(String)
+      .map((f) => f.split(sep).join("/"))
+      .filter((f) => f.endsWith(".md"))
+      .sort()
+  : [];
+const commandProblems = [];
+for (const f of commandsOnDisk) {
+  if (!wantedCommands.some((c) => c.file === f)) commandProblems.push(`${f} has no prompt of that name`);
+}
+for (const { file, content } of wantedCommands) {
+  const path = join(commandsDir, file);
+  if (!existsSync(path)) commandProblems.push(`${file} is missing`);
+  else if (readFileSync(path, "utf8") !== content) commandProblems.push(`${file} is stale`);
+}
+if (commandProblems.length) {
+  errors.push(
+    `commands/ does not match the prompts the server registers: ${commandProblems.join("; ")}. ` +
+    "Run `npm run build && node scripts/generate-commands.mjs` and commit the result.",
+  );
+} else {
+  ok.push(`commands/ — ${wantedCommands.length} generated command(s) match src/prompts.ts`);
 }
 
 // The tag is the trigger, so it is the one that must not be wrong.

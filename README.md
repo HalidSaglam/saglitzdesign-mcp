@@ -83,15 +83,28 @@ come back here to find out.
 ## Workflows (`/` prompts) — "build me a…"
 
 Beyond answering questions, SaglitzDesign ships **prompts** that orchestrate an
-entire build end‑to‑end. In Claude Code they appear in the `/` menu; invoke one
-and the agent runs the full method — roadmap → positioning & copy → **generates
+entire build end‑to‑end. In Claude Code they appear in the `/` menu under a name
+that depends on how you installed it. Installed as the Claude Code plugin they
+are `/saglitzdesign:build_landing_page` and so on — plugin commands, one
+generated file per workflow in `commands/`. With the server installed on its own
+they are `/mcp__saglitzdesign__build_landing_page`, which the menu labels
+`saglitzdesign:build_landing_page (MCP)`. That label is typeable too, ` (MCP)`
+suffix and all — it is just a clumsier way to reach the same prompt. What does
+*not* work is that short form with the suffix dropped: Claude Code hands the bare
+`server:prompt` alias to first‑party Anthropic connectors only — the URL has to
+be https, on `api.anthropic.com`, under `/v1/design/` — and no other server gets
+one, stdio or remote. (The plugin's `/saglitzdesign:build_landing_page` above
+only looks like that alias — it is a plugin command namespace, a different
+mechanism.)
+
+Invoke one and the agent runs the full method — roadmap → positioning & copy → **generates
 the design system** (color, type, layout, elevation, tokens) → real examples →
 **writes the actual code** from the component recipes → runs the **deterministic
 verify gate** (`design_lint`, `audit_accessibility`, `audit_design_system`,
 `audit_ux_copy`) → opens it in a browser, screenshots, scores it against the
 critique rubric, and iterates until it passes.
 
-| Prompt | What it does |
+| Workflow | What it does |
 |---|---|
 | **`build_landing_page`** | Designs & builds a conversion‑focused landing page, copy‑first, with a visual critique loop. |
 | **`build_website`** | Builds a multi‑page marketing site — positioning, IA, SEO/GEO, shared design system. |
@@ -102,7 +115,16 @@ critique rubric, and iterates until it passes.
 | **`redesign`** | Improves an existing UI (bolder / quieter / higher‑converting) using the craft standards, with a **measured** before→after (consistency score, critique score, lint findings, contrast failures). |
 | **`port_to_platform`** | Takes an existing UI to another platform (iOS ↔ Android ↔ macOS ↔ web) surface by surface — porting the intent and IA, never the components. |
 
-> Just say, e.g., *"/build_landing_page for a SaaS invoicing tool for freelancers"* — the workflow asks for anything missing, then builds it.
+> Just type, e.g., `/saglitzdesign:build_landing_page a SaaS invoicing tool for
+> freelancers` — everything after the command name becomes the brief, and the
+> workflow asks for anything missing, then builds it. The `/mcp__saglitzdesign__…`
+> form takes only the first whitespace‑separated word as its brief, so use the
+> plugin command whenever the brief is a phrase. These are yours to type: every
+> command carries `disable-model-invocation`, so the agent never starts one on
+> its own. Asked in prose it reaches for the skills instead, and they cover much
+> of the same ground — design review, landing‑page conversion, Apple platforms —
+> as guidance rather than as this orchestrated build. Nothing in them covers
+> `review_paywall`, which runs only when you type it.
 >
 > The visual critique loop uses whatever browser tool is connected (Claude in
 > Chrome, Playwright, or chrome‑devtools MCP) to see and refine its own output.
@@ -137,7 +159,7 @@ critique rubric, and iterates until it passes.
 | **`design_lint`** | Lints an HTML/CSS/JSX/Tailwind snippet for design & a11y anti‑patterns (hardcoded values, killed focus, missing alt/labels, clickable divs, unlabelled inputs…) with line numbers and fixes. Tag‑aware, so formatting never changes the verdict. Returns markdown **plus structured output** — findings, a severity summary, and a machine‑readable `notVisible` list of what it could not check. |
 | **`measure_screenshot`** | **Measures your actual screen.** Give it a PNG and it reports the real palette and colour count, true WCAG contrast ratios for the pairs on screen, density, and structural detections (alignment, rhythm, off‑grid gaps) each with a confidence level — plus a self‑contained HTML report you can open and share. Pure‑Node PNG decoding, no network, no dependencies. |
 | **`audit_project`** | **Audits a real codebase, not a snippet.** Point it at a directory: it walks your design source, lints every file, and scores the whole project for consistency — cross‑file drift being exactly what a single‑file lint cannot see. Findings ranked worst‑file‑first with file:line, plus an explicit list of what it did not look at. Returns markdown **plus structured output** — findings, a severity summary, a machine‑readable `notVisible` list, and a `scan` block reporting how many files and bytes were actually read, which were skipped for size or could not be opened, and whether a cap was hit. A missing or non‑directory path comes back as an error result, not an empty audit. |
-| **`audit_security`** | **Audits a web project or snippet for the defects that actually ship** — missing or weak Content‑Security‑Policy, absent HSTS, unpinned cross‑origin scripts, mixed content, credentials in `localStorage`, secret‑named `NEXT_PUBLIC_`/`VITE_` variables, unsandboxed third‑party iframes, wildcard `postMessage`, raw‑HTML sinks with no sanitiser, production source maps and un‑ignored `.env` files. Header state is inferred from wherever your stack declares it — `next.config`, `vercel.json`, `netlify.toml`, `_headers`, `staticwebapp.config.json`, Nuxt `routeRules`, a Remix `headers` export, SvelteKit `hooks.server.ts` / `kit.csp`, Next and Astro middleware, `new Response(…, { headers })` and `new Headers({…})` on Workers/Deno/Bun, Express `res.set` / `res.setHeader`, and `<meta http-equiv>` — read as text and never evaluated; this makes no network request, and says what it could not see. Returns markdown **plus structured output** — findings, a severity summary, and a machine‑readable `notVisible` list of what it could not check. A missing or non‑directory path comes back as an error result, not an empty audit. |
+| **`audit_security`** | **Audits a web project or snippet for the defects that actually ship** — missing or weak Content‑Security‑Policy, absent HSTS, unpinned cross‑origin scripts, mixed content, credentials in `localStorage`, secret‑named `NEXT_PUBLIC_`/`VITE_` variables, unsandboxed third‑party iframes, wildcard `postMessage`, raw‑HTML sinks with no sanitiser, production source maps and un‑ignored `.env` files. Header state is inferred from wherever your stack declares it — `next.config`, `vercel.json`, `netlify.toml`, `_headers`, `staticwebapp.config.json`, `firebase.json`, Nuxt `routeRules`, a Remix `headers` export, SvelteKit `hooks.server.ts` / `kit.csp`, Astro middleware and Next middleware or its Next‑16 rename `proxy.ts`, `new Response(…, { headers })` and `new Headers({…})` on Workers/Deno/Bun, a quoted header‑name property in any JSON or object literal, any call whose method is `set`, `setHeader`, `append` or `header` whatever the object is named (`res.set` / `res.setHeader`, `headers.set` / `headers.append`, Fastify `reply.header`, Hono `c.header`, Koa `ctx.set`), and `<meta http-equiv>` — read as text and never evaluated; this makes no network request, and says what it could not see. Returns markdown **plus structured output** — findings, a severity summary, and a machine‑readable `notVisible` list of what it could not check. A missing or non‑directory path comes back as an error result, not an empty audit. |
 | **`audit_seo_geo`** | **Audits the SEO and GEO signals that are actually in your source** — a missing `<title>` and one outside the width a result gives it, the same for the meta description, multiple H1s, skipped heading levels, a missing canonical, one written relative in a self‑contained document, one left pointing at localhost or staging, an hreflang set that never lists the page itself, JSON‑LD that does not parse or declares no `@context`/`@type` or declares a type whose rich result Google has retired, missing alt text, robots.txt crawl rules (including the AI crawlers behind ChatGPT, Claude, Perplexity and Google's AI surfaces), a robots.txt naming no sitemap, no `llms.txt` beside it, and content that only exists once a script has run. Absence is claimed only where it can be proven — a self‑contained HTML document, or a whole directory — and a capped scan downgrades every absence claim to an unconfirmed note. It reads source and measures nothing: no request is made, so no finding is a Core Web Vitals result, an indexing status or a ranking outcome. Returns markdown **plus structured output** — findings, a severity summary, and a machine‑readable `notVisible` list of what it could not check. |
 | **`audit_performance`** | **Audits the performance signals that are actually in your source** — a hero image held back by `loading="lazy"` or contradicting its own `fetchpriority`, the LCP‑candidate image declaring no fetch priority at all, a hero background declared in CSS or an inline style that the HTML preload scanner never sees, images with no `width`/`height` or `aspect-ratio` to reserve their box, a `<script src>` in the `<head>` carrying neither `defer` nor `async` nor `type="module"`, `@font-face` without `font-display`, third‑party font hosts, and scripts loaded from more distinct remote domains than any reading of "minimise" defends. The hero rules are deliberately narrow — the first image inside `<main>`, with the header logo and the mid‑article diagram structurally excluded — so some pages get no hero finding at all, and that is returned explicitly rather than left to read as a clean result. Core Web Vitals are field data; this loads nothing and times nothing. Returns markdown **plus structured output**. |
 | **`audit_apple_ui`** | **Audits an iOS or macOS app against Apple's own documentation.** Point it at the Xcode project directory: it reads the four surfaces a project declares configuration on — the information property list, `INFOPLIST_KEY_*` build settings in `project.pbxproj`, the entitlements plist, and each colorset's `Contents.json` — infers whether the target is iOS or macOS from those plus the Swift imports, and runs eight rules: a custom colorset with no `luminosity: dark` appearance, the deprecated `UIRequiresFullScreen` key (either spelling), a microphone entitlement declared under one capability and not its twin, no App Sandbox entitlement on macOS (reported as a fact about the Mac App Store channel, not as a defect), plus `NavigationView`, `.font(.system(size:))` on iOS only, a colour written as numbers, and a `Button` whose whole label is one SF Symbol. Every platform‑scoped rule stays silent when the signals do not settle the question, and the report names the verdict and the signals behind it so a silence reads as the gate rather than as a result. It builds nothing, runs no simulator and takes no screenshot. Returns markdown **plus structured output** — findings, a severity summary, a `scan` block, and the longest `notVisible` list this server ships, every entry of it derived from a run. Directory only; a `code` argument, a missing path or a path that is a file comes back as an error result, not an empty audit. |
@@ -201,6 +223,38 @@ Or, if you cloned the repo, point it at the built file:
 claude mcp add --scope user saglitzdesign node /absolute/path/to/saglitzdesign-mcp/dist/index.js
 ```
 
+### As a plugin
+
+One install brings all three pieces — the MCP server, the seven skills and a
+slash command for every workflow:
+
+```bash
+claude plugin marketplace add HalidSaglam/saglitzdesign-mcp
+claude plugin install saglitzdesign@saglitz
+```
+
+The plugin declares its server as `npx -y saglitzdesign-mcp@latest`, so the
+server itself still comes from npm; the skills and the commands are files inside
+the plugin. `claude plugin details saglitzdesign@saglitz` lists what arrived.
+
+**The three ways of installing do not carry the same payload:**
+
+| Install | Server, knowledge base, recipes | Skills | `/saglitzdesign:…` commands |
+|---|---|---|---|
+| `claude plugin install saglitzdesign@saglitz` | yes | the seven skills | one per workflow |
+| `npx saglitzdesign-mcp` / `claude mcp add` | yes | — | — |
+| `npx skills@latest add HalidSaglam/saglitzdesign-mcp` | — | the seven skills | — |
+
+The npm package's `files:` list covers `dist/`, `knowledge/` and `recipes/`, and
+does not name `skills/` or `commands/` — so an MCP-only install has every tool
+and every document and none of the skill or command files. The skills CLI is the
+mirror image: it copies each `SKILL.md` into your agent and brings no server, so
+the tools those skills point at are not there unless you also install one.
+Cloning the repository gets the source of all of it — but not a runnable
+server: `dist/` is gitignored, so a clone needs `npm install && npm run build`
+before `node dist/index.js` starts. Everything else in the table is a tracked
+file and arrives with the clone.
+
 ### Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
@@ -236,10 +290,14 @@ skills into any [skills](https://skills.sh)-compatible agent:
 npx skills@latest add HalidSaglam/saglitzdesign-mcp
 ```
 
-Five skills — `clean-interface-design`, `landing-page-conversion`,
-`design-review`, `motion-and-animation`, `apple-platform-design` — each
-standalone guidance that also points to the full MCP for depth. See
-[`skills/`](skills/).
+Seven skills — `clean-interface-design`, `landing-page-conversion`,
+`design-review`, `motion-and-animation`, `apple-platform-design`,
+`design-system-audit`, `ship-quality-gate` — each standalone guidance that also
+points to the full MCP for depth. See [`skills/`](skills/).
+
+Each skill is *copied* into your agent and its content hash pinned in
+`skills-lock.json`, so an installed skill does not change when this repository
+does. Re-run the command above to pick up a new skill or an edited one.
 
 ### Dev & debug
 

@@ -1,6 +1,7 @@
 ---
 name: clean-interface-design
 description: Design clean, calm, uncluttered interfaces that don't read as templated AI output. Use when building or restyling any UI (web, iOS, Android, macOS) and it needs visual hierarchy, restraint, spacing discipline, one clear primary action, and a cohesive look. Covers accent color, whitespace, corner radius, type scale, fonts, icons, borders-vs-shadows, and the "remove until it breaks" pass.
+sources: clean-app-design, ai-default-aesthetic, visual-craft-standards, color-systems, typography, spacing-layout, iconography, conversion-ux
 ---
 
 # Clean Interface Design

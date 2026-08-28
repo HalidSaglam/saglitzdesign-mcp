@@ -1,0 +1,165 @@
+#!/usr/bin/env node
+//
+// Generate `commands/*.md` — one slash command per MCP workflow prompt.
+//
+// Why these files exist at all: an MCP prompt served over stdio is registered
+// under `mcp__<server>__<prompt>`, and under a plugin the server name itself
+// gains a `plugin_<plugin>_` prefix, so the workflow a user is told to run as
+// `/design_review` is really `/mcp__plugin_saglitzdesign_saglitzdesign__design_review`.
+// A plugin's *file* commands are namespaced `/<plugin>:<command>`, which is the
+// name worth documenting: `/saglitzdesign:design_review`.
+//
+// The prefix holds on both load paths — installed and `--plugin-dir` alike.
+// A probe of it must run from a directory with no `.mcp.json`, or with
+// `--strict-mcp-config`: this repository tracks one that registers a bare
+// `saglitzdesign` server against `dist/index.js`, so a naming probe run from
+// the repository root resolves the bare name out of the dev config and reports
+// that the prefix does not apply. It did once, and the report was wrong.
+//
+// Why they are generated rather than written: the description in a command's
+// frontmatter and the description the server registers for the same workflow
+// are two statements of one fact. Hand-written, they drift. Here both come from
+// `PROMPT_METADATA`, the object `registerPrompts` itself registers from, and
+// tests/plugin.test.ts re-renders every file in memory and fails on any
+// difference — so a hand-edit to a generated file is a test failure, not a
+// silent divergence.
+//
+// Usage (the build must come first — this reads dist/):
+//   npm run build && node scripts/generate-commands.mjs
+//
+// `npm run preflight` runs it and refuses a release whose files are stale.
+
+import { readdirSync, readFileSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { join, dirname, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { PROMPT_METADATA, buildPromptText } from "../dist/prompts.js";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/** Where the generated commands live, relative to the repository root. */
+export const COMMANDS_DIR = "commands";
+
+/**
+ * The command file for one workflow.
+ *
+ * The argument shape is the part that needs care. `buildPromptText` splices the
+ * brief mid-sentence ("Do an expert **design review** of: <brief>, using…") and
+ * drops the clause when the brief is empty, while `$ARGUMENTS` substitutes to
+ * the empty string whenever the command is typed bare. Passing `"$ARGUMENTS"`
+ * into `buildPromptText` would therefore ship a dangling "of: ," to every user
+ * who runs the command without a brief. So the body is the no-brief rendering,
+ * and the argument arrives afterwards in a section that reads correctly when it
+ * is empty as well as when it is not.
+ */
+export function renderCommand(meta) {
+  const front = [
+    "---",
+    `description: ${JSON.stringify(meta.description)}`,
+    `argument-hint: ${JSON.stringify("[brief]")}`,
+    // The seven skills are this plugin's model-facing layer and already fire on
+    // "review this design" / "build a landing page". A command the model may
+    // also invoke is a second, far heavier path to the same workflow, and these
+    // are multi-phase interactive builds that ask the user up to four questions
+    // before they start. That is a user's gesture, not an inference.
+    //
+    // The cost, which is real and is stated in README.md rather than glossed:
+    // the model cannot reach these workflows on its own at all. For most of the
+    // eight the skills carry the same guidance when the user asks in prose, but
+    // nothing in `skills/` reaches `review_paywall` — `grep -ril paywall
+    // skills/` is empty — so that workflow is typed or it does not run.
+    //
+    // How the flag is known to work, and this is a reading of v2.1.250 rather
+    // than a run: `disable-model-invocation` is parsed into the command record
+    // (`disableModelInvocation:mqe(e["disable-model-invocation"])`) and the
+    // SlashCommand tool description is built from
+    // `$J().filter((j)=>!j.disableModelInvocation&&!AD(j))`. It cannot be shown
+    // by running `claude -p`, because that session carries no SlashCommand tool
+    // at all: asking the model to list its commands answers "NONE" with the
+    // flag and without it. A probe that cannot fail is not evidence, and an
+    // earlier round of this task reported one as if it were.
+    //
+    // `claude plugin details` charges these eight ~346 always-on tokens anyway,
+    // flag or no flag: its projection reads `description` and `when_to_use` out
+    // of each file and models nothing else. The in-session accounting does skip
+    // entries carrying the flag. The projection overstates; it is not evidence
+    // against the flag.
+    "disable-model-invocation: true",
+    "---",
+  ].join("\n");
+
+  const body = buildPromptText(meta.name, "");
+
+  return `${front}
+<!-- Generated by scripts/generate-commands.mjs from src/prompts.ts. Do not edit by
+     hand: run \`npm run build && node scripts/generate-commands.mjs\`. -->
+
+${body}
+
+---
+
+### The brief for this run
+
+$ARGUMENTS
+
+The line above is whatever was typed after the command name; it is empty when the
+command was run bare. If it is empty, do not invent a subject — ask the questions
+this workflow specifies and build from the answers.
+`;
+}
+
+/** Every file this generator owns, as `{ file, content }`, in a stable order. */
+export function renderAllCommands() {
+  return [...PROMPT_METADATA]
+    .map((meta) => ({ file: `${meta.name}.md`, content: renderCommand(meta) }))
+    .sort((a, b) => a.file.localeCompare(b.file));
+}
+
+function main() {
+  const dir = join(root, COMMANDS_DIR);
+  mkdirSync(dir, { recursive: true });
+
+  const wanted = renderAllCommands();
+  const wantedNames = new Set(wanted.map((c) => c.file));
+
+  // A renamed or deleted prompt must not leave its command behind: an orphan
+  // command is a slash command that answers to a workflow the server no longer
+  // serves, and regeneration is the only thing that would ever notice.
+  //
+  // The sweep walks, because Claude Code registers a nested command file under
+  // its directory name — `commands/sub/rogue.md` is `/saglitzdesign:sub:rogue`,
+  // measured — so a listing that stops at the top level leaves a live slash
+  // command in this plugin's namespace that the generator will not remove and
+  // the tests will not see.
+  const removed = readdirSync(dir, { recursive: true })
+    .map(String)
+    .map((f) => f.split(sep).join("/"))
+    .filter((f) => f.endsWith(".md") && !wantedNames.has(f));
+  for (const f of removed) {
+    rmSync(join(dir, f));
+    // The directory the orphan lived in is this generator's to clean up too —
+    // an empty one registers nothing, but it is a place for the next one to
+    // land unnoticed.
+    let parent = dirname(join(dir, f));
+    while (parent !== dir && readdirSync(parent).length === 0) {
+      rmSync(parent, { recursive: true });
+      parent = dirname(parent);
+    }
+  }
+
+  const changed = [];
+  for (const { file, content } of wanted) {
+    const path = join(dir, file);
+    const before = existsSync(path) ? readFileSync(path, "utf8") : null;
+    if (before !== content) {
+      writeFileSync(path, content);
+      changed.push(file);
+    }
+  }
+
+  console.log(`generate-commands — ${wanted.length} command(s) in ${COMMANDS_DIR}/`);
+  for (const f of removed) console.log(`  - ${f} (removed: no prompt of that name)`);
+  for (const f of changed) console.log(`  ~ ${f}`);
+  if (!changed.length && !removed.length) console.log("  already up to date");
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();

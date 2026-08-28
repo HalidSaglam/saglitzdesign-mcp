@@ -872,6 +872,54 @@ app.use((req, res, next) => {
 `,
   }],
 
+  // Three shapes the tool read while none of its four disclosure surfaces
+  // named them, found by re-reviewing that list against `HEADER_METHOD_NAMES`
+  // rather than against the prose. Each is here so the reach the surfaces now
+  // claim is a behaviour, not a sentence.
+  ["Fastify — reply.header(…)", {
+    "server.js": `import Fastify from 'fastify';
+const app = Fastify();
+
+app.addHook('onSend', async (req, reply) => {
+  reply.header('Content-Security-Policy', "${HARD_CSP}");
+  reply.header('Strict-Transport-Security', '${HARD_HSTS}');
+  reply.header('X-Content-Type-Options', 'nosniff');
+  reply.header('Permissions-Policy', '${HARD_PP}');
+});
+`,
+  }],
+
+  ["Next 16 — proxy.ts with headers.set / headers.append", {
+    "proxy.ts": `import { NextResponse } from 'next/server';
+
+export function proxy() {
+  const res = NextResponse.next();
+  res.headers.set('Content-Security-Policy', "${HARD_CSP}");
+  res.headers.set('Strict-Transport-Security', '${HARD_HSTS}');
+  res.headers.append('X-Content-Type-Options', 'nosniff');
+  res.headers.append('Permissions-Policy', '${HARD_PP}');
+  return res;
+}
+`,
+  }],
+
+  ["Firebase Hosting — firebase.json headers", {
+    "firebase.json": JSON.stringify({
+      hosting: {
+        public: "dist",
+        headers: [{
+          source: "**",
+          headers: [
+            { key: "Content-Security-Policy", value: HARD_CSP },
+            { key: "Strict-Transport-Security", value: HARD_HSTS },
+            { key: "X-Content-Type-Options", value: "nosniff" },
+            { key: "Permissions-Policy", value: HARD_PP },
+          ],
+        }],
+      },
+    }, null, 2),
+  }],
+
   ["static _headers", {
     "_headers": `/*
   Content-Security-Policy: ${HARD_CSP}
@@ -1533,6 +1581,13 @@ describe("source rules — prose that names a sink is not a sink", () => {
 // the split can be checked against the exact bytes `securityReport` rendered
 // beforehand. A container change — array in, same markdown out — has nothing
 // to prove if the "before" picture is taken after the change.
+//
+// Deliberately updated since: the recognised-shapes bullet gained
+// `firebase.json`, `proxy.ts`, `headers.set`/`headers.append` and Fastify's
+// `reply.header`, five shapes the extractor read while no surface named them.
+// That bullet is therefore no longer the pre-split bytes. Nothing else in the
+// section moved with it — the accepted diff was that one line — so the rest of
+// the pin still does the job it was taken for.
 describe("the disclosure section, pinned before the split into an array", () => {
   it("renders the same disclosure section it rendered before the split", () => {
     expect(securityReport({ source: `<div dangerouslySetInnerHTML={{__html: x}} />`, filename: "a.tsx" }).text)
@@ -1557,7 +1612,7 @@ describe("the disclosure section, pinned before the split into an array", () => 
         - Headers set by runtime logic that depends on the request.
         - Any value assembled from variables, which is reported as undeterminable rather than absent.
         - Server-side concerns entirely: authorization, injection, and access control are out of scope for a design server.
-        - **Header shapes it does not recognise.** It reads \`next.config\` \`headers()\` \`key\`/\`value\` entries; \`vercel.json\`, \`netlify.toml\`, \`_headers\`, \`staticwebapp.config.json\`; quoted object properties (\`{ "Content-Security-Policy": "…" }\`) — Nuxt \`routeRules\`, a Remix/React Router \`headers\` export, \`new Response(body, { headers })\`, \`new Headers({…})\`, \`res.set({…})\`; \`res.setHeader(…)\`, \`headers.set/append(…)\`, \`reply.header(…)\` — including from Next.js and Astro \`middleware\`; SvelteKit's \`hooks.server.ts\` and \`kit.csp.directives\`, and \`<meta http-equiv>\`. A library that builds headers without naming them in your source — \`helmet\`, a framework preset, a shared middleware package — is invisible to it, and so is any shape not in that list. If your headers are set some other way, a "missing" finding above is about this audit's reach, not about your site.
+        - **Header shapes it does not recognise.** It reads \`next.config\` \`headers()\` \`key\`/\`value\` entries; \`vercel.json\`, \`netlify.toml\`, \`_headers\`, \`staticwebapp.config.json\`, \`firebase.json\`; a quoted header-name property in any JSON or object literal (\`{ "Content-Security-Policy": "…" }\`), wherever it sits — Nuxt \`routeRules\`, a Remix/React Router \`headers\` export, \`new Response(body, { headers })\`, \`new Headers({…})\`, \`res.set({…})\`, a hand-rolled \`headers.json\`; any call whose method name is \`set\`, \`setHeader\`, \`append\` or \`header\`, whatever the object is called — \`res.set(…)\`, \`res.setHeader(…)\`, \`headers.set(…)\`, \`headers.append(…)\`, Fastify \`reply.header(…)\`, Hono \`c.header(…)\`, Koa \`ctx.set(…)\` — including from Astro \`middleware\` and from Next.js \`middleware\` or its Next 16 rename \`proxy.ts\`; SvelteKit's \`hooks.server.ts\` and \`kit.csp.directives\`, and \`<meta http-equiv>\`. A library that builds headers without naming them in your source — \`helmet\`, a framework preset, a shared middleware package — is invisible to it, and so is any shape not in that list. If your headers are set some other way, a "missing" finding above is about this audit's reach, not about your site.
         - **A truncated scan cannot prove absence.** If the scan line above says it stopped at a cap, every "missing" finding is unconfirmed and is reported as a note rather than a defect.
 
         A clean result here means these files declare nothing wrong. Confirm the emitted headers on a real response before treating it as coverage."

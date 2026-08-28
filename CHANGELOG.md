@@ -4,6 +4,183 @@ All notable changes to SaglitzDesign MCP are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.26.0] — 2026-08-28
+
+The skills are a second distribution of this server's knowledge, and they had
+drifted from it. `skills/README.md` advertised 83 documents and 26 tools while
+96 and 34 shipped. The root README said "Five skills" with six directories on
+disk. The design-review skill scored against rubric bands that
+`design-critique-scoring` does not publish. `apple-platform-design` told a
+reader to support Dynamic Type without saying that macOS is not on Apple's list
+of platforms that have it. Six sentences — four in the skills, two in
+the README — wrote a workflow as a bare slash plus its name: `design_review`
+with nothing in front of it. With this plugin installed Claude Code answers that
+with `Unknown command` and offers the similarly-named `design-review` *skill*
+instead, so those sentences named an invocation nobody had ever typed. (This
+entry cannot write that name out either: the guard added here to stop it coming
+back reads `CHANGELOG.md` too.)
+
+Three guards stood over `skills/` through all of this, and not one of the three
+was shaped to catch the drift beside it: a frontmatter check whose only count was
+`toBeGreaterThanOrEqual(5)`, which passes with six directories; a phantom-tool
+check reading a hand-written list of tool names that had gone stale at 33 while
+34 shipped; and a README check that read `skills/README.md` and never the root
+README, where the wrong skill count was.
+
+This release refreshes the skills against what actually ships, adds a seventh,
+gives every workflow a name a user can type, packages the whole thing as a
+Claude Code plugin, and reshapes the guards so the next drift fails a test.
+
+### Added
+
+- **A Claude Code plugin — the server, the seven skills and the eight workflow
+  commands in one install.**
+
+  ```bash
+  claude plugin marketplace add HalidSaglam/saglitzdesign-mcp
+  claude plugin install saglitzdesign@saglitz
+  ```
+
+  The plugin declares its MCP server as `npx -y saglitzdesign-mcp@latest`, so
+  the server is fetched from npm rather than run out of the plugin directory: a
+  plugin installed from git arrives as a checkout, `dist/` is gitignored,
+  nothing builds it on install and there is no `node_modules` beside it, so a
+  server declared as a path inside the plugin would fail twice over. `claude plugin details
+  saglitzdesign@saglitz` prints what arrived.
+
+- **`ship-quality-gate` — a seventh skill, for the enforcement half of the
+  job.** The other six are guidance about making design decisions; this one is
+  about running the deterministic auditors over a real repository and reading
+  what comes back. It carries the seven tools that publish a disclosure list
+  (`design_lint`, `audit_project`, `audit_security`, `audit_generic_design`,
+  `audit_seo_geo`, `audit_performance`, `audit_apple_ui`) with each one's input
+  mode and reach, the rule that a clean report is a statement about the files
+  that were read and not about the rendered page, and the anti-patterns —
+  reading silence as a pass, linting markup apart from its stylesheet, expecting
+  the consistency count to see named-scale utility classes.
+
+- **Eight slash commands, one per workflow, generated from the prompt
+  metadata.** With the plugin installed the name is
+  `/saglitzdesign:design_review`, `/saglitzdesign:build_landing_page` and so on,
+  and everything after it is the brief. A workflow can be spelled more than one
+  way and the spellings do not behave alike — README's *Workflows* section
+  documents them and what each one costs. The commands are rendered from
+  `src/prompts.ts` by `scripts/generate-commands.mjs`, with a test that
+  regenerates them and compares byte for byte, so a hand-edit to a generated
+  file cannot survive. Each carries `disable-model-invocation`, so the agent
+  never starts one on its own — these are yours to type.
+
+- **A `sources:` line in every skill's frontmatter**, naming the knowledge
+  documents behind that skill, with a test that every id resolves to a document
+  the server can load. "Behind" does not mean the same thing in all seven: six
+  of them condense the documents they name, while `ship-quality-gate`'s eighteen
+  are the documents its auditors cite rule ids from — it never condenses
+  `auth-and-session-ux`, it runs a tool that quotes it. The field carries both
+  readings today, and the test checks that the ids resolve, not which reading
+  produced them.
+
+### Changed
+
+- **Six of the seven skills were edited, and an existing skills install carries
+  none of it until it is refreshed.** A skill is *copied* into the agent —
+  `npx skills@latest add` writes `SKILL.md` into `.agents/skills/<name>/` and
+  pins its content hash in
+  `skills-lock.json` — so a new release does not reach an existing install on
+  its own. Re-run it to pick up the seventh skill and the six edits:
+
+  ```bash
+  npx skills@latest add HalidSaglam/saglitzdesign-mcp
+  ```
+
+  Re-running it over an existing install overwrites what is on disk — measured,
+  by corrupting an installed `SKILL.md` and watching the hash come back.
+
+- **`apple-platform-design`** now says which platforms Apple lists Dynamic Type
+  for and that macOS is not among them, points at `audit_apple_ui`,
+  `apple-accessibility` and `apple-shipping-readiness`, and no longer reads a
+  fixed-metrics Mac view as a text-scaling failure.
+
+- **`design-review`** scores against the five bands `design-critique-scoring`
+  actually publishes (36–40, 28–35, 20–27, 12–19, 0–11) instead of the four it
+  had invented.
+
+- **The plugin description states four numbers and each is now held against a
+  live source** — documents from `knowledge/`, tools and auditors from the
+  running server, workflows from the prompt registry — and any further number
+  added to that sentence fails the test until something counts it. Falsifying
+  all four at once used to pass the whole suite and `preflight-release`.
+
+### Fixed
+
+- **Six sentences that named a slash command nothing registers.** Four skill
+  pointers, plus two in the README.
+
+- **The published list of `audit_security`'s header sources named fewer shapes
+  than the audit reads.** Four surfaces describe that reach — the MCP tool
+  description a client reads before deciding to call the tool at all, the
+  report's own recognised-shapes bullet, the README's tool row and
+  `ship-quality-gate`'s row — and all four listed the same fifteen shapes.
+  Five more were already being read and named nowhere: `headers.set(…)` and
+  `headers.append(…)`, Fastify's `reply.header(…)`, Firebase Hosting's
+  `firebase.json`, and Next 16's `proxy.ts`. Worse, a list of places could
+  never have been complete, because two of the shapes are *rules*: a quoted
+  header-name property is read in any JSON or object literal, and any call
+  whose method name is `set`, `setHeader`, `append` or `header` is read
+  whatever the object is called — so Hono's `c.header()`, Koa's `ctx.set()`
+  and a hand-rolled `headers.json` are all read too. Each of those seven was
+  measured against a control: a project declaring CSP and HSTS that way gets
+  no `csp-missing` and no `hsts-missing`, and the same project with those two
+  lines deleted gets both. The skill row's word *only* over the short list is
+  what made this a defect rather than a shortening — an agent was told to
+  discount a result the audit had read correctly.
+
+  All four surfaces now state the two rules and the five shapes. All five are
+  now exercised by three new hardened fixtures in the per-framework matrix, so
+  the reach is pinned as behaviour rather than as a sentence, and the guard
+  that binds the four surfaces additionally asserts that every header-setting
+  method the extractor accepts is named by one of the listed shapes — the
+  direction that catches a shape being dropped from the list, which used to
+  pass in silence.
+
+### The drift check, and what it does not catch
+
+The skill count in both READMEs is now an equality against the directories on
+disk rather than a floor, and it is checked at every occurrence on the page
+rather than at the first — a draft that stopped at the first match let a second,
+wrong sentence sit below a correct one. The document and tool counts on those
+same two pages are held against the live registry. The tool names a skill may
+mention are read off the running server rather than from a hand-written mirror.
+And any `/`-prefixed token in the documented markdown whose last segment is a
+registered workflow must be written as the plugin command and have a command
+file behind it — over a surface walked rather than listed, `skills/README.md`
+and this changelog included.
+
+What that does not reach is worth stating plainly, and each guard says it in its
+own comment:
+
+- The disclosure-tool catalogue in `ship-quality-gate` is held equal *as a set*
+  to the tools that publish a `notVisible` list. It compares names and reads not
+  one word of the prose beside them. Three sentences in that skill's first draft
+  overstated an auditor's reach and this check passed on all three; it would
+  pass on a row whose description was blank. What it catches is an eighth
+  auditor with no row, a row for a tool that stopped publishing a list, and a
+  rename on one side only.
+- A skill's `sources:` list is checked for ids that resolve, not for being the
+  right list. From the file alone, a document the skill should have named but
+  did not is indistinguishable from a skill that condenses fewer documents.
+- The slash-command guard requires the slash to open the token, so that a URL or
+  a relative path ending in a workflow name is not a false alarm. `.../redesign`
+  slips through as a result, which is the price of allowing `./redesign`.
+
+### Upgrading
+
+npm's `latest` is **0.19.1**, and the registry holds 19 versions ending there.
+Seven entries below — 0.18.0, and 0.20.0 through 0.25.0 — are for versions npm
+never received. Installing 0.26.0 is therefore one step across the six of them
+that sit above 0.19.1: a server that registered 29 tools becomes one that
+registers 34, and those six entries are the record of what arrives with it.
+There is no intermediate version to move through, because none was published.
+
 ## [0.25.0] — 2026-08-16
 
 v0.24.0 sourced this server's six Apple documents to Apple's own pages, and

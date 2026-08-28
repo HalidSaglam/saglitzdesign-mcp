@@ -30,7 +30,7 @@ import { decodePng, PngError, MAX_BYTES } from "./png.js";
 import { measure } from "./screenshot.js";
 import { renderMarkdown, renderHtml } from "./report.js";
 import { importTokensReport } from "./importtokens.js";
-import { projectAuditReport } from "./project.js";
+import { projectAuditReport, UI_EXTENSIONS } from "./project.js";
 import { securityReport, HEADER_SOURCES_SENTENCE } from "./security.js";
 import { genericReport } from "./generic.js";
 import { seoReport, SEO_CAPABILITIES } from "./seo.js";
@@ -902,7 +902,7 @@ tool(
     + "Cross-file drift is the thing a single-file lint cannot see, which is the point of this tool. Reads only the directory you name; makes no network call. Pair with measure_screenshot for the rendered result and audit_ux_copy for the words.",
   {
     path: z.string().describe("Directory to audit. Absolute paths are strongly preferred — a relative path is resolved against the server's working directory, which is usually not your project folder."),
-    extensions: z.array(z.string()).optional().describe("Override which file extensions are scanned, e.g. ['.tsx','.css','.js']. Replaces the default list rather than adding to it, so name every extension you want read, each with a leading dot — 'js' matches nothing and the audit comes back empty, where '.js' works. Defaults to CSS/SCSS/HTML/JSX/TSX/Vue/Svelte/Astro; .js and .ts are excluded by default because most are logic, not UI."),
+    extensions: z.array(z.string()).optional().describe(`Override which file extensions are scanned, e.g. ['.tsx','.css','.js']. Replaces the default list rather than adding to it, so name every extension you want read, each with a leading dot — 'js' matches nothing and the audit comes back empty, where '.js' works. Defaults to ${UI_EXTENSIONS.join(", ")} — that whole list, read from the array the audit actually uses rather than restated here; .js and .ts are excluded by default because most are logic, not UI.`),
   },
   async ({ path, extensions }) => {
     const abs = isAbsolute(path) ? path : resolve(process.cwd(), path);

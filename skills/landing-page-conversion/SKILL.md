@@ -1,13 +1,14 @@
 ---
 name: landing-page-conversion
 description: Build or improve landing pages and marketing sites that convert, not just look good. Use when writing a hero, structuring a page, choosing a CTA, adding social proof, or diagnosing why a page isn't converting. Covers positioning, copy-first workflow, the above-the-fold contract, page narrative, CTAs, trust, and pricing — grounded in StoryBrand, Cialdini, and conversion research.
+sources: conversion-ux, marketing-website-roadmap, positioning-messaging, value-proposition-jtbd, storybrand-copywriting, influence-persuasion, ethical-design, web-hero-sections, forms-inputs
 ---
 
 # Landing Page Conversion
 
 A beautiful page with unclear positioning converts worse than a plain page with sharp positioning. Fix upstream first: **positioning → copy → structure → design → speed.**
 
-> Full depth (frameworks, real examples, benchmarks) is in the **SaglitzDesign MCP** (`npx saglitzdesign-mcp`): docs `conversion-ux`, `storybrand-copywriting`, `value-proposition-jtbd`, `influence-persuasion`, `growth-frameworks`, `web-hero-sections`; tools `audit_ux_copy` (readability, weak CTAs), `create_design_system`, `generate_layout_system`, and the `/build_landing_page` workflow.
+> Full depth (frameworks, real examples, benchmarks) is in the **SaglitzDesign MCP** (`npx saglitzdesign-mcp`): docs `conversion-ux`, `storybrand-copywriting`, `value-proposition-jtbd`, `influence-persuasion`, `growth-frameworks`, `web-hero-sections`; tools `audit_ux_copy` (readability, weak CTAs), `create_design_system`, `generate_layout_system`, and the `/saglitzdesign:build_landing_page` workflow.
 
 ## Order of operations
 

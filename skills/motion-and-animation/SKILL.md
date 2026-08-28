@@ -1,6 +1,7 @@
 ---
 name: motion-and-animation
 description: Add motion and animation that feels great, not like slop. Use when animating any UI — transitions, hovers, presses, sheets, drawers, modals, page transitions, gestures — or when an animation feels "off". Covers the easing rules agents get wrong (ease-out for enter, ease-in for exit), springs, interruptibility, durations, component craft (never scale(0), origin-aware), and reduced motion. Grounded in Apple's fluid-interface talks and web animation best practice.
+sources: animation-craft, motion-microinteractions, wwdc-design-principles
 ---
 
 # Motion & Animation

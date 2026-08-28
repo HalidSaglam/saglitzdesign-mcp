@@ -27,7 +27,7 @@ const SKIP_DIRS = new Set([
  * default: most are logic, and linting them for missing alt text produces noise
  * that buries the real findings. Callers who keep components in `.js` can ask.
  */
-const UI_EXTENSIONS = [".css", ".scss", ".sass", ".less", ".html", ".htm", ".jsx", ".tsx", ".vue", ".svelte", ".astro"];
+export const UI_EXTENSIONS = [".css", ".scss", ".sass", ".less", ".html", ".htm", ".jsx", ".tsx", ".vue", ".svelte", ".astro"];
 const STYLE_EXTENSIONS = new Set([".css", ".scss", ".sass", ".less"]);
 
 export const MAX_FILES = 400;
