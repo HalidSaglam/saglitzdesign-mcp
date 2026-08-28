@@ -205,12 +205,32 @@ describe("the workflow slash commands", () => {
       // The slash has to open the token, or every URL and every relative path
       // becomes a hit: `https://saglitz.com/services/redesign` and
       // `node scripts/redesign` both end in a workflow name, and both are
-      // legitimate prose. The lookbehind requires the character before the
-      // slash to be something no path or URL puts there — measured across all
-      // 134 files of the surface above, where it is the difference between one
-      // false positive (`knowledge/geo/geo-tactics-checklist.md`) and none.
-      for (const m of text.matchAll(/(?<![A-Za-z0-9_./:-])\/([A-Za-z0-9_:-]+)/g)) {
-        const token = m[1];
+      // legitimate prose. Both of those have a *letter* before the slash, so
+      // `[A-Za-z0-9]` alone kills them; `.` is here for `./redesign`. Measured
+      // across all 133 files of the surface above: this class reports zero
+      // offenders and the unguarded regex reports one
+      // (`knowledge/geo/geo-tactics-checklist.md`).
+      //
+      // The class is deliberately no wider than that. An earlier version also
+      // excluded `_`, `:` and `-`, which bought nothing measurable (zero
+      // offenders either way) and silently swallowed `Type:/design_review` and
+      // `workflow-/design_review`. Both now fail. `/` stays in the class, and
+      // that one is not decoration: without it `https://redesign.com/pricing`
+      // matches on the second slash of the protocol and reports `/redesign` —
+      // measured, and the kind of citation `knowledge/` accumulates. Nobody
+      // writes a slash command directly after a slash, so `/` costs no reach.
+      // `.../design_review` is the one shape that still slips through, and it
+      // is the honest price of allowing `./x`.
+      for (const m of text.matchAll(/(?<![A-Za-z0-9./])\/([A-Za-z0-9_:-]+)/g)) {
+        // `_/design_review_` is ordinary markdown italics, and its closing `_`
+        // is a legal character inside a workflow name, so the match swallows it
+        // and the lookup for `design_review_` misses. No registered workflow
+        // ends in `_`, so trailing ones are always emphasis, never name. This
+        // is the shape the guard exists for — the six original sentences,
+        // written in italics instead of ticks — and no lookbehind reaches it,
+        // because the defect is on the closing end of the token. (`*italics*`
+        // need no handling: `*` is not in the token class.)
+        const token = m[1].replace(/_+$/, "");
         const bare = token.slice(token.lastIndexOf(":") + 1);
         if (!workflows.has(bare)) continue;
         if (token !== `${plugin}:${bare}`) offenders.push(`${rel}: /${token}`);

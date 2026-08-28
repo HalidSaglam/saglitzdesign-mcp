@@ -84,13 +84,19 @@ come back here to find out.
 
 Beyond answering questions, SaglitzDesign ships **prompts** that orchestrate an
 entire build end‑to‑end. In Claude Code they appear in the `/` menu under a name
-that depends on how you installed it: installed as the Claude Code plugin they
-are `/saglitzdesign:build_landing_page` and so on, and with the server installed
-on its own they are `/mcp__saglitzdesign__build_landing_page` (the menu labels it
-`saglitzdesign:build_landing_page (MCP)`, which is a label and not a name you can
-type — Claude Code hands out the short `server:prompt` alias to one first‑party
-Anthropic connector only, an https URL on `api.anthropic.com` under
-`/v1/design/`, so no MCP server you install gets one, stdio or remote).
+that depends on how you installed it. Installed as the Claude Code plugin they
+are `/saglitzdesign:build_landing_page` and so on — plugin commands, one
+generated file per workflow in `commands/`. With the server installed on its own
+they are `/mcp__saglitzdesign__build_landing_page`, which the menu labels
+`saglitzdesign:build_landing_page (MCP)`. That label is typeable too, ` (MCP)`
+suffix and all — it is just a clumsier way to reach the same prompt. What does
+*not* work is that short form with the suffix dropped: Claude Code hands the bare
+`server:prompt` alias to first‑party Anthropic connectors only — the URL has to
+be https, on `api.anthropic.com`, under `/v1/design/` — and no other server gets
+one, stdio or remote. (The plugin's `/saglitzdesign:build_landing_page` above
+only looks like that alias — it is a plugin command namespace, a different
+mechanism.)
+
 Invoke one and the agent runs the full method — roadmap → positioning & copy → **generates
 the design system** (color, type, layout, elevation, tokens) → real examples →
 **writes the actual code** from the component recipes → runs the **deterministic
