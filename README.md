@@ -225,8 +225,9 @@ claude mcp add --scope user saglitzdesign node /absolute/path/to/saglitzdesign-m
 
 ### As a plugin
 
-One install brings all three pieces — the MCP server, the seven skills and a
-slash command for every workflow:
+One install brings all three pieces — the MCP server, all eight skills (the
+seven depth skills plus the umbrella that routes into them) and a slash
+command for every workflow:
 
 ```bash
 claude plugin marketplace add HalidSaglam/saglitzdesign-mcp
@@ -241,9 +242,9 @@ the plugin. `claude plugin details saglitzdesign@saglitz` lists what arrived.
 
 | Install | Server, knowledge base, recipes | Skills | `/saglitzdesign:…` commands |
 |---|---|---|---|
-| `claude plugin install saglitzdesign@saglitz` | yes | the seven skills | one per workflow |
+| `claude plugin install saglitzdesign@saglitz` | yes | all eight — seven depth skills plus the umbrella | one per workflow |
 | `npx saglitzdesign-mcp` / `claude mcp add` | yes | — | — |
-| `npx skills@latest add HalidSaglam/saglitzdesign-mcp` | — | the seven skills | — |
+| `npx skills@latest add HalidSaglam/saglitzdesign-mcp` | — | all eight — seven depth skills plus the umbrella | — |
 
 The npm package's `files:` list covers `dist/`, `knowledge/` and `recipes/`, and
 does not name `skills/` or `commands/` — so an MCP-only install has every tool
@@ -290,10 +291,12 @@ skills into any [skills](https://skills.sh)-compatible agent:
 npx skills@latest add HalidSaglam/saglitzdesign-mcp
 ```
 
-Seven skills — `clean-interface-design`, `landing-page-conversion`,
-`design-review`, `motion-and-animation`, `apple-platform-design`,
-`design-system-audit`, `ship-quality-gate` — each standalone guidance that also
-points to the full MCP for depth. See [`skills/`](skills/).
+Eight skills — `saglitzdesign`, the umbrella that routes into whichever of
+the other seven the work needs: `clean-interface-design`,
+`landing-page-conversion`, `design-review`, `motion-and-animation`,
+`apple-platform-design`, `design-system-audit`, `ship-quality-gate` — each
+standalone guidance that also points to the full MCP for depth. See
+[`skills/`](skills/).
 
 Each skill is *copied* into your agent and its content hash pinned in
 `skills-lock.json`, so an installed skill does not change when this repository

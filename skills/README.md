@@ -19,7 +19,10 @@ npx saglitzdesign-mcp
 
 ## Skills
 
-Seven skills ship here, one directory each:
+Eight skills ship here, one directory each. `saglitzdesign` is the door — it
+carries the trigger vocabulary and routes into whichever of the other seven
+the work needs. The seven depth skills below also install and work
+standalone:
 
 | Skill | Use it for |
 |---|---|
