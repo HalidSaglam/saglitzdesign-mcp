@@ -993,6 +993,50 @@ describe("skills distribution", () => {
   });
 });
 
+/**
+ * The umbrella skill (`skills/saglitzdesign/SKILL.md`) claims to be the front
+ * door into the seven depth skills. This holds it to that claim from both
+ * sides, derived off disk rather than a hand-written list on either side —
+ * the drift class the tool-name guard above already closed once.
+ *
+ * The routing table is read by parsing its rows, not by searching the body
+ * for each directory name as a substring. A substring test passes vacuously
+ * when a row is renamed to a string that contains another skill's name —
+ * `clean-interface-designs` still contains `clean-interface-design` — which
+ * is the same defect recorded against an earlier package's `text.includes(n)`
+ * (a name that is a prefix of another passes vacuously), reintroduced here in
+ * the brief this test was written from and ruled out before landing.
+ *
+ * Task 1 chose a regular row syntax for exactly this reason: a markdown table
+ * row whose last cell is a single backticked directory name and nothing else.
+ * The regex below was confirmed against the real file to extract exactly the
+ * seven rows it ships today — no more, no fewer.
+ */
+describe("the umbrella skill routes into every depth skill", () => {
+  const skillsDir = join(root, "skills");
+  const umbrella = join(skillsDir, "saglitzdesign", "SKILL.md");
+  const depth = readdirSync(skillsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && e.name !== "saglitzdesign")
+    .map((e) => e.name)
+    .sort();
+  const ROUTING_ROW = /^\|.*\|\s*`([a-z][a-z-]*)`\s*\|\s*$/gm;
+
+  it("names every depth skill in a routing row, and names no other directory", () => {
+    const body = readFileSync(umbrella, "utf8");
+    const routed = [...body.matchAll(ROUTING_ROW)].map((m) => m[1]).sort();
+    // Equality in both directions: a depth skill with no routing row is
+    // unreachable through the door (caught by `depth` having an entry
+    // `routed` lacks); a row naming a directory that does not exist sends the
+    // reader nowhere (caught the other way round).
+    expect(routed).toEqual(depth);
+  });
+
+  it("states the boundary that keeps it off pure functionality", () => {
+    const fm = readFileSync(umbrella, "utf8").split("---")[1] ?? "";
+    expect(fm.toLowerCase()).toMatch(/not for|does not cover|beyond/);
+  });
+});
+
 describe("release metadata is in sync", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const manifest = JSON.parse(readFileSync(join(root, "server.json"), "utf8"));
