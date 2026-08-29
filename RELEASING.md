@@ -29,14 +29,20 @@ so it is written once and read everywhere.
 
 In order, each one gating the next:
 
-1. **`scripts/preflight-release.mjs`** — the tag, `package.json`, both version
-   fields in `server.json`, and the CHANGELOG all name the same version. This
-   guards the one failure with no undo: npm and the MCP Registry both refuse to
-   republish a version, so a tag that runs ahead of `package.json` does not fail
-   loudly — it silently re-ships the previous release under a new name.
-2. **`npm run build` and the test suite** on Node 22, as CI already does on 20,
-   22 and 24 for every push to `main`.
-3. **`scripts/smoke-pack.mjs`** — packs the tarball, installs it into a scratch
+1. **`npm run build`.** It runs first only because preflight needs it: one
+   preflight check regenerates `commands/` from the prompt registry, and it can
+   only do that by importing `dist/`. A fresh runner has none, so preflight
+   placed first died on a missing module — caught by a dry run, never locally,
+   where a developer has just built.
+2. **`scripts/preflight-release.mjs`** — the tag, `package.json`, both version
+   fields in `server.json`, the two `.claude-plugin/` manifests, the CHANGELOG
+   and the generated `commands/` all agree. This guards the one failure with no
+   undo: npm and the MCP Registry both refuse to republish a version, so a tag
+   that runs ahead of `package.json` does not fail loudly — it silently re-ships
+   the previous release under a new name.
+3. **The test suite** on Node 22, as CI already does on 20, 22 and 24 for every
+   push to `main`.
+4. **`scripts/smoke-pack.mjs`** — packs the tarball, installs it into a scratch
    directory the way a user would, runs the binary by the name npm links, and
    requires real answers over the real protocol: the reported version, a
    non-empty tool/prompt/resource list, a search that returns actual knowledge,

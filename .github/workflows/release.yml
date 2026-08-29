@@ -53,10 +53,18 @@ jobs:
       - run: npm ci
 
       # ── gates ───────────────────────────────────────────────────────────────
+      # The build runs before preflight, not after, and the order is load-bearing
+      # in the other direction from what it looks like. Preflight is the cheap
+      # gate and belongs first — but one of its checks regenerates `commands/`
+      # from the prompt registry, which it can only do by importing `dist/`.
+      # A fresh runner has no `dist/`, so preflight ran first and died on
+      # `Cannot find module …/dist/prompts.js` (run 33245673499). It never failed
+      # locally, where a developer has just built. Building first keeps preflight
+      # strict rather than teaching it to skip a check when its input is absent.
+      - run: npm run build
+
       - name: Verify the tag, the manifest and the changelog agree
         run: node scripts/preflight-release.mjs
-
-      - run: npm run build
 
       - run: npx vitest run
 
