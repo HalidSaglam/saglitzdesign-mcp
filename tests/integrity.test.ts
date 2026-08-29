@@ -275,6 +275,81 @@ describe("bundled assets", () => {
   });
 });
 
+/**
+ * A minimal, explicitly scoped check that a skill's frontmatter would not
+ * break the real YAML parser the `skills` CLI installs it with. That CLI
+ * silently *skips* a file whose frontmatter fails to parse — confirmed live
+ * (`npx skills@latest add ./ --dry-run` reported "Found 7 skills" against a
+ * tree holding eight `SKILL.md` files, with a `⚠ Skipped … YAML parse error`
+ * line naming the broken one) and independently against a real parser
+ * (Python's PyYAML) — so a broken skill ships with the product's own install
+ * channel silently dropping it, while every guard in this suite that reads
+ * `SKILL.md` with a regex stays green, because none of them parses YAML.
+ *
+ * THIS IS NOT A YAML PARSER, and does not claim the reach of one. This
+ * repository declares no YAML dependency (`dependencies` are
+ * `@modelcontextprotocol/sdk` and `zod`; the frontmatter reader in
+ * `src/knowledge.ts` is a hand-rolled per-line parser, not a spec-compliant
+ * one either) and this check keeps that shape rather than pull in a library
+ * to validate one field on one file.
+ *
+ * What it assumes: every frontmatter line is a flat, single-line
+ * `key: value` pair — true of all eight skills' frontmatter today, and true
+ * of nothing this check does not itself verify. A line that is not shaped
+ * that way — a block-scalar opener (`|`/`>`), a nested mapping, a list item,
+ * a flow collection (`[...]`/`{...}`) — is reported as *unrecognized* rather
+ * than silently accepted; this check does not know whether such a line is
+ * valid YAML, so it refuses to guess and fails loud instead.
+ *
+ * For each recognized `key: value` line, and only when the value is
+ * unquoted (does not start with `"` or `'`), it enforces exactly the three
+ * plain-scalar rules that would otherwise truncate or break the value:
+ *   - no `: ` (colon-space) inside the value — this is the exact defect
+ *     shipped: `… even unasked: porting …` reads as a second mapping key
+ *     opening where none is allowed, and the real parser raises "nested
+ *     mappings are not allowed in compact mappings" at that point.
+ *   - the value does not end in `:` — the same rule, at the line's boundary.
+ *   - no ` #` inside the value — a space-hash pair opens a YAML comment
+ *     outside quotes, silently truncating everything after it. Nothing
+ *     shipped trips this today; it is checked because it is the same class
+ *     of bug in a different character.
+ * A value that starts with `"` or `'` is checked only for a balanced,
+ * matching closing quote of the same character — internal escaping
+ * (`\"`, `''`) is NOT validated, so a quoted value with a mismatched
+ * internal escape could still pass this check.
+ *
+ * NOTHING ELSE IS CHECKED. Every other way a plain scalar can break YAML —
+ * a leading indicator character (`[`, `{`, `&`, `*`, `!`, `%`, `@`, a
+ * backtick, a leading `-` or `?` followed by space), tabs used for
+ * indentation, anchors, aliases, directives, multi-document markers, or any
+ * other corner of the grammar — is not evaluated here at all. A green run of
+ * this check means "parses under the narrow shape this repository's
+ * frontmatter actually uses," not "is valid YAML."
+ */
+function frontmatterYamlProblems(text: string): string[] {
+  const problems: string[] = [];
+  for (const line of text.split("\n")) {
+    if (line.trim() === "") continue;
+    const m = line.match(/^([A-Za-z][A-Za-z0-9_-]*):\s(.*)$/);
+    if (!m) {
+      problems.push(`unrecognized frontmatter line, not a flat "key: value" pair: ${JSON.stringify(line)}`);
+      continue;
+    }
+    const value = m[2];
+    if (value.startsWith('"') || value.startsWith("'")) {
+      const quote = value[0];
+      if (!(value.length >= 2 && value.endsWith(quote))) {
+        problems.push(`quoted value missing its closing ${quote}: ${JSON.stringify(line)}`);
+      }
+      continue;
+    }
+    if (value.includes(": ")) problems.push(`unquoted value contains ": " (opens a nested mapping): ${JSON.stringify(line)}`);
+    if (value.endsWith(":")) problems.push(`unquoted value ends in ":" (opens a nested mapping): ${JSON.stringify(line)}`);
+    if (value.includes(" #")) problems.push(`unquoted value contains " #" (opens a YAML comment): ${JSON.stringify(line)}`);
+  }
+  return problems;
+}
+
 describe("skills distribution", () => {
   // skills/ ships separately via `npx skills add` and is not exercised by the
   // server, so nothing else would notice it drifting away from the tool set.
@@ -291,6 +366,18 @@ describe("skills distribution", () => {
       const description = body.match(/^description: (.+)$/m)?.[1] ?? "";
       expect(description.length, `${n}: description`).toBeGreaterThan(40);
     }
+  });
+
+  // See `frontmatterYamlProblems` above for exactly what this does and does
+  // not check, and why: a plain-scalar break here means the `skills` CLI
+  // silently drops the file, and nothing else in this suite parses YAML.
+  it("keeps every skill's frontmatter parseable under the shape the skills CLI expects", () => {
+    const problems: string[] = [];
+    for (const n of names) {
+      const frontmatter = read(n).split(/^---$/m)[1] ?? "";
+      for (const p of frontmatterYamlProblems(frontmatter)) problems.push(`${n}: ${p}`);
+    }
+    expect(problems).toEqual([]);
   });
 
   /**
