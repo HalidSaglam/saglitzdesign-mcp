@@ -4,6 +4,147 @@ All notable changes to SaglitzDesign MCP are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.27.0] — 2026-08-30
+
+Eight of the entries below describe releases that were never tagged or
+published: v0.20.0 through v0.26.0, and v0.18.0 before them (`npm view
+saglitzdesign-mcp versions` lists neither — it jumps 0.17.0 → 0.19.0 → 0.19.1
+→ nothing since). The tag/publish step is the maintainer's to run, and for
+those eight releases it has not run. `npm view saglitzdesign-mcp version`
+still answers `0.19.1`, so v0.19.1's entry further down is the newest one
+anyone outside this repository can actually install. Counting this one, nine
+entries now describe work nobody outside this repository has received, so
+publishing v0.27.0 does not ship "a design front door" as a small increment
+on v0.26.0 — it ships everything described in all nine entries at once, to a
+registry that currently has none of it. Read this entry, and the eight before
+it back to v0.20.0 and v0.18.0, as a description of what publishing v0.27.0
+will deliver, not of what already shipped.
+
+This release adds a front door into the seven design skills, two CSS-spec-
+sourced lint rules, three motion lint rules sourced to accessibility
+specifications and engine documentation, and a device against one specific
+way generated pages look generated.
+
+### Added
+
+- **`saglitzdesign` — an eighth skill directory, and the one an agent actually
+  reaches for.** Its `description` frontmatter field is the entire trigger
+  surface a skills-compatible agent matches against — there is no separate
+  keyword list — and it answers to "design", "redesign", "build", "restyle",
+  "improve", "critique", "review", "audit", "simplify", "polish", or
+  "animate" a user interface, plus unasked appearance decisions such as
+  porting a component to
+  another platform or turning a mockup into code. It ends on a boundary
+  instead of trailing off: **not** for pure functionality with no appearance
+  decision in it — "make the form work" or "add sorting to the table" should
+  not reach for this skill. Once triggered, it carries a routing table sending
+  the work to whichever of the seven depth skills actually fits, and four
+  invariants that hold regardless of which one that is: generate the design
+  system before the pixels, bind every value to a token, run the deterministic
+  auditors at the close, and ground every claimed number in a tool's measured
+  output.
+
+- **Two tests holding the umbrella to what it claims**, added after the first
+  version of its own frontmatter broke on the very CLI it ships through:
+  `npx skills@latest add ./ --dry-run` reported "Found 7 skills" against a
+  tree of eight `SKILL.md` files and printed a `⚠ Skipped` line naming
+  `saglitzdesign` — a YAML parse failure (an unquoted description containing
+  `: `) that every regex-based guard in the suite stayed blind to, because
+  none of them parses YAML. All 1622 tests were green at the time. One new
+  test parses the umbrella's routing table and asserts, in both directions,
+  that it names every depth skill directory on disk and no directory that
+  isn't one; the other walks all eight `SKILL.md` frontmatter blocks and
+  rejects the handful of plain-scalar shapes (an unquoted `: `, a trailing
+  `:`, an unquoted ` #`) that break the real parser the skills CLI uses. Both
+  are narrow by design — the second is explicitly not a YAML parser and says
+  so in its own comment — but they now stand between a broken skill and a
+  release, which nothing did before.
+
+- **`grid-track-no-min` — a CSS Grid `info` lint rule, sourced to CSS Grid
+  Level 1 §7.2.1 and §6.6.** §7.2.1 defines a bare `1fr` track as
+  `minmax(auto, 1fr)`; §6.6 is what decides whether that automatic minimum
+  resolves to the grid item's content-based size or to zero, and that
+  decision depends on the item's own overflow, whether the track has an
+  `auto` min sizing function, and whether it also spans a flexible track.
+  None of those conditions are visible from a single declaration, which is
+  why the rule is `info` rather than `warning` and why it says a track *can*
+  hold above its `fr` share, not that this one does — it is a robustness
+  note pointing at `minmax(0, 1fr)`, not a proven overflow. It fires only
+  where the track also carries an `<img>`, one of the few intrinsic-size
+  cases the rule can see in source alone.
+
+- **`overflow-hidden-root` — a `warning` lint rule, sourced to CSS Overflow
+  Level 3 §3.1**, which states that `overflow: hidden` leaves a box "still a
+  scroll container" (only the scrolling UI disappears; programmatic scrolling
+  still works), while `overflow: clip` is not a scroll container at all. That
+  is the entire claim: `hidden` on `html`, `body`, or `:root` makes that
+  element a scroll container. It is not a claim about `position: sticky` —
+  a sticky-positioning failure would need a source in CSS Position 3, and
+  this rule cites neither that specification nor sticky at all.
+
+- **Three motion lint rules, and two refused for lack of one.** The sourcing
+  is the point:
+  - `motion-no-reduced-cover` fires on any `animation`/`animation-name`/
+    `@keyframes` with no `prefers-reduced-motion` query anywhere in the same
+    source. WCAG 2.1 SC 2.3.3 (Animation from Interactions) is Level AAA and
+    scoped to motion "triggered by interaction" — it does not reach an
+    autoplaying or otherwise non-interactive animation, which this rule still
+    flags. Media Queries Level 5 §12.1 is the source that actually covers the
+    rule's full reach: it frames `prefers-reduced-motion` with no interaction
+    restriction and no AAA-only carve-out. SC 2.3.3 is cited here only as the
+    accessibility rationale for the interaction-triggered subset, not as
+    coverage for the whole rule.
+  - `animates-layout-property` rests on MDN's engine-rendering documentation
+    of which properties are compositor-only, not on a CSS specification the
+    way the two rules above do. It flags `width`, `height`, `top`,
+    `left`, `right`, `bottom`, `margin`, and `padding` in a `transition`,
+    `transition-property`, or `@keyframes` body, because animating them
+    forces layout and paint every frame where `transform`/`opacity` would
+    composite alone. That is a performance claim, not a correctness one: the
+    documented consequence is *slower*, not *wrong* — nothing about the
+    animated element is broken by animating `margin` instead of `transform`.
+  - `transition-all` (`info`) is a superset of the same claim, sourced the
+    same way: naming `all` animates every layout property above plus
+    whatever else changes on the element, which is a wider blast radius than
+    naming properties explicitly, not an elegance complaint.
+  - Two candidate rules from the original plan — flagging non-uniform
+    `hover:scale-105`-style values, and flagging "bouncy" easing curves —
+    were dropped before shipping. Neither has a specification or engine
+    documentation behind it, only a taste judgment, and this package ships
+    lint rules with sources or not at all.
+
+- **A macrostructure stamp in `clean-interface-design` and
+  `landing-page-conversion`.** Both skills now name five page shapes —
+  `centered-stack`, `split-panel`, `sidebar-shell`, `bento-grid`,
+  `rail-scroll` — and instruct the agent building a full page to check the
+  project's existing stylesheets for a prior `/* saglitzdesign ·
+  macrostructure: … */` comment and pick a different shape than the one it
+  finds, so a project doesn't accumulate screens that are all the same shape
+  underneath different colors and copy. No tool writes this stamp: it's a
+  comment the agent leaves for itself in CSS it is already writing. That
+  isn't an oversight — every one of this server's 34 tools is registered
+  through a single wrapper that stamps every registration with
+  `readOnlyHint: true` among its MCP annotations; a new tool added to write
+  this stamp to a project's files would go through that same wrapper while
+  actually writing to disk, making that declaration false for the one new
+  tool that wrote it.
+
+### Changed
+
+- **Skill users must re-run `npx skills@latest add HalidSaglam/saglitzdesign-mcp`
+  to get the new `saglitzdesign` skill and the macrostructure stamp** — the
+  two changes above that live inside `skills/`. The three lint rules live in
+  `src/lint.ts` and reach only an MCP or plugin install, never a skills-only
+  one; the two guard tests live in `tests/` and ship in neither — a skill
+  install gets none of this release's other changes either way. A skill is
+  copied into the installing agent at install time and
+  pinned by content hash in `skills-lock.json` — nothing about this
+  repository changing reaches an already-installed skill on its own. This is
+  not the first release to change a skill after it shipped: v0.15.0 below
+  already modified five existing `SKILL.md` files, and a previous version of
+  this plan claimed v0.27.0 would be the first such release. It would have
+  been false there and is false again here.
+
 ## [0.26.0] — 2026-08-28
 
 The skills are a second distribution of this server's knowledge, and they had
