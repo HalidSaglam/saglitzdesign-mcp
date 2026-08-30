@@ -499,6 +499,126 @@ export const LINE_RULES: LineRule[] = [
     fix: "Use `clip` instead of `hidden` (`overflow`/`overflow-x`/`overflow-y`) on `html`/`body`, and fix the element that actually overflows.",
     doc: "spacing-layout",
   },
+  {
+    id: "motion-no-reduced-cover",
+    severity: "warning",
+    // WCAG 2.1 SC 2.3.3 (Animation from Interactions): "Motion animation
+    // triggered by interaction can be disabled, unless the animation is
+    // essential to the functionality or the information being conveyed."
+    // Media Queries Level 5 §12.1 is the mechanism the platform gives a site
+    // to honour that: `prefers-reduced-motion`, valued `no-preference` or
+    // `reduce`. This is an accessibility rule sourced to both, not a taste
+    // one about how the animation looks.
+    //
+    // The test does not parse the media query — it only asks whether the
+    // literal substring `prefers-reduced-motion` occurs anywhere in the
+    // source handed to it. That is deliberately loose rather than a missed
+    // opportunity to be precise: every real spelling of the query still
+    // contains that substring — extra/no whitespace, an `@media screen and
+    // (...)` prefix, and the inverted `not (...: no-preference)` form all
+    // read as covered, and each is demonstrated in tests/lint.test.ts. What
+    // that looseness costs is disclosed in LINT_NOT_VISIBLE: coverage that
+    // lives in a *different* file this call never saw reads as absent here.
+    // Tailwind's `motion-reduce:`/`motion-safe:` variants are not read as
+    // coverage either, but not because of the looseness — the class list
+    // text never spells "prefers-reduced-motion" at all, the compiler emits
+    // that later. In practice this rule cannot fire on a Tailwind
+    // `animate-*` utility to begin with: its own trigger only recognises the
+    // CSS `animation:` property and `@keyframes`, not a class name, so a
+    // pure-Tailwind animated element is silent from this rule regardless of
+    // whether a `motion-reduce:` variant sits beside it.
+    //
+    // Case: both alternatives are case-sensitive, matching every line rule
+    // in this file except positive-tabindex — `ANIMATION:`, `@KEYFRAMES` and
+    // `PREFERS-REDUCED-MOTION` are each silent where the lowercase form
+    // fires or covers.
+    test: (l, full) =>
+      /(^|[\s;{])animation\s*:|@keyframes\s/.test(l) &&
+      !/prefers-reduced-motion/.test(full),
+    message:
+      "An animation with nothing honouring `prefers-reduced-motion` in the same source.",
+    fix: "Add `@media (prefers-reduced-motion: reduce) { … }` reducing or removing the movement — do not remove the feedback entirely.",
+    doc: "accessibility",
+  },
+  {
+    id: "animates-layout-property",
+    severity: "warning",
+    // Sourced to engine rendering documentation, not taste: MDN's "Animation
+    // performance and frame rate" guide puts `transform` and `opacity` in
+    // the cheap, compositor-only tier ("rendered in their own layer", no
+    // repaint, only a style recalculation), while a property that affects an
+    // element's geometry or position — its own examples are `left`,
+    // `max-width`, `border-width`, `margin-left` — triggers style
+    // recalculation, layout AND repaint on every frame. `width`, `height`,
+    // `top`, `left`, `right`, `bottom`, `margin` and `padding` are that
+    // geometry/position family.
+    //
+    // Both the shorthand-with-value form (`transition: width …`) and the
+    // longhand (`transition-property: width`) are read by the first
+    // alternative; the `@keyframes` body form reads the same eight names so
+    // it does not silently cover a narrower set than the transition form —
+    // an early draft's keyframes alternative checked only four of the eight
+    // and was widened here to match, once feeding it a keyframes block that
+    // only moved `right`/`bottom`/`margin`/`padding` showed the gap.
+    //
+    // Case: all three regexes are case-sensitive, matching the rest of this
+    // file — `TRANSITION: WIDTH` and `@KEYFRAMES` are silent.
+    //
+    // Known false positive, disclosed rather than fixed (see
+    // LINT_NOT_VISIBLE): the match is a whole word inside the declaration,
+    // not a parsed property name, so `outline-width` fires even though an
+    // outline never occupies layout space — changing its width is paint
+    // only, never layout. Fixing that needs a real property-name parse
+    // rather than a word match, which is out of scope for a regex rule.
+    test: (l) =>
+      /transition(-property)?\s*:[^;]*\b(width|height|top|left|right|bottom|margin|padding)\b/.test(l) ||
+      /@keyframes[^{]*\{[^}]*\b(width|height|top|left|right|bottom|margin|padding)\s*:/.test(l),
+    message:
+      "Animating a layout property forces layout and paint each frame; `transform` and `opacity` are composited.",
+    fix: "Animate `transform` / `opacity` instead — `translate` for position, `scale` for size.",
+    doc: "motion-microinteractions",
+  },
+  {
+    id: "transition-all",
+    severity: "info",
+    // A superset of animates-layout-property, sourced the same way: naming
+    // `all` animates whatever changes on the element, this rule's own eight
+    // layout properties included, plus every property that rule's word list
+    // does not enumerate. The justification is that consequence, not that
+    // the shorthand is inelegant.
+    //
+    // The Tailwind alternative accepts any chain of variant prefixes
+    // (`motion-safe:`, `hover:`, `md:`, chained or not) before the utility,
+    // the same idiom `outline-none`'s own Tailwind alternative already
+    // carries in this file — fed `motion-safe:transition-all` to check this
+    // specifically, because a variant-gated class is exactly the shape a
+    // naive quote/whitespace-only boundary misses. It still has to fire:
+    // `motion-safe:` only gates *when* the utility applies (skipped for
+    // anyone who prefers reduced motion), not *whether* naming `all`
+    // animates properties the author did not choose for everyone else.
+    //
+    // Deliberately NOT exempted: `transition: all` inside a
+    // `@media (prefers-reduced-motion: reduce) { … }` block. This is a
+    // line rule and reads the declaration the same regardless of the block
+    // it sits in — fed that exact nesting to check it does not accidentally
+    // suppress the match, and it does not. That is a considered read, not an
+    // oversight: the idiomatic reduced-motion kill switch is
+    // `transition: none` or a near-zero `transition-duration` (the form
+    // src/motion.ts's own reduced-motion snippet uses), not
+    // `transition: all <duration>` — a real `transition: all` written inside
+    // the block is still naming every property, layout ones included,
+    // rather than actually disabling them.
+    //
+    // Case: both alternatives are case-sensitive, matching the rest of this
+    // file — `TRANSITION: ALL` and `TRANSITION-ALL` are silent.
+    test: (l) =>
+      /transition\s*:\s*all\b/.test(l) ||
+      /(?:^|[\s"'`])(?:[a-z][a-z0-9-]*:)*transition-all(?:["'\s]|$)/.test(l),
+    message:
+      "`transition: all` animates every property that changes, including layout properties you did not intend.",
+    fix: "Name the properties: `transition: opacity 200ms ease, transform 200ms ease`.",
+    doc: "motion-microinteractions",
+  },
 ];
 
 // ── source (tag-aware) rules ─────────────────────────────────────────────────
@@ -787,6 +907,9 @@ export const LINT_NOT_VISIBLE: string[] = [
   "**What is overflowing.** `overflow-hidden-root` reads the declaration, not the layout, so it cannot say which element exceeds the viewport — only that the root was made a scroll container to hide it.",
   "**A qualified selector `overflow-hidden-root` still targets, and one override shape its own fallback guard cannot see.** The selector match accepts only `html`, `body` or `:root` as the selector's own trailing token, so a rule that still targets the root through a class or attribute — `body.no-scroll { overflow-x: hidden; }` — passes silently even though the declaration reaches the same element. Real selector matching needs actual parsing and risks new false positives on a text-based rule, which is a scope boundary rather than an oversight. Separately, the fallback-then-override guard (a later same-property `clip`, or a later bare `overflow: clip` shorthand, in the same block cancels a `hidden`) only recognises a later *shorthand* as overriding an earlier longhand, not the reverse: `overflow: hidden` fully neutralised by two later longhands together — `overflow-x: clip; overflow-y: clip;` — still fires, because neither longhand's property text is the shorthand that set `hidden`, and this rule does not model two longhands jointly covering a shorthand's two axes. That is a known false positive, kept because modelling the shorthand/longhand interaction both directions is a step past the property-text match this rule otherwise makes. The override guard also has no notion of a comment or a string, the same disclosed limitation `hasExplicitMinmaxFloor` already carries for `minmax(...)`: `body { overflow-x: hidden; /* overflow-x: clip; */ }` and `body { overflow-x: hidden; content: \"overflow-x: clip\"; }` both read the commented-out or quoted `clip` as a real, live override and wrongly silence a finding that should fire — a known false negative in the opposite direction from the other two.",
   "**A brace hiding in a string or a comment *before* the matched `hidden` silences `overflow-hidden-root` outright, rather than misreading its selector or its override.** The selector lookup (`enclosingOpenBrace`) scans backward from the declaration counting brace balance, and has no notion of a comment or a string — the same disclosed limitation `hasExplicitMinmaxFloor` and the override guard above already carry, but on the *other* side of the match: `body { content: \"}\"; overflow-x: hidden; }` and `body { /* } */ overflow-x: hidden; }` are both silent, because the quoted or commented `}` is read as a real, already-spent close and the balance-tracked scan walks straight past `body`'s own `{` before it can find it, returning no enclosing block at all. This is distinct from the already-disclosed comment/string blindness in the override guard, which only reads text *after* the matched declaration and produces a wrong (silenced) finding by misreading an override; this is text *before* the match, and it silences the rule by misreading the selector lookup itself, with no override involved.",
+  "**Whether an animation is actually reduced.** `motion-no-reduced-cover` looks for the media feature anywhere in the source it was given, so a project honouring the preference in a separate stylesheet reads as uncovered here.",
+  "**Runtime motion.** Anything animated from JavaScript, a motion library, or SwiftUI is invisible to this — it reads CSS declarations only.",
+  "**A property name that merely contains a matched word, not the word as a full property.** `animates-layout-property` reads `width`, `height`, `top`, `left`, `right`, `bottom`, `margin` and `padding` as whole words bounded by non-word characters, not as parsed property names, so `max-width`, `min-height`, `border-right-width` and `margin-top` all correctly fire because they really do affect layout — but so does `outline-width`, which does not: an outline is painted outside the box without changing its size, so animating it costs paint, never layout. The list is also not exhaustive in the other direction: `inset`, `gap`, `row-gap`, `column-gap`, `flex-basis` and `font-size` all move layout when animated and are not on it, so a `transition` naming only one of those draws nothing from this rule.",
 ];
 
 export const LINT_CLOSING =

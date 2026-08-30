@@ -221,7 +221,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
   const notVisible = LINT_NOT_VISIBLE.join("\n");
 
   it("has an entry for every demonstration below, and no empty list", () => {
-    expect(LINT_NOT_VISIBLE.length).toBe(18);
+    expect(LINT_NOT_VISIBLE.length).toBe(21);
     for (const entry of LINT_NOT_VISIBLE) expect(entry.startsWith("**")).toBe(true);
   });
 
@@ -584,15 +584,16 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     for (const src of [`<div TABINDEX={5}>x</div>`, `<div TabIndex={5}>x</div>`, `<div tabindex={5}>x</div>`])
       expect(designLint(src), src).toEqual([]);
     expect(rules(`<div tabIndex={5}>x</div>`)).toEqual(["positive-tabindex"]);
-    expect(notVisible).toMatch(/7 of the 8 line rules are case-sensitive/i);
+    expect(notVisible).toMatch(/10 of the 11 line rules are case-sensitive/i);
     // Tied to LINE_RULES.length rather than hand-typed, so a future line
     // rule can't silently make this sentence's count wrong the way it did
     // when grid-track-no-min shipped as the seventh: the sentence still said
-    // "the six line rules" while the array already held seven. Now that
-    // overflow-hidden-root has shipped as the eighth (also case-sensitive),
-    // the stale "6 of the 7" text must not linger either.
+    // "the six line rules" while the array already held seven. Now that the
+    // three motion rules have shipped as the ninth, tenth and eleventh (all
+    // case-sensitive), the stale "7 of the 8" text must not linger either.
     expect(notVisible).not.toMatch(/five of the six line rules/i);
     expect(notVisible).not.toMatch(/6 of the 7 line rules/i);
+    expect(notVisible).not.toMatch(/7 of the 8 line rules/i);
     expect(notVisible).toMatch(/the partial exception, and only on one of its two alternatives/i);
     expect(notVisible).not.toMatch(/`positive-tabindex` is the one exception/i);
   });
@@ -1254,6 +1255,179 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
       expect(notVisible).toMatch(/hiding in a string or a comment/i);
     });
   });
+
+  describe("motion rules", () => {
+    describe("motion-no-reduced-cover", () => {
+      it("flags a keyframe animation with no reduced-motion cover", () => {
+        expect(rules(`
+          @keyframes slide { from { transform: translateY(8px); } to { transform: none; } }
+          .card { animation: slide 200ms ease-out; }
+        `)).toContain("motion-no-reduced-cover");
+      });
+
+      it("does not flag it when the file honours the preference", () => {
+        expect(rules(`
+          @keyframes slide { from { transform: translateY(8px); } to { transform: none; } }
+          .card { animation: slide 200ms ease-out; }
+          @media (prefers-reduced-motion: reduce) { .card { animation: none; } }
+        `)).not.toContain("motion-no-reduced-cover");
+      });
+
+      // Fed for reach: several real spellings of the media query, not just
+      // the one shape in the fixture above. The check is a plain substring
+      // search on `prefers-reduced-motion`, so all of these must read as
+      // covered regardless of surrounding syntax.
+      it("recognises coverage across several spellings of the query", () => {
+        const covered = [
+          `@media(prefers-reduced-motion:reduce){.card{animation:none}}`,
+          `@media screen and (prefers-reduced-motion: reduce) { .card { animation: none; } }`,
+          `@media not all and (prefers-reduced-motion: no-preference) { .card { animation: slide 200ms ease-out; } }`,
+          `@media\n  (prefers-reduced-motion: reduce)\n{ .card { animation: none; } }`,
+        ];
+        for (const query of covered) {
+          expect(rules(`
+            @keyframes slide { from { transform: translateY(8px); } to { transform: none; } }
+            .card { animation: slide 200ms ease-out; }
+            ${query}
+          `), query).not.toContain("motion-no-reduced-cover");
+        }
+      });
+
+      it("flags a bare @keyframes block on its own, not just the animation: declaration", () => {
+        expect(rules(`@keyframes slide { from { opacity: 0; } to { opacity: 1; } }`))
+          .toContain("motion-no-reduced-cover");
+      });
+
+      // Tailwind's animate-* utilities are not read as "an animation" by this
+      // rule at all — its trigger is the CSS `animation:` property and
+      // `@keyframes`, not a class name — so a pure-Tailwind animated element
+      // is silent from this rule regardless of a motion-reduce: variant
+      // beside it. Demonstrated so the silence is not mistaken for coverage.
+      it("does not recognise a Tailwind animate-* utility as an animation at all", () => {
+        expect(rules(`<div class="animate-bounce motion-reduce:animate-none"></div>`))
+          .not.toContain("motion-no-reduced-cover");
+      });
+
+      it("is case-sensitive on both the trigger and the coverage check", () => {
+        expect(designLint(`.card { ANIMATION: slide 200ms ease-out; }`)).toEqual([]);
+        expect(rules(`
+          .card { animation: slide 200ms ease-out; }
+          @media (PREFERS-REDUCED-MOTION: reduce) { .card { animation: none; } }
+        `)).toContain("motion-no-reduced-cover");
+      });
+    });
+
+    describe("animates-layout-property", () => {
+      it("flags animating a layout property", () => {
+        expect(rules(`.a { transition: width 200ms ease; }`)).toContain("animates-layout-property");
+        expect(rules(`.b { transition: opacity 200ms ease; }`)).not.toContain("animates-layout-property");
+      });
+
+      // A transition naming both a layout property and a composited one is
+      // still animating the layout one — the composited property alongside
+      // it does not make the declaration safe, in either order.
+      it("still fires when a composited property is named alongside the layout one, in either order", () => {
+        expect(rules(`.a { transition: width 200ms ease, opacity 200ms ease; }`)).toContain("animates-layout-property");
+        expect(rules(`.a { transition: opacity 200ms ease, width 200ms ease; }`)).toContain("animates-layout-property");
+      });
+
+      it("does not fire on the composited properties, several spellings", () => {
+        for (const decl of [
+          `.a { transition: opacity 200ms ease; }`,
+          `.a { transition: transform 200ms ease; }`,
+          `.a { transition: opacity 200ms ease, transform 200ms ease; }`,
+          `.a { transition-property: opacity; }`,
+          `.a { transition-property: transform, opacity; }`,
+        ]) expect(rules(decl), decl).not.toContain("animates-layout-property");
+      });
+
+      it("reads the transition-property longhand too", () => {
+        expect(rules(`.a { transition-property: width; }`)).toContain("animates-layout-property");
+      });
+
+      it("reads a @keyframes body animating a layout property", () => {
+        expect(rules(`@keyframes grow { from { width: 0; } to { width: 100%; } }`)).toContain("animates-layout-property");
+      });
+
+      // The keyframes alternative reads the same eight names the transition
+      // alternative does — right/bottom/margin/padding included, not just
+      // the first four.
+      it("the keyframes form reads right, bottom, margin and padding too", () => {
+        expect(rules(`@keyframes x { from { right: 0; } to { right: 10px; } }`)).toContain("animates-layout-property");
+        expect(rules(`@keyframes x { from { bottom: 0; } to { bottom: 10px; } }`)).toContain("animates-layout-property");
+        expect(rules(`@keyframes x { from { margin: 0; } to { margin: 10px; } }`)).toContain("animates-layout-property");
+        expect(rules(`@keyframes x { from { padding: 0; } to { padding: 10px; } }`)).toContain("animates-layout-property");
+      });
+
+      it("does not fire on a keyframes body that only animates composited properties", () => {
+        expect(rules(`@keyframes slide { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }`))
+          .not.toContain("animates-layout-property");
+      });
+
+      it("is case-sensitive on all three regexes", () => {
+        expect(designLint(`.a { TRANSITION: WIDTH 200ms ease; }`)).toEqual([]);
+        expect(designLint(`@KEYFRAMES grow { from { width: 0; } to { width: 100%; } }`)).toEqual([]);
+      });
+
+      // Known, disclosed false positive: the match is a whole word, not a
+      // parsed property name. outline-width never occupies layout space, but
+      // still fires here — narrower coverage over a real property-name parse.
+      it("(false positive, disclosed) fires on outline-width, which does not actually affect layout", () => {
+        expect(rules(`.a { transition: outline-width 200ms ease; }`)).toContain("animates-layout-property");
+        expect(notVisible).toMatch(/outline-width/);
+      });
+    });
+
+    describe("transition-all", () => {
+      it("flags transition: all and its Tailwind spelling", () => {
+        expect(rules(`.a { transition: all 200ms ease; }`)).toContain("transition-all");
+        expect(rules(`<div class="transition-all duration-200"></div>`)).toContain("transition-all");
+      });
+
+      // Fed for reach: a variant-prefixed Tailwind utility, chained or not.
+      // motion-safe: only gates *when* the utility applies — it does not
+      // change what naming `all` animates for anyone it does apply to — so
+      // it must still fire.
+      it("still fires through Tailwind variant prefixes, chained or not", () => {
+        expect(rules(`<div class="motion-safe:transition-all"></div>`)).toContain("transition-all");
+        expect(rules(`<div class="sm:hover:transition-all"></div>`)).toContain("transition-all");
+      });
+
+      it("does not fire on the disable-it Tailwind spelling", () => {
+        expect(rules(`<div class="motion-reduce:transition-none"></div>`)).not.toContain("transition-all");
+      });
+
+      it("does not fire on a hyphenated lookalike class", () => {
+        expect(rules(`<div class="transition-allowed"></div>`)).not.toContain("transition-all");
+      });
+
+      // Deliberately not exempted: nesting inside a reduced-motion query
+      // does not change what this line rule reads. The idiomatic kill switch
+      // is `transition: none` or a near-zero duration, not `transition: all
+      // <duration>`, so a real transition: all inside the block still names
+      // every property and must still fire.
+      it("still fires inside a @media (prefers-reduced-motion: reduce) block", () => {
+        expect(rules(`@media (prefers-reduced-motion: reduce) { .a { transition: all 0.01ms; } }`))
+          .toContain("transition-all");
+      });
+
+      it("is case-sensitive on both alternatives", () => {
+        expect(designLint(`.a { TRANSITION: ALL 200ms ease; }`)).toEqual([]);
+        expect(designLint(`<div class="TRANSITION-ALL"></div>`)).toEqual([]);
+      });
+    });
+
+    it("the three motion rules are named in the split-declaration disclosure", () => {
+      expect(notVisible).toContain("`motion-no-reduced-cover`");
+      expect(notVisible).toContain("`animates-layout-property`");
+      expect(notVisible).toContain("`transition-all`");
+    });
+
+    it("discloses what an animation being reduced actually means, and that runtime motion is invisible", () => {
+      expect(notVisible).toMatch(/looks for the media feature anywhere in the source it was given/i);
+      expect(notVisible).toMatch(/anything animated from javascript, a motion library, or swiftui/i);
+    });
+  });
 });
 
 // lint.ts had no suite checking that its rules' `doc` ids actually resolve to
@@ -1329,6 +1503,9 @@ describe("every doc a rule cites resolves to a real knowledge document", () => {
     `<button><Icon/></button>`,
     `<input />`,
     `.a { outline: none; }`,
+    `.mo { animation: slide 200ms ease-out; }`,
+    `.al { transition: width 200ms ease; }`,
+    `.ta { transition: all 200ms ease; }`,
   ].join("\n");
 
   it("the fixture fires every declared rule id, and no undeclared one", () => {
