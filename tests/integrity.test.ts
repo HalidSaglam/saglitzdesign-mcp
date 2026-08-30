@@ -635,17 +635,41 @@ describe("skills distribution", () => {
    * test below confirms it: renaming `design-review` to `design-reviews` in
    * `skills/README.md` left this check green, because "design-review" is a
    * substring of "design-reviews"). What they mean is "the name appears as
-   * itself" — not embedded as a prefix of some other, longer identifier.
-   * A `\b`-bounded regex says that directly: hyphens are non-word characters
-   * to JS regex, so `\bdesign-review\b` finds no boundary between the "w" of
-   * "review" and the "s" tacked onto "design-reviews" (both are word
-   * characters), and does not match — while it matches the same name set off
-   * by punctuation, whitespace, or backticks, wherever it appears in prose.
-   * Skill names are already constrained elsewhere in this suite to
-   * `[a-z][a-z0-9-]*`, so no regex metacharacter can appear in one and no
-   * escaping is needed before interpolating it into the pattern.
+   * itself" — not embedded inside some other, longer identifier, on either
+   * side.
+   *
+   * A first version of this used `\bname\b`, reasoning that hyphens are
+   * non-word characters to JS regex, so there is no boundary between the "w"
+   * of "review" and the "s" tacked onto "design-reviews" (both are word
+   * characters) — true, and it does stop that one case. It is the wrong
+   * boundary regardless, and stopped only the case it was tested against:
+   * `\b` fires at *any* transition between a word character and a
+   * non-word one, and a hyphen is itself non-word, so `\bdesign-review\b`
+   * finds a ready-made boundary at the very hyphen a hyphen-joined rename
+   * introduces — `design-review-legacy` and `legacy-design-review` both
+   * still matched, unnoticed, because every skill directory in this
+   * repository is already hyphen-separated, which makes a hyphen-joined
+   * rename the natural shape here, not a contrived one. The reasoning was
+   * correct about the letter-appended case and was then carried forward as
+   * though it covered renames in general — the same substring vacuity this
+   * pair of checks exists to close, reappearing in the justification of a
+   * fix written against that exact defect.
+   *
+   * The boundary that actually matches what "appears as itself" means for
+   * this character set: not preceded or followed by anything that could
+   * extend a skill name, where "anything that could extend a skill name" is
+   * read off the character class already used everywhere else in this suite
+   * to define one, `[a-z0-9-]` (skill names themselves start with a letter,
+   * per `[a-z][a-z0-9-]*`, but the *neighbouring* character being a digit or
+   * hyphen is exactly what a suffix or prefix rename looks like, so the
+   * lookaround class includes all three). Lookarounds instead of `\b`
+   * because the thing to exclude on both sides is that specific class, not
+   * "any word character" — a distinction `\b` cannot express once the name
+   * itself contains the character `\b` treats as a separator.
    */
-  const mentionsSkillName = (text: string, name: string) => new RegExp(`\\b${name}\\b`).test(text);
+  const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const mentionsSkillName = (text: string, name: string) =>
+    new RegExp(`(?<![a-z0-9-])${escapeRegex(name)}(?![a-z0-9-])`).test(text);
 
   it("lists every skill in the skills README", () => {
     const readme = readFileSync(join(skillsDir, "README.md"), "utf8");
