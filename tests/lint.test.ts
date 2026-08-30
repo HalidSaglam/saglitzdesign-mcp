@@ -891,5 +891,113 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
       `)).toContain("grid-track-no-min");
       expect(notVisible).toMatch(/`<img>` gate is snippet-wide, not grid-scoped/i);
     });
+
+    // Fix round 2's critical: `!/minmax\(\s*0/`'s successor,
+    // `hasExplicitMinmaxFloor`, had no `i` flag either, so a track floored
+    // in caps — `MINMAX(200px, 1fr)` — was read as bare and reported as a
+    // defect it is not. This is the exact false-positive class round 2's
+    // own fix eliminated for the numeric-value axis, reintroduced through
+    // case — a rule crying wolf, not a silence, so it is fixed rather than
+    // disclosed.
+    describe("the minmax() guard is case-insensitive, unlike the rest of this rule's own literal text", () => {
+      it("does not fire on an upper-case MINMAX with an explicit floor", () => {
+        expect(rules(`
+          <img src="a.png" alt="a">
+          <style>.g { grid-template-columns: MINMAX(200px, 1fr) 1fr; }</style>
+        `)).not.toContain("grid-track-no-min");
+      });
+
+      it("does not fire on mixed-case MinMax with an explicit floor", () => {
+        expect(rules(`
+          <img src="a.png" alt="a">
+          <style>.g { grid-template-columns: MinMax(200px, 1fr) 1fr; }</style>
+        `)).not.toContain("grid-track-no-min");
+      });
+
+      // The `auto` keyword has to be recognised in the same case-insensitive
+      // way as the `minmax(` function name it lives inside, or the fix above
+      // just relocates the same class of bug one token to the right:
+      // recognising `MINMAX(` case-insensitively while still comparing its
+      // argument to the lowercase literal "auto" would silence
+      // `MINMAX(AUTO, 1fr)` — a track exactly as unguarded as a bare one —
+      // as if it were genuinely floored.
+      it("still fires on MINMAX(AUTO, 1fr) and minmax(Auto, 1fr) — case doesn't make auto a floor", () => {
+        expect(rules(`
+          <img src="a.png" alt="a">
+          <style>.g { grid-template-columns: MINMAX(AUTO, 1fr); }</style>
+        `)).toContain("grid-track-no-min");
+        expect(rules(`
+          <img src="a.png" alt="a">
+          <style>.g { grid-template-columns: minmax(Auto, 1fr); }</style>
+        `)).toContain("grid-track-no-min");
+      });
+
+      it("says so in the disclosure, alongside the parts of this rule that stay case-sensitive", () => {
+        expect(notVisible).toMatch(/`minmax\(\)` guard inside it is deliberately case-\*insensitive\*/i);
+        expect(notVisible).toMatch(/MINMAX\(200px, 1fr\)/);
+        expect(notVisible).toMatch(/MINMAX\(AUTO, 1fr\)/);
+      });
+    });
+
+    // Audited every other regex on this rule's path for the same question —
+    // does it disagree with its neighbours about case? The property name,
+    // `1fr`, and the `<img>` gate are all still case-sensitive, consistently
+    // with each other and with the rest of this file; only the internal
+    // `minmax()` guard needed the fix above. This is a silence (a should-
+    // fire case going quiet), not a false positive, so per the same
+    // reasoning as `1FR` and `GRID-TEMPLATE-COLUMNS` above, it is disclosed
+    // rather than fixed.
+    it("the <img> gate is also case-sensitive — an uppercase <IMG> does not satisfy it, unlike img-no-alt", () => {
+      expect(rules(`<IMG src="a.png" alt="a"><style>.g { grid-template-columns: 1fr 1fr; }</style>`))
+        .not.toContain("grid-track-no-min");
+      expect(notVisible).toMatch(/<IMG src="a\.png">/);
+    });
+
+    // Fix round 2, residual 2: disclosed rather than fixed, in the rule's
+    // own terms. The scanner has no notion of a CSS comment or a string
+    // literal, so a `minmax(...)` written inside either still counts as a
+    // real guard on the same line — silencing a genuinely bare, live `1fr`
+    // that sits right next to it. Same family as the commented-out-code
+    // blind spot already named elsewhere in this list, demonstrated here on
+    // this rule specifically.
+    describe("a minmax() written in a comment or a string reads as a real floor", () => {
+      it("a commented-out minmax silences a real bare track on the same line", () => {
+        expect(rules(`
+          <img src="a.png" alt="a">
+          <style>.g { grid-template-columns: 1fr /* minmax(200px, 1fr) */ 1fr; }</style>
+        `)).not.toContain("grid-track-no-min");
+      });
+
+      it("a minmax inside a string literal on the same line does the same", () => {
+        expect(rules(`
+          <img src="a.png" alt="a">
+          <style>.g { grid-template-columns: 1fr; content: "minmax(200px, 1fr)"; }</style>
+        `)).not.toContain("grid-track-no-min");
+      });
+
+      it("says so in the disclosure", () => {
+        expect(notVisible).toMatch(/has no notion of a comment or a string/i);
+      });
+    });
+
+    // Fix round 2, residual 4 (a missing test, not a defect): the balanced
+    // paren walk and a naive first-`)` close genuinely disagree on this
+    // input — the naive close under-consumes a bare `(0)` fragment, resumes
+    // scanning inside what should still be the outer call's own first
+    // argument, and re-discovers the nested `minmax(200px, 1fr)` as if it
+    // were a second, independent top-level call (which IS an explicit
+    // floor, so a naive walk would wrongly treat the whole line as guarded
+    // here). Correct behaviour: the outer call's true first argument is
+    // `auto` (a bare parenthesised group directly followed by a nested
+    // `minmax(...)`, with no function name of its own, is not reachable
+    // through valid CSS grammar — this exists to pin the algorithm, not to
+    // model real input), so the line should be read as NOT guarded and the
+    // real, standalone `1fr` at the end should fire.
+    it("the balanced walk (not a naive first-close) decides a contrived nested-minmax input correctly", () => {
+      expect(rules(`
+        <img src="a.png" alt="a">
+        <style>.g { grid-template-columns: minmax(auto, (0)minmax(200px, 1fr)) 1fr; }</style>
+      `)).toContain("grid-track-no-min");
+    });
   });
 });
