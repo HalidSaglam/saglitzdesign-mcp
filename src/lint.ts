@@ -295,6 +295,49 @@ const LINE_RULES: LineRule[] = [
     fix: "Write `minmax(0, 1fr)` for tracks that carry images or other wide intrinsic content.",
     doc: "visual-craft-standards",
   },
+  {
+    id: "overflow-hidden-root",
+    severity: "warning",
+    // CSS Overflow Level 3 §3.1: `hidden` keeps the box "still a scroll
+    // container" (only the UI is suppressed; programmatic scrolling remains),
+    // while `clip` "forbids scrolling entirely … and therefore the box is not a
+    // scroll container". On the root that difference is load-bearing, because a
+    // scroll container is what descendants position against.
+    //
+    // Case: both regexes on this rule's path are case-sensitive, deliberately
+    // matching the rest of this file's line rules (see the disclosure sentence
+    // for the exact count) — `OVERFLOW-X: HIDDEN` and `BODY { … }` are silent
+    // where the lowercase forms fire. There is no case-insensitive half here
+    // the way `grid-track-no-min`'s `minmax()` guard has one, so there is
+    // nothing for `CASE_INSENSITIVE_LINE_RULES` to record.
+    //
+    // The selector lookup walks `full`, not `l`: the selector is on an earlier
+    // line than the declaration whenever the CSS is formatted normally, but it
+    // can also be on the *same* line as the declaration (`body { overflow-x:
+    // hidden; }`, every fixture below). `before` is built up to the position
+    // of the match itself — inside `l` first — rather than to the start of
+    // `l`, so the `lastIndexOf("{")` search covers both shapes with one piece
+    // of code: for a same-line selector it finds the `{` earlier in that same
+    // line; for a selector on a prior line it keeps walking back through
+    // `full` the way `statementStart` in src/security.ts does for a
+    // differently-shaped lookup.
+    test: (l, full) => {
+      const m = /overflow(-x)?\s*:\s*hidden/.exec(l);
+      if (!m) return false;
+      const at = full.indexOf(l);
+      const before = full.slice(0, (at < 0 ? 0 : at) + m.index);
+      const open = before.lastIndexOf("{");
+      if (open < 0) return false;
+      const sel = before.slice(before.lastIndexOf("}", open) + 1, open);
+      return /(^|[\s,])(html|body|:root)\s*$/.test(sel.trim().replace(/\s+/g, " "));
+    },
+    message:
+      "`overflow: hidden` on the root still makes it a scroll container — only the " +
+      "scrolling UI is suppressed (CSS Overflow 3 §3.1). `overflow: clip` is not a " +
+      "scroll container at all.",
+    fix: "Use `overflow-x: clip` on `html`/`body`, and fix the element that actually overflows.",
+    doc: "spacing-layout",
+  },
 ];
 
 // ── source (tag-aware) rules ─────────────────────────────────────────────────
@@ -543,6 +586,7 @@ export const LINT_NOT_VISIBLE: string[] = [
   "**Whether a label, a role or a name actually resolves.** `control-no-label` is satisfied by the mere *presence* of an `id` and never looks for the `<label for>` that would use it, so `<input id=\"email\">` with no label anywhere is silent, and so is `<label for=\"nope\">Email</label><input id=\"email\">` where the two do not match. It also has no notion of a wrapping label: `<label>Email <input type=\"email\"></label>`, which is correct, still draws the warning. `clickable-div` is satisfied by any `role` at all — `role=\"presentation\"` silences it — and never checks that the `tabIndex` and key handlers its own fix text asks for came with it. The two naming rules answer the same way: `img-no-alt` accepts `alt=\"image\"` and `alt=\"a.png\"`, and `icon-button-no-label` accepts `aria-label=\"button\"` and even `aria-label=\"\"` on an icon-only button. These four read an attribute's presence rather than its content, with one demonstrated exception in the other direction: `control-no-label` reads the *value* of `type` and exempts five of them — `hidden`, `submit`, `button`, `image` and `reset` draw nothing however unlabelled they are, while `text`, `email` and `checkbox` are graded. Otherwise it is presence that satisfies them, and these are the cases run: `alt=\"image\"`, `alt=\"a.png\"`, `aria-label=\"button\"`, `aria-label=\"\"`, an `id` with no matching `<label for>`, and `role=\"presentation\"`. So a silence from these four has at least four distinct causes — the attribute was present in one of those forms; or the element carries a spread, with no attribute at all; or its `type` is one of the five exempt values; or, for `icon-button-no-label`, the button simply has visible text, which is why `<button>Save</button>` is quiet. Their findings carry no guarantee either: the wrapping label two sentences up, `<Input type=\"email\" />` and `<button>{label}</button>` are correct markup that these rules report.",
   "**How many defects a snippet has.** At most one finding per rule per line: `<img src=a><img src=b><img src=c>` on a single line reports one `img-no-alt`, and `.a { color: #fff; background: #000; }` reports one `hardcoded-color`. The same two images on two lines report two. The summary counts findings, not defects, and it undercounts a minified or densely written file.",
   "**Whether a bare `1fr` track actually overflows — and four narrower things `grid-track-no-min` reads as a whole line of raw text, not as individual tracks, live CSS, or a scoped file.** §6.6's automatic-minimum conditions depend on the grid item's own properties — its overflow, whether the track it spans has an `auto` min sizing function, whether it shares that axis with a flexible track — and the declaration does not carry any of them, so a finding here is a robustness note, not a proven overflow. The guard itself is whole-line, not per-track: `hasExplicitMinmaxFloor` fires true the moment *any* `minmax(...)` call on the line has a first argument that is not `auto`, whatever that argument's value or shape — `minmax(0, 1fr)`, `minmax(200px, 1fr)` and a nested `minmax(min(18rem, 100%), 1fr)` all count — so `grid-template-columns: minmax(0, 1fr) 1fr` is one line with one genuinely guarded track and one genuinely bare one, and reports neither. That is a known false negative, kept because parsing the track list into individual tracks is a full grammar this linter does not implement — narrower coverage over a parser, not a silent gap. The shorthand `grid-template` property is not read at all — only the longhand `grid-template-columns`/`grid-template-rows` are — so `grid-template: \"a b\" 1fr / 1fr 1fr` draws nothing. The `<img>` gate is snippet-wide, not grid-scoped: it is satisfied by any `<img>` anywhere in the text handed to `design_lint`, so a bare-`1fr` grid with no image of its own still fires when an unrelated `<img>` sits elsewhere in the same snippet, and — the reverse of the same gap — a finding says nothing about which track, if any, the image it cites actually occupies. And the guard has no notion of a comment or a string: `grid-template-columns: 1fr /* minmax(200px, 1fr) */;` and `grid-template-columns: 1fr; content: \"minmax(200px, 1fr)\";` are both read as if the commented-out or quoted `minmax(200px, 1fr)` were a real, live guard on the same declaration, so a genuinely bare `1fr` on either line is silenced by text that never reaches the browser at all — the same family as the commented-out-code blind spot named above, on this rule specifically.",
+  "**What is overflowing.** `overflow-hidden-root` reads the declaration, not the layout, so it cannot say which element exceeds the viewport — only that the root was made a scroll container to hide it.",
 ];
 
 export const LINT_CLOSING =

@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   auditStructuredFrom, renderNotVisibleSection, assembleAuditReport,
   designLint, designLintReport, LINT_NOT_VISIBLE, LINT_PREAMBLE, LINT_CLOSING,
 } from "../dist/lint.js";
 import { layoutSystemReport } from "../dist/layout.js";
+import { loadKnowledge, findDoc } from "../dist/knowledge.js";
 
 /** Rule ids `designLint` produced for a snippet, deduped and sorted. */
 const rules = (code: string): string[] =>
@@ -218,7 +220,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
   const notVisible = LINT_NOT_VISIBLE.join("\n");
 
   it("has an entry for every demonstration below, and no empty list", () => {
-    expect(LINT_NOT_VISIBLE.length).toBe(15);
+    expect(LINT_NOT_VISIBLE.length).toBe(16);
     for (const entry of LINT_NOT_VISIBLE) expect(entry.startsWith("**")).toBe(true);
   });
 
@@ -559,7 +561,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(notVisible).not.toMatch(/Only two-or-more-digit whole pixels are read at all/i);
   });
 
-  it("10b. six of the seven line rules are case-sensitive; positive-tabindex is not", () => {
+  it("10b. seven of the eight line rules are case-sensitive; positive-tabindex is not", () => {
     for (const css of [
       `.a { HEIGHT: 40px; }`,
       `.a { COLOR: #ff0000; }`,
@@ -581,12 +583,15 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     for (const src of [`<div TABINDEX={5}>x</div>`, `<div TabIndex={5}>x</div>`, `<div tabindex={5}>x</div>`])
       expect(designLint(src), src).toEqual([]);
     expect(rules(`<div tabIndex={5}>x</div>`)).toEqual(["positive-tabindex"]);
-    expect(notVisible).toMatch(/6 of the 7 line rules are case-sensitive/i);
+    expect(notVisible).toMatch(/7 of the 8 line rules are case-sensitive/i);
     // Tied to LINE_RULES.length rather than hand-typed, so a future line
     // rule can't silently make this sentence's count wrong the way it did
     // when grid-track-no-min shipped as the seventh: the sentence still said
-    // "the six line rules" while the array already held seven.
+    // "the six line rules" while the array already held seven. Now that
+    // overflow-hidden-root has shipped as the eighth (also case-sensitive),
+    // the stale "6 of the 7" text must not linger either.
     expect(notVisible).not.toMatch(/five of the six line rules/i);
+    expect(notVisible).not.toMatch(/6 of the 7 line rules/i);
     expect(notVisible).toMatch(/the partial exception, and only on one of its two alternatives/i);
     expect(notVisible).not.toMatch(/`positive-tabindex` is the one exception/i);
   });
@@ -752,6 +757,12 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(designLint(`.a { color: #fff; background: #000; }`)).toHaveLength(1);
     expect(notVisible).toMatch(/How many defects a snippet has/i);
     expect(notVisible).toMatch(/findings, not defects/i);
+  });
+
+  it("14. what is overflowing", () => {
+    expect(designLint(`body { overflow-x: hidden; }`)[0].message).not.toMatch(/sticky/i);
+    expect(notVisible).toMatch(/What is overflowing/i);
+    expect(notVisible).toMatch(/cannot say which element exceeds the viewport/i);
   });
 
   describe("grid-track-no-min", () => {
@@ -999,5 +1010,154 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
         <style>.g { grid-template-columns: minmax(auto, (0)minmax(200px, 1fr)) 1fr; }</style>
       `)).toContain("grid-track-no-min");
     });
+  });
+
+  describe("overflow-hidden-root", () => {
+    it("fires on overflow-x: hidden under a body selector", () => {
+      expect(rules(`body { overflow-x: hidden; }`)).toContain("overflow-hidden-root");
+    });
+
+    it("fires under html and :root too", () => {
+      expect(rules(`html { overflow-x: hidden; }`)).toContain("overflow-hidden-root");
+      expect(rules(`:root { overflow-x: hidden; }`)).toContain("overflow-hidden-root");
+    });
+
+    it("does not fire on an ordinary element", () => {
+      expect(rules(`.carousel { overflow-x: hidden; }`)).not.toContain("overflow-hidden-root");
+    });
+
+    it("does not fire when clip is already used", () => {
+      expect(rules(`body { overflow-x: clip; }`)).not.toContain("overflow-hidden-root");
+    });
+
+    // Mutation-tested: dropping the `clip` half of this sentence broke no
+    // other test in this file — nothing else reads message content — so this
+    // assertion is what actually keeps the two-keyword distinction (the whole
+    // point of the rule, per CSS Overflow 3 §3.1) from silently regressing to
+    // a vaguer message.
+    it("states the clip distinction in the message, not just in the fix", () => {
+      const finding = designLint(`body { overflow-x: hidden; }`).find((f) => f.rule === "overflow-hidden-root");
+      expect(finding?.message).toMatch(/overflow: clip.*not a.*scroll container/i);
+    });
+
+    // The bare `overflow: hidden` shorthand (no `-x`), not just `overflow-x`.
+    it("fires on the bare overflow: hidden shorthand too", () => {
+      expect(rules(`body { overflow: hidden; }`)).toContain("overflow-hidden-root");
+    });
+
+    // Selector on its own line — the common formatted-CSS shape, not just the
+    // single-line fixtures above.
+    it("fires when the selector sits on an earlier line than the declaration", () => {
+      expect(rules(`body {\n  overflow-x: hidden;\n}`)).toContain("overflow-hidden-root");
+    });
+
+    // Both regexes on this rule's path have to agree about case, the way
+    // `grid-track-no-min`'s guard and its own literal text had to be brought
+    // into agreement after shipping mismatched (see that rule's own tests).
+    // Here they agree by both being case-sensitive: neither the property/value
+    // spelling nor the selector spelling is read case-insensitively, so an
+    // uppercase form of either half is silent, consistently.
+    it("is case-sensitive on both the declaration and the selector — consistently, not mismatched", () => {
+      expect(designLint(`BODY { OVERFLOW-X: HIDDEN; }`)).toEqual([]);
+      expect(designLint(`body { OVERFLOW-X: hidden; }`)).toEqual([]);
+      expect(designLint(`BODY { overflow-x: hidden; }`)).toEqual([]);
+      expect(rules(`body { overflow-x: hidden; }`)).toEqual(["overflow-hidden-root"]);
+    });
+
+    // Fed for reach, not designed for: a selector that carries the root
+    // element plus something else does not satisfy the selector match, which
+    // only accepts `html`/`body`/`:root` as the selector's own trailing token.
+    // This is a demonstrated silence, not a claim this rule makes — recorded
+    // here rather than pretended away.
+    it("is silent on a compound selector that still targets body (a real gap, not a design choice this test pretends is complete)", () => {
+      expect(designLint(`body.no-scroll { overflow-x: hidden; }`)).toEqual([]);
+    });
+
+    // Also fed for reach: overflow-y is a real way to lock vertical scroll on
+    // the root and this rule's property alternation does not include it.
+    it("does not read overflow-y — only the bare property and -x", () => {
+      expect(designLint(`body { overflow-y: hidden; }`)).toEqual([]);
+    });
+  });
+});
+
+// lint.ts had no suite checking that its rules' `doc` ids actually resolve to
+// a real knowledge document — every sibling rule module (apple.ts, seo.ts,
+// perf.ts, generic.ts) has one, and this one's absence was itself a false
+// claim in an earlier round: a brief for this file asserted the check
+// existed here when it did not, and the ids were verified by hand instead.
+// Both sides below are derived from live data rather than hand-typed, so
+// this cannot drift the way `LINE_RULES.length` once did in a disclosure
+// sentence: `ALL_LINT_RULE_IDS` is the only hand-maintained piece (mirroring
+// the `CLAIM_VOCABULARY` tables in seo.test.ts/perf.test.ts/generic.test.ts,
+// which are hand-typed the same way and guarded the same way), and the two
+// completeness checks below make a rule id falling off that list, or a new
+// rule id never being added to it, a failing test rather than a silent gap.
+// `KITCHEN_SINK` is the fixture that fires every one of them at once; a
+// future rule (this plan's Task 5 adds three more citations) is "inherited"
+// by this guard only if its own trigger line is appended to that fixture and
+// its id to this list — both are asserted below, so forgetting either fails
+// loudly rather than leaving the new rule's doc id unchecked.
+describe("every doc a rule cites resolves to a real knowledge document", () => {
+  const docs = loadKnowledge(join(__dirname, "..", "knowledge"));
+
+  const ALL_LINT_RULE_IDS = [
+    "hardcoded-color",
+    "px-font-size",
+    "important-overuse",
+    "fixed-height-text",
+    "positive-tabindex",
+    "magic-number-radius",
+    "grid-track-no-min",
+    "overflow-hidden-root",
+    "img-no-alt",
+    "clickable-div",
+    "icon-button-no-label",
+    "control-no-label",
+    "outline-none",
+  ];
+
+  // One snippet that draws every rule id above at least once. Each line is
+  // self-contained (its own selector/tag, its own closing brace) so no
+  // rule's suppressor or full-text gate accidentally swallows another's.
+  const KITCHEN_SINK = [
+    `.hc { color: #ff0000; }`,
+    `.pf { font-size: 14px; }`,
+    `.imp { color: red !important; }`,
+    `.fh { height: 40px; }`,
+    `<div tabIndex={5}>x</div>`,
+    `.mr { border-radius: 6px; }`,
+    `<img src="a.png">`,
+    `.grid { grid-template-columns: 1fr 1fr; }`,
+    `body { overflow-x: hidden; }`,
+    `<div onClick={go}>x</div>`,
+    `<button><Icon/></button>`,
+    `<input />`,
+    `.a { outline: none; }`,
+  ].join("\n");
+
+  const findings = designLint(KITCHEN_SINK);
+
+  it("loads the knowledge base, so the checks below are not vacuous", () => {
+    expect(docs.length).toBeGreaterThan(0);
+  });
+
+  it("fires every rule in the list, so no rule id escapes the citation check", () => {
+    const fired = new Set(findings.map((f) => f.rule));
+    const never = ALL_LINT_RULE_IDS.filter((r) => !fired.has(r));
+    expect(never).toEqual([]);
+  });
+
+  it("emits no rule the list does not cover, so an added rule can't slip past unnoticed", () => {
+    const fired = new Set(findings.map((f) => f.rule));
+    const undeclared = [...fired].filter((r) => !ALL_LINT_RULE_IDS.includes(r));
+    expect(undeclared).toEqual([]);
+  });
+
+  it("resolves every cited id", () => {
+    const dangling = findings
+      .filter((f) => !f.doc || !findDoc(docs, f.doc))
+      .map((f) => `${f.rule} → ${f.doc}`);
+    expect(dangling).toEqual([]);
   });
 });
