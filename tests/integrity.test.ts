@@ -635,50 +635,70 @@ describe("skills distribution", () => {
    * mean is "the name appears as itself" — not embedded inside some other,
    * longer identifier, on either side.
    *
-   * This has now been fixed twice, and both previous fixes share one shape
-   * worth naming before the third: each was a *character-class enumeration*
-   * that closed exactly the case it was shown and was then described as
-   * closing the general one.
+   * FOUR ROUNDS OF ONE CHARACTER CLASS, and why there is no fifth. Each
+   * earlier fix widened a single boundary expression, closed exactly the case
+   * it had been shown, and was then described as closing renames in general:
    *
-   *   - `\bname\b` closed `design-reviews` (a hyphen is non-word to JS
-   *     regex, so `\b` finds a ready-made boundary at the very hyphen a
-   *     hyphen-joined rename introduces) but not `design-review-legacy` or
-   *     `legacy-design-review` — the natural rename shape here, since every
-   *     skill directory is already hyphen-separated.
-   *   - `(?<![a-z0-9-])name(?![a-z0-9-])` closed the hyphen-joined cases and
-   *     the digit-appended case, but not `design-review_legacy` — an
-   *     underscore is not in `[a-z0-9-]`, so it was never excluded, for no
-   *     reason connected to what a name actually is.
+   *   - `\bname\b` closed `design-reviews`, but a hyphen is non-word to JS
+   *     regex, so `\b` finds a ready-made boundary at the very hyphen that
+   *     `design-review-legacy` introduces — the natural rename shape here,
+   *     since every skill directory is already hyphen-separated.
+   *   - `(?<![a-z0-9-])` closed the hyphen-joined and digit-appended cases,
+   *     but not `design-review_legacy`.
+   *   - `(?<![\w-])` closed that one and broke ordinary markdown: `_design-
+   *     review_`, an italic mention, was reported as a missing skill.
    *
-   * Both rounds enumerated characters instead of asking what a skill name is
-   * allowed to be adjacent to. Nothing in this repository states that
-   * directly: `names` comes from a bare `readdirSync` with no shape filter,
-   * and `[a-z][a-z0-9-]*` exists only inside the routing-table cell parser
-   * above, for parsing that table, never as a validation rule for a
-   * directory name in general. The nearest real answer is what a directory
-   * name *is* to the filesystem and to Node's own identifier conventions:
-   * `\w` (letters, digits, underscore) plus the hyphen this repository's
-   * naming convention adds on top — `[\w-]`, not a hand-grown list of the
-   * specific characters a reviewer has tried so far. An underscore in a
-   * skill directory would be a slip rather than a deliberate choice (this
-   * repo's own MCP tool names are `snake_case`, so the convention for
-   * *directories* is hyphenated and underscores don't appear in one on
-   * purpose today), but "not idiomatic here" is not "cannot appear," and the
-   * class should hold regardless of which one shows up next.
+   * The last round is the informative one. One expression was being asked to
+   * do two jobs — separate name characters from non-name characters, *and*
+   * survive markdown syntax — and `_` belongs to both alphabets at once: it
+   * is a character a directory name may contain, and it is emphasis
+   * punctuation in the page the name is looked for in. No single class can
+   * serve both, which is why widening it yielded three holes and then a false
+   * alarm.
    *
-   * WHAT THIS STILL DOES NOT COVER, named rather than chased: a literal `.`
-   * and a zero-width character (e.g. a zero-width space or joiner) are both
-   * outside `[\w-]` and would still slip a rename past this guard exactly
-   * as the hyphen and underscore did. Both are left uncovered on purpose —
-   * neither has a plausible authoring path in ordinary markdown prose (no
-   * skill name contains a dot, and nothing in this file's editing surface
-   * introduces an invisible character without deliberate effort) — but a
-   * character class that keeps growing by one per review round is worse
-   * than one that states its remaining holes and stops.
+   * SO THE TWO JOBS ARE SPLIT. The page is reduced to the identifiers it
+   * names; the name is then looked up in that set.
+   *
+   *   1. Normalise emphasis away. Only `_` needs handling: `*` and a backtick
+   *      are not name characters, so the tokeniser in step 2 already treats
+   *      them as separators and `**design-review**` needs no preparation. An
+   *      underscore is blanked exactly where CommonMark reads emphasis rather
+   *      than an identifier — the intraword rule, which is the distinction
+   *      this check needs: `_design-review_` is italic (blanked, so the name
+   *      is seen), `design-review_legacy` is one word (kept, so it is not).
+   *      Blanked to a space rather than deleted, as `plain()` and `scanLine`
+   *      do below, so a mark cannot silently join its two neighbours.
+   *   2. Tokenise into identifier-shaped runs — letter, digit, underscore,
+   *      hyphen — and ask whether the name is one of them. Membership, not
+   *      adjacency: a name embedded in a longer identifier is simply a
+   *      different token, absent in every direction at once, with no
+   *      lookaround left to widen.
+   *
+   * The split earns something no boundary class could: a skill directory
+   * named with an underscore works. `_design_review_` in a README is emphasis
+   * around the identifier `design_review`, and step 1 blanks the outer two
+   * marks while keeping the inner one, because that is what the intraword
+   * rule says about each of them.
+   *
+   * WHAT THIS STILL DOES NOT COVER, as a class rather than as the characters
+   * that happen to have been tried: a rename glued to the name by anything
+   * that is *not* a letter, digit, underscore or hyphen splits into two
+   * tokens, and the bare name is then found in one of them.
+   * `design-review.legacy` is the readable member of that class; a zero-width
+   * space as the join and an emphasis mark used as glue (`design-review*x`)
+   * are the unreadable ones. A name written with a leading or trailing
+   * underscore is in it too, since step 1 reads that as emphasis by design.
+   * None is closed here, because closing them means putting punctuation back
+   * into the token class, which is the direction the previous four rounds
+   * went. What is covered is the class with a plausible authoring path: a
+   * rename that is itself a well-formed identifier.
+   *
+   * Neither check reads meaning. A name is "named" if the page contains it as
+   * a token anywhere — including inside a sentence saying it was removed.
    */
-  const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const mentionsSkillName = (text: string, name: string) =>
-    new RegExp(`(?<![\\w-])${escapeRegex(name)}(?![\\w-])`).test(text);
+  const identifiersIn = (text: string) =>
+    new Set(text.replace(/(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/gu, " ").match(/[\p{L}\p{N}_-]+/gu) ?? []);
+  const mentionsSkillName = (text: string, name: string) => identifiersIn(text).has(name);
 
   it("lists every skill in the skills README", () => {
     const readme = readFileSync(join(skillsDir, "README.md"), "utf8");
