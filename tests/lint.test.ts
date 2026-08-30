@@ -4,6 +4,7 @@ import {
   auditStructuredFrom, renderNotVisibleSection, assembleAuditReport,
   designLint, designLintReport, LINT_NOT_VISIBLE, LINT_PREAMBLE, LINT_CLOSING,
 } from "../dist/lint.js";
+import { layoutSystemReport } from "../dist/layout.js";
 
 /** Rule ids `designLint` produced for a snippet, deduped and sorted. */
 const rules = (code: string): string[] =>
@@ -558,7 +559,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(notVisible).not.toMatch(/Only two-or-more-digit whole pixels are read at all/i);
   });
 
-  it("10b. five of the six line rules are case-sensitive; positive-tabindex is not", () => {
+  it("10b. six of the seven line rules are case-sensitive; positive-tabindex is not", () => {
     for (const css of [
       `.a { HEIGHT: 40px; }`,
       `.a { COLOR: #ff0000; }`,
@@ -580,7 +581,12 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     for (const src of [`<div TABINDEX={5}>x</div>`, `<div TabIndex={5}>x</div>`, `<div tabindex={5}>x</div>`])
       expect(designLint(src), src).toEqual([]);
     expect(rules(`<div tabIndex={5}>x</div>`)).toEqual(["positive-tabindex"]);
-    expect(notVisible).toMatch(/five of the six line rules are case-sensitive/i);
+    expect(notVisible).toMatch(/6 of the 7 line rules are case-sensitive/i);
+    // Tied to LINE_RULES.length rather than hand-typed, so a future line
+    // rule can't silently make this sentence's count wrong the way it did
+    // when grid-track-no-min shipped as the seventh: the sentence still said
+    // "the six line rules" while the array already held seven.
+    expect(notVisible).not.toMatch(/five of the six line rules/i);
     expect(notVisible).toMatch(/the partial exception, and only on one of its two alternatives/i);
     expect(notVisible).not.toMatch(/`positive-tabindex` is the one exception/i);
   });
@@ -781,11 +787,109 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     // as guarded. Kept anyway — narrowing over completeness — but the gap has
     // to be named in the disclosure rather than shipped silently.
     it("names the mixed-track gap in the disclosure", () => {
-      expect(notVisible).toMatch(/one guarded track and one bare one/i);
+      expect(notVisible).toMatch(/one genuinely guarded track and one genuinely bare one/i);
       expect(rules(`
         <div class="g"><img src="a.png" alt="a"></div>
         <style>.g { display: grid; grid-template-columns: minmax(0, 1fr) 1fr; }</style>
       `)).not.toContain("grid-track-no-min");
+    });
+
+    // Fix round 1: any explicit, non-`auto` minimum guards a track regardless
+    // of its value — `minmax(0, ...)` was the only shape the first cut
+    // recognised, so `minmax(200px, 1fr)` and `minmax(min(18rem, 100%), 1fr)`
+    // (a nested first argument) both read as bare and fired as false
+    // positives. Each demonstrated individually, plus the exact zero-valued
+    // shapes that must stay silent and the one shape (`minmax(auto, 1fr)`)
+    // that is spec-equivalent to bare and must still fire.
+    describe("an explicit non-auto minimum guards the track, whatever its value", () => {
+      it("does not fire on a finite pixel floor", () => {
+        expect(rules(`
+          <img src="a.png" alt="a">
+          <style>.g { grid-template-columns: minmax(200px, 1fr) 1fr; }</style>
+        `)).not.toContain("grid-track-no-min");
+      });
+
+      it("does not fire on a finite percentage floor", () => {
+        expect(rules(`
+          <img src="a.png" alt="a">
+          <style>.g { grid-template-columns: minmax(10%, 1fr); }</style>
+        `)).not.toContain("grid-track-no-min");
+      });
+
+      it("does not fire on a nested-function first argument", () => {
+        expect(rules(`
+          <img src="a.png" alt="a">
+          <style>.g { grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr)); }</style>
+        `)).not.toContain("grid-track-no-min");
+      });
+
+      // src/layout.ts:169's own `.grid-auto` rule — the exact false positive
+      // reported. Pinned to the generator's real output, not a hand-typed
+      // approximation, so a future change to that line re-runs this check
+      // against whatever the generator actually emits.
+      it("does not fire on src/layout.ts's own auto-fit grid, verified against its real output", () => {
+        const nestedMinmaxDecl = "grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));";
+        expect(layoutSystemReport()).toContain(nestedMinmaxDecl);
+        expect(rules(`<img src="a.png" alt="a"><style>.grid-auto { display: grid; ${nestedMinmaxDecl} }</style>`))
+          .not.toContain("grid-track-no-min");
+      });
+
+      it("still stays silent on the zero-valued shapes", () => {
+        for (const zero of ["0", "0px", "0%"]) {
+          expect(rules(`
+            <img src="a.png" alt="a">
+            <style>.g { grid-template-columns: minmax(${zero}, 1fr); }</style>
+          `), zero).not.toContain("grid-track-no-min");
+        }
+      });
+
+      it("still fires on minmax(auto, 1fr) — spec-equivalent to bare, and the one minmax() shape that must not be treated as guarded", () => {
+        expect(rules(`
+          <img src="a.png" alt="a">
+          <style>.g { grid-template-columns: minmax(auto, 1fr); }</style>
+        `)).toContain("grid-track-no-min");
+      });
+    });
+
+    it("does not fire on a declaration split across lines — the same blind spot every other line rule has", () => {
+      expect(rules(`
+        <img src="a.png" alt="a">
+        <style>.g {
+          grid-template-columns:
+            1fr 1fr;
+        }</style>
+      `)).not.toContain("grid-track-no-min");
+      expect(notVisible).toMatch(/grid-template-columns.*value split the same way/i);
+    });
+
+    it("is case-sensitive on both the value and the property name — undisclosed in neither", () => {
+      expect(rules(`<img src="a.png" alt="a"><style>.g { grid-template-columns: 1FR 1FR; }</style>`))
+        .not.toContain("grid-track-no-min");
+      expect(rules(`<img src="a.png" alt="a"><style>.g { GRID-TEMPLATE-COLUMNS: 1fr 1fr; }</style>`))
+        .not.toContain("grid-track-no-min");
+      expect(notVisible).toMatch(/`1FR`/);
+      expect(notVisible).toMatch(/GRID-TEMPLATE-COLUMNS: 1fr 1fr;/);
+    });
+
+    // Minor, disclosed rather than implemented: the `grid-template` shorthand
+    // is a distinct property this rule never reads, and parsing its
+    // string/track-list grammar is out of scope for the same reason the
+    // mixed-track gap above is.
+    it("is silent on the grid-template shorthand, and says so", () => {
+      expect(rules(`<img src="a.png" alt="a"><style>.g { grid-template: "a b" 1fr / 1fr 1fr; }</style>`))
+        .not.toContain("grid-track-no-min");
+      expect(notVisible).toMatch(/shorthand `grid-template` property is not read at all/i);
+    });
+
+    // Minor, disclosed rather than scoped: the `<img>` gate reads the whole
+    // snippet handed to design_lint, not the grid rule's own block, so an
+    // unrelated image anywhere in the file satisfies it.
+    it("the <img> gate is file-wide, not grid-scoped, and says so", () => {
+      expect(rules(`
+        <img src="unrelated.png" alt="a">
+        <div><style>.g { display: grid; grid-template-columns: 1fr 1fr; }</style></div>
+      `)).toContain("grid-track-no-min");
+      expect(notVisible).toMatch(/`<img>` gate is snippet-wide, not grid-scoped/i);
     });
   });
 });

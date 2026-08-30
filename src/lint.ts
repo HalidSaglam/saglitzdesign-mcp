@@ -132,6 +132,66 @@ function hasFocusReplacement(src: string): boolean {
   return cssRule.test(src) || tailwind.test(src);
 }
 
+// ── grid track helpers ───────────────────────────────────────────────────────
+//
+// `grid-track-no-min` needs to tell a genuinely bare `1fr` apart from one
+// already wrapped in `minmax(<not-auto>, 1fr)`: CSS Grid 1 §7.2.1 takes a
+// track out of the automatic-minimum mechanic entirely once it carries an
+// explicit, non-`auto` minimum, whatever that minimum's value — `minmax(0,
+// 1fr)`, `minmax(200px, 1fr)` and `minmax(min(18rem, 100%), 1fr)` are all
+// guarded; only `minmax(auto, 1fr)` (spec-equivalent to bare) and an
+// unwrapped `1fr` are not. A regex can't find where a `minmax(...)` call
+// ends when its own first argument nests parentheses — `min(18rem, 100%)`
+// would close a naive `[^)]*` on its own inner `)` — so this walks the
+// string counting paren depth instead of matching one.
+
+/** Splits `s` on top-level commas only; a comma inside a nested `(...)` does not count. */
+function topLevelSplit(s: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "(") depth++;
+    else if (s[i] === ")") depth--;
+    else if (s[i] === "," && depth === 0) {
+      parts.push(s.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(s.slice(start));
+  return parts;
+}
+
+/**
+ * True if `line` contains at least one `minmax(...)` call whose first
+ * argument is not the literal `auto` — an explicit minimum of any value,
+ * which guards the whole track regardless of what that value is. The whole
+ * *line* is what this reports on, not the individual track: a line with one
+ * guarded track and one genuinely bare one (`minmax(0, 1fr) 1fr`) still
+ * returns true, and `grid-track-no-min` stays silent on the bare track too.
+ * That is a known, disclosed false negative — see `LINT_NOT_VISIBLE` — kept
+ * because parsing the track list into individual tracks is a full grammar
+ * this linter does not implement.
+ */
+function hasExplicitMinmaxFloor(line: string): boolean {
+  const open = /minmax\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = open.exec(line))) {
+    const argStart = m.index + m[0].length;
+    let depth = 1;
+    let j = argStart;
+    while (j < line.length && depth > 0) {
+      if (line[j] === "(") depth++;
+      else if (line[j] === ")") depth--;
+      j++;
+    }
+    const inner = line.slice(argStart, depth === 0 ? j - 1 : j);
+    if (topLevelSplit(inner)[0]?.trim() !== "auto") return true;
+    open.lastIndex = j;
+  }
+  return false;
+}
+
 // ── line rules ───────────────────────────────────────────────────────────────
 
 const LINE_RULES: LineRule[] = [
@@ -198,10 +258,14 @@ const LINE_RULES: LineRule[] = [
     // too. None of that is readable from the declaration, which is why this
     // is `info` and why LINT_NOT_VISIBLE says so rather than promising an
     // overflow. `minmax(0, 1fr)` removes the condition entirely at no cost;
-    // src/layout.ts already emits that form.
+    // src/layout.ts already emits that form. Any explicit non-`auto` first
+    // argument does the same regardless of its value (`hasExplicitMinmaxFloor`
+    // handles `minmax(200px, 1fr)` and a nested `minmax(min(18rem, 100%),
+    // 1fr)` alike) — only `minmax(auto, 1fr)`, which is spec-equivalent to a
+    // bare track, is deliberately left un-guarded so it still fires.
     test: (l, full) =>
       /grid-template-(columns|rows)\s*:[^;]*(^|[\s,(])1fr/.test(l) &&
-      !/minmax\s*\(\s*0/.test(l) &&
+      !hasExplicitMinmaxFloor(l) &&
       /<img[\s>]/.test(full),
     message:
       "A bare `1fr` track resolves to `minmax(auto, 1fr)` (CSS Grid 1 §7.2.1); its automatic " +
@@ -381,6 +445,36 @@ export const LINT_PREAMBLE =
  * reasons — "looked and found nothing" and "never ran here" — and a reader
  * acting on silence needs to know which one they have.
  */
+
+/**
+ * "`a`, `b` and `c`" — generated from `LINE_RULES` rather than hand-typed, so
+ * a disclosure sentence that names every line rule (or counts them) cannot
+ * drift from the array the way `hardcoded-color` … `magic-number-radius`
+ * drifted the day `grid-track-no-min` shipped as a seventh: the two
+ * sentences below said "the six line rules" while `LINE_RULES.length` was
+ * already 7, and nothing failed. This is the interpolation half of that
+ * fix — the same pattern `UI_EXTENSIONS` uses in `project.ts` to keep a
+ * restated list from going stale — used here because both affected
+ * sentences quote the full member list already; a count-only assertion in
+ * a test would catch drift without saying which rule caused it.
+ */
+function backtickList(ids: string[]): string {
+  const items = ids.map((id) => "`" + id + "`");
+  if (items.length <= 1) return items.join("");
+  return items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
+}
+
+// The one line rule whose case-sensitivity is a *partial* exception rather
+// than the rule, documented at its own disclosure sentence below: `positive-
+// tabindex`'s HTML-attribute alternative carries the case-insensitive flag,
+// so `TABINDEX="5"` fires where `tabIndex={5}` does not. Every other line
+// rule — `grid-track-no-min` included, per `1FR` and `GRID-TEMPLATE-COLUMNS`
+// both drawing nothing — is fully case-sensitive. Tied to `LINE_RULES` so a
+// future rule that is also a partial exception is added here, not silently
+// folded into the "case-sensitive" count.
+const CASE_INSENSITIVE_LINE_RULES = new Set(["positive-tabindex"]);
+const CASE_SENSITIVE_LINE_RULE_COUNT = LINE_RULES.length - CASE_INSENSITIVE_LINE_RULES.size;
+
 export const LINT_NOT_VISIBLE: string[] = [
   "**Nothing here is measured, and nothing is rendered.** No contrast ratio is computed, no tap target sized, no spacing rhythm checked, no focus order walked, no screen reader run. `.a { color: #777777; background: #888888; }` comes back as a single `hardcoded-color` warning and says nothing whatever about the contrast between the two, and `padding: 13px 27px` draws nothing at all. Every finding above is a fact about the *text* of the snippet.",
   "**Anything declared in another file** — a class, a design token, a custom property, a parent component's props. `<div class=\"btn\">Go</div>` draws nothing regardless of what `.btn` does in the stylesheet. On `outline-none` that costs in both directions: `.btn { outline: none; }` handed over on its own is reported as an error even when the `:focus-visible` ring replacing it lives in a file this call never saw, and a JSX snippet whose `outline: none` sits in that stylesheet is silent. When the answer depends on both, lint the markup and the CSS in one snippet.",
@@ -391,12 +485,12 @@ export const LINT_NOT_VISIBLE: string[] = [
   "**A click handler written in a syntax `clickable-div` does not read.** It looks for an attribute named `onClick`, and HTML's `onclick` satisfies it too. Demonstrated misses: Vue's `<div @click=\"go\">` and `<div v-on:click=\"go\">`, Angular's `<div (click)=\"go()\">`, Alpine's `<div x-on:click=\"go\">` and `<div @click.prevent=\"go\">`, and Svelte 4's `<div on:click={go}>` — each draws nothing, and these are stacks the shared scanner reads elsewhere in this codebase, so the gap is not a scope decision. Current Svelte is *not* in that list: Svelte 5 replaced the event directive with an event attribute, `<div onclick={go}>`, which this rule does read; what it misses on Svelte is the legacy `on:` form that Svelte 5 still supports for backwards compatibility and that existing components are full of. Nor is the handler spelling the only way a clickable container escapes in one of these templates — three separate conditions do it as well, each run inside a `<template>`: the element must be `div`, `span`, `li` or `section`, so `<article onclick=\"go()\">` is silent; it must carry no `role`, so `role=\"button\"` silences it; and it must carry no spread, which Vue's `v-bind=\"attrs\"` counts as.",
   "**A namespaced element, which is graded as its prefix.** `:` is not a tag-name character in the shared scanner, so `<svg:image href=\"…\">` is read as an element called `svg`, `<xhtml:img>` as one called `xhtml` and `<html:input>` as one called `html` — none of which is on any rule's list, so all three pass silently while their unprefixed spellings fire. What this does *not* cost is a Svelte head: no rule here looks for a `<head>` element at all, so `<svelte:head>` is merely an unrecognised tag, and an `<img>` written inside one is graded exactly as it would be anywhere else in the file.",
   "**Commented-out code — and the two rule families disagree about it.** The line rules skip a line whose first non-space characters are `//`, `*` or `/*`; the tag rules mask nothing. So `<!-- <img src=\"a.png\"> -->` reports `img-no-alt`, `{/* <img src=\"a.png\"> */}` reports it too, and `<!-- .b { outline: none } -->` reports `outline-none`, while `// color: #ff0000;` is skipped. The line-rule guard is about where the *line* starts, so `color: #ff0000; // fix later` still fires, and inside a block comment whose continuation lines carry no leading `*` the line rules fire normally. Dead code draws live findings here — and the traffic runs the other way too, which is easier to miss: commenting out a *focus replacement* silences a real one, because `outline-none`'s replacement check reads the raw text of the snippet. `<!-- .a:focus { outline: 2px solid blue; } -->` above a live `.b { outline: none; }` reports nothing at all.",
-  "**A CSS declaration split across lines.** `hardcoded-color`, `px-font-size`, `important-overuse`, `fixed-height-text`, `positive-tabindex` and `magic-number-radius` are single-line regexes run once per line, so `font-size:` followed by `14px` on the next line, or `color:` followed by `#ff0000`, draws nothing where the same declaration on one line draws a warning. The five tag rules do not share this blind spot — they scan the whole snippet and map the offset back to a line number, so a Prettier-wrapped `<img\\n  src=…\\n/>` is graded exactly like the one-line form.",
-  "**Spellings a line rule was not written for.** `hardcoded-color` wants a `#` hex directly after `color`, `background`, `border`, `fill` or `stroke`, or a quoted six-digit hex on a line that mentions style/className/css — so `rgb(255, 0, 0)`, `hsl()`, `oklch()`, a named `red`, a `--brand: #ff0000` custom-property *definition*, and a hex inside `box-shadow` are all invisible — but not every custom property is, and the difference is not one a reader would guess: the pattern wants `color`, `background`, `border`, `fill` or `stroke` immediately before the colon, so `--brand-color: #ff0000` fires while `--brand: #ff0000` does not, on nothing but whether the token name happens to end in a word the rule watches. `px-font-size` reads only the CSS `font-size:` spelling: `style={{ fontSize: \"14px\" }}` and the `font: 14px/1.5` shorthand draw nothing. `important-overuse` reads the literal `!important`, so Tailwind's important modifier — `className=\"!text-red-500\"` — is invisible where `color: red !important` fires. That is the pattern: Tailwind's arbitrary-value syntax (`bg-[#ff0000]`, `text-[14px]`, `rounded-[6px]`, `h-[40px]`), its scale utilities (`h-10`) and its important modifier are where these things are actually written in a Tailwind file, and are exactly where these rules are blindest. Case is a spelling too, and five of the six line rules are case-sensitive on the literal text: `HEIGHT: 40px`, `COLOR: #ff0000`, `FONT-SIZE: 14px`, `BORDER-RADIUS: 6px` and `!IMPORTANT` each draw nothing where the lowercase form fires. `hardcoded-color` is case-sensitive per *branch* rather than per rule, which is worth knowing before trusting either result: bare CSS `COLOR: #ff0000` is silent, while `style={{ COLOR: \"#ff0000\" }}` fires — it reaches the second branch, which looks for a quoted six-digit hex on a line mentioning style/className/css and never reads the property name at all. The hex's own case is read by neither branch: `#FF0000` fires in both places. `positive-tabindex` is the partial exception, and only on one of its two alternatives: the HTML-attribute form carries the case-insensitive flag, so `TABINDEX=\"5\"`, `TabIndex=\"5\"` and the unquoted `TABINDEX=5` all fire, while the JSX brace form is matched case-sensitively under the single spelling `tabIndex={5}` — `TABINDEX={5}`, `TabIndex={5}` and `tabindex={5}` are silent.",
+  "**A CSS declaration split across lines.** " + backtickList(LINE_RULES.map((r) => r.id)) + " are single-line regexes run once per line, so `font-size:` followed by `14px` on the next line, a `grid-template-columns` value split the same way, or `color:` followed by `#ff0000`, draws nothing where the same declaration on one line draws a warning. The five tag rules do not share this blind spot — they scan the whole snippet and map the offset back to a line number, so a Prettier-wrapped `<img\\n  src=…\\n/>` is graded exactly like the one-line form.",
+  "**Spellings a line rule was not written for.** `hardcoded-color` wants a `#` hex directly after `color`, `background`, `border`, `fill` or `stroke`, or a quoted six-digit hex on a line that mentions style/className/css — so `rgb(255, 0, 0)`, `hsl()`, `oklch()`, a named `red`, a `--brand: #ff0000` custom-property *definition*, and a hex inside `box-shadow` are all invisible — but not every custom property is, and the difference is not one a reader would guess: the pattern wants `color`, `background`, `border`, `fill` or `stroke` immediately before the colon, so `--brand-color: #ff0000` fires while `--brand: #ff0000` does not, on nothing but whether the token name happens to end in a word the rule watches. `px-font-size` reads only the CSS `font-size:` spelling: `style={{ fontSize: \"14px\" }}` and the `font: 14px/1.5` shorthand draw nothing. `important-overuse` reads the literal `!important`, so Tailwind's important modifier — `className=\"!text-red-500\"` — is invisible where `color: red !important` fires. That is the pattern: Tailwind's arbitrary-value syntax (`bg-[#ff0000]`, `text-[14px]`, `rounded-[6px]`, `h-[40px]`), its scale utilities (`h-10`) and its important modifier are where these things are actually written in a Tailwind file, and are exactly where these rules are blindest. Case is a spelling too, and " + CASE_SENSITIVE_LINE_RULE_COUNT + " of the " + LINE_RULES.length + " line rules are case-sensitive on the literal text: `HEIGHT: 40px`, `COLOR: #ff0000`, `FONT-SIZE: 14px`, `BORDER-RADIUS: 6px`, `!IMPORTANT` and `1FR` each draw nothing where the lowercase form fires (`grid-track-no-min` is case-sensitive on the property name too — `GRID-TEMPLATE-COLUMNS: 1fr 1fr;` is as silent as `1FR` is). `hardcoded-color` is case-sensitive per *branch* rather than per rule, which is worth knowing before trusting either result: bare CSS `COLOR: #ff0000` is silent, while `style={{ COLOR: \"#ff0000\" }}` fires — it reaches the second branch, which looks for a quoted six-digit hex on a line mentioning style/className/css and never reads the property name at all. The hex's own case is read by neither branch: `#FF0000` fires in both places. `positive-tabindex` is the partial exception, and only on one of its two alternatives: the HTML-attribute form carries the case-insensitive flag, so `TABINDEX=\"5\"`, `TabIndex=\"5\"` and the unquoted `TABINDEX=5` all fire, while the JSX brace form is matched case-sensitively under the single spelling `tabIndex={5}` — `TABINDEX={5}`, `TabIndex={5}` and `tabindex={5}` are silent.",
   "**What `fixed-height-text` and `magic-number-radius` are actually reading, which is not what their names say.** `fixed-height-text` does not mean *fixed*: its pattern is a word-boundary `height:` followed by two or more digits and a literal `px`. Because `-` is a word boundary, `min-height: 40px` and `max-height: 200px` both draw the note — including the `min-height` + padding its own fix text recommends, which means the rule flags its own advice. (`line-height: 40px` escapes only by accident, because `line` is on the suppressor list below.) Because of the other half, a fixed height stated any other way is silent: `height: 9px` is one digit, and `height: 40rem`, `height: 100%`, `height: 40vh` and even `height: 40.5px` are not `px` preceded by two digits. The unit is matched literally and in lower case, so `height: 40PX` and `height: 40Px` are silent as well, and so are `height: calc(40px + 1rem)` and the logical-property spelling `block-size: 40px`. Nothing but whitespace may sit between the colon and the digits, which is why `.a { height: \"40px\"; }` and `style={{ height: \"40px\" }}` are silent too — both are a lower-case `px` behind two digits, and the quote is in the way. Shapes demonstrated to fire include `height: 40px`, `height:40px`, `height :  40px`, `min-height: 40px` and `max-height: 200px` — and, because `--` ends in a word boundary, custom-property *definitions*: `:root { --header-height: 64px; }` draws the note, as do `--height`, `--card-height` and `--nav-height`. Read all of that as a sample rather than a closed list: what the pattern reads is a narrow slice of the ways a fixed height gets written, and the slice has ragged edges in both directions. Both rules are then dropped by a word anywhere on the line. `fixed-height-text` stands down when the line contains `icon`, `avatar`, `line`, `divider` or `border` as a *substring*, which is much wider than it reads: `.timeline`, `.headline` and `.inline-flex` all contain `line`, and `.a { height: 40px; border-radius: 4px; }` contains `border`, so none of those four draws the height note that `.card { height: 40px; }` draws — the fourth is not silent overall, it still reports its radius. `magic-number-radius` is dropped when `var(` or `rounded` appears anywhere on the line, so `.rounded-card { border-radius: 8px; }` is silent. Both suppressors are whole-line, so a densely written declaration block quietly switches them off — and they are not parallel, though they read as though they were: `fixed-height-text`'s suppressor is case-insensitive, so `.a { height: 40px; BORDER: 1px solid; }` is silent, while `magic-number-radius`'s is not, so `.ROUNDED-card { border-radius: 8px; }` fires where `.rounded-card` is silent. And `magic-number-radius` reads `border-radius` in whole pixels only, which cuts both ways: `border-radius: 0px` and `border-radius: 9999px` each draw the note although a squared corner and a pill are the two least ad-hoc radii there are, while `border-radius: 50%` and `border-radius: 0.5rem` draw nothing. It reaches custom properties on the same word-boundary quirk — `:root { --border-radius: 8px; }` fires, `--radius: 8px` does not.",
   "**Whether a label, a role or a name actually resolves.** `control-no-label` is satisfied by the mere *presence* of an `id` and never looks for the `<label for>` that would use it, so `<input id=\"email\">` with no label anywhere is silent, and so is `<label for=\"nope\">Email</label><input id=\"email\">` where the two do not match. It also has no notion of a wrapping label: `<label>Email <input type=\"email\"></label>`, which is correct, still draws the warning. `clickable-div` is satisfied by any `role` at all — `role=\"presentation\"` silences it — and never checks that the `tabIndex` and key handlers its own fix text asks for came with it. The two naming rules answer the same way: `img-no-alt` accepts `alt=\"image\"` and `alt=\"a.png\"`, and `icon-button-no-label` accepts `aria-label=\"button\"` and even `aria-label=\"\"` on an icon-only button. These four read an attribute's presence rather than its content, with one demonstrated exception in the other direction: `control-no-label` reads the *value* of `type` and exempts five of them — `hidden`, `submit`, `button`, `image` and `reset` draw nothing however unlabelled they are, while `text`, `email` and `checkbox` are graded. Otherwise it is presence that satisfies them, and these are the cases run: `alt=\"image\"`, `alt=\"a.png\"`, `aria-label=\"button\"`, `aria-label=\"\"`, an `id` with no matching `<label for>`, and `role=\"presentation\"`. So a silence from these four has at least four distinct causes — the attribute was present in one of those forms; or the element carries a spread, with no attribute at all; or its `type` is one of the five exempt values; or, for `icon-button-no-label`, the button simply has visible text, which is why `<button>Save</button>` is quiet. Their findings carry no guarantee either: the wrapping label two sentences up, `<Input type=\"email\" />` and `<button>{label}</button>` are correct markup that these rules report.",
   "**How many defects a snippet has.** At most one finding per rule per line: `<img src=a><img src=b><img src=c>` on a single line reports one `img-no-alt`, and `.a { color: #fff; background: #000; }` reports one `hardcoded-color`. The same two images on two lines report two. The summary counts findings, not defects, and it undercounts a minified or densely written file.",
-  "**Whether a bare `1fr` track actually overflows.** §6.6's automatic-minimum conditions depend on the grid item's own properties — its overflow, whether the track it spans has an `auto` min sizing function, whether it shares that axis with a flexible track — and the declaration does not carry any of them. A `grid-track-no-min` finding is a robustness note, not a proven overflow. It also reads a declaration's guard, not its tracks: `grid-template-columns: minmax(0, 1fr) 1fr` is one line with one guarded track and one bare one, and the line-level `!/minmax\\(\\s*0/` clause reads the whole line as guarded, so the bare second track is passed over. That is a known false negative, kept because parsing the track list is a full grammar this linter does not implement — narrower coverage over a parser, not a silent gap.",
+  "**Whether a bare `1fr` track actually overflows — and three narrower things `grid-track-no-min` reads as a whole line, not as individual tracks or a scoped file.** §6.6's automatic-minimum conditions depend on the grid item's own properties — its overflow, whether the track it spans has an `auto` min sizing function, whether it shares that axis with a flexible track — and the declaration does not carry any of them, so a finding here is a robustness note, not a proven overflow. The guard itself is whole-line, not per-track: `hasExplicitMinmaxFloor` fires true the moment *any* `minmax(...)` call on the line has a first argument that is not `auto`, whatever that argument's value or shape — `minmax(0, 1fr)`, `minmax(200px, 1fr)` and a nested `minmax(min(18rem, 100%), 1fr)` all count — so `grid-template-columns: minmax(0, 1fr) 1fr` is one line with one genuinely guarded track and one genuinely bare one, and reports neither. That is a known false negative, kept because parsing the track list into individual tracks is a full grammar this linter does not implement — narrower coverage over a parser, not a silent gap. The shorthand `grid-template` property is not read at all — only the longhand `grid-template-columns`/`grid-template-rows` are — so `grid-template: \"a b\" 1fr / 1fr 1fr` draws nothing. And the `<img>` gate is snippet-wide, not grid-scoped: it is satisfied by any `<img>` anywhere in the text handed to `design_lint`, so a bare-`1fr` grid with no image of its own still fires when an unrelated `<img>` sits elsewhere in the same snippet, and — the reverse of the same gap — a finding says nothing about which track, if any, the image it cites actually occupies.",
 ];
 
 export const LINT_CLOSING =
