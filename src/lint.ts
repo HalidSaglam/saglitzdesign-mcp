@@ -502,13 +502,21 @@ export const LINE_RULES: LineRule[] = [
   {
     id: "motion-no-reduced-cover",
     severity: "warning",
-    // WCAG 2.1 SC 2.3.3 (Animation from Interactions): "Motion animation
-    // triggered by interaction can be disabled, unless the animation is
-    // essential to the functionality or the information being conveyed."
-    // Media Queries Level 5 §12.1 is the mechanism the platform gives a site
-    // to honour that: `prefers-reduced-motion`, valued `no-preference` or
-    // `reduce`. This is an accessibility rule sourced to both, not a taste
-    // one about how the animation looks.
+    // Two different sources cover two different slices of this rule's
+    // reach, and citing only the narrower one overstates it. WCAG 2.1 SC
+    // 2.3.3 (Animation from Interactions) is Level AAA and scoped to motion
+    // "triggered by interaction": "Motion animation triggered by
+    // interaction can be disabled, unless the animation is essential..."
+    // This rule's actual trigger is any `animation:`/`animation-name:`/
+    // `@keyframes`, autoplaying and non-interactive animations included,
+    // which SC 2.3.3 does not reach. Media Queries Level 5 §12.1 is what
+    // covers that full scope: it frames `prefers-reduced-motion` as letting
+    // a user ask a site to "minimize the amount of non-essential motion",
+    // with no interaction restriction and no AAA-only carve-out. So: §12.1
+    // is the source for the mechanism and for this rule's actual reach; SC
+    // 2.3.3 is cited only as the accessibility rationale for the
+    // interaction-triggered subset of that reach, not as coverage for the
+    // whole rule.
     //
     // The test does not parse the media query — it only asks whether the
     // literal substring `prefers-reduced-motion` occurs anywhere in the
@@ -528,12 +536,29 @@ export const LINE_RULES: LineRule[] = [
     // pure-Tailwind animated element is silent from this rule regardless of
     // whether a `motion-reduce:` variant sits beside it.
     //
+    // Fix round 1 found two real defects in the trigger, both fed
+    // adversarially rather than assumed safe. First: `animation: none;` — an
+    // ordinary reset written outside any motion context — used to fire,
+    // because the trigger checked only for the property name, never its
+    // value; excluded now by a negative lookahead on a literal `none`
+    // value. `initial`/`unset`/`inherit` also resolve to no animation and
+    // are NOT excluded — disclosed in LINT_NOT_VISIBLE rather than chased,
+    // since `none` is the form anyone actually writes to reset an
+    // animation. Second: the longhand `animation-name: slide;` (with
+    // `animation-duration`/others set on separate declarations) was
+    // invisible — the trigger matched only the shorthand `animation:` —
+    // closed by reading `animation-name` too, since that is the one
+    // longhand that actually attaches a `@keyframes` sequence;
+    // `animation-duration`/`animation-play-state` alone, with no
+    // `animation-name` anywhere, name no real animation and are correctly
+    // left unread.
+    //
     // Case: both alternatives are case-sensitive, matching every line rule
     // in this file except positive-tabindex — `ANIMATION:`, `@KEYFRAMES` and
     // `PREFERS-REDUCED-MOTION` are each silent where the lowercase form
     // fires or covers.
     test: (l, full) =>
-      /(^|[\s;{])animation\s*:|@keyframes\s/.test(l) &&
+      /(^|[\s;{])animation(-name)?\s*:(?!\s*none\b)|@keyframes\s/.test(l) &&
       !/prefers-reduced-motion/.test(full),
     message:
       "An animation with nothing honouring `prefers-reduced-motion` in the same source.",
@@ -561,18 +586,41 @@ export const LINE_RULES: LineRule[] = [
     // and was widened here to match, once feeding it a keyframes block that
     // only moved `right`/`bottom`/`margin`/`padding` showed the gap.
     //
+    // Fix round 1, two real false positives, one lookbehind: `\b` treats
+    // `-` as a boundary, so the bare word match used to fire on anything
+    // whose name merely *ends* in a watched word. That is two distinct
+    // shapes, not one, and both are excluded by the same
+    // `(?<!outline-|--[\w-]*)` lookbehind:
+    //   - `outline-width` — a real CSS property, but outline never occupies
+    //     layout space, so animating its width is paint only. Excluded by
+    //     the `outline-` half of the alternation — this is the one-token
+    //     fix a real property-name parse was not needed for.
+    //   - `--card-width`, `--nav-height`, `--sidebar-margin` — ordinary
+    //     custom-property (design-token) names, not layout properties at
+    //     all; a custom property carries no rendering behaviour of its own
+    //     until something consumes it in `var()`. Excluded by the
+    //     `--[\w-]*` half, which matches any run of word/hyphen characters
+    //     immediately after a literal `--`, so it reaches `--sidebar-margin`
+    //     (the watched word sits after an *earlier* hyphenated segment, not
+    //     right after `--`) as well as the bare `--margin` shape. It does
+    //     not reach a custom property separated from a real property by a
+    //     delimiter it cannot cross: `transition: --foo, width 200ms` still
+    //     fires on the real `width`, because `[\w-]*` cannot match through
+    //     the comma and space between them.
+    // Legitimate compound property names are unaffected by either half:
+    // `min-width`, `max-width` and `border-right-width` are single-hyphen
+    // and never start `--`, so neither lookbehind alternative applies ahead
+    // of them and they still fire, correctly. What the lookbehind does not
+    // reach: any *other* real CSS property whose name happens to end in one
+    // of the eight watched words without being layout-affecting — none is
+    // known today, but the mechanism is still a word match, not a parse, so
+    // a future one would not be caught automatically (see LINT_NOT_VISIBLE).
+    //
     // Case: all three regexes are case-sensitive, matching the rest of this
     // file — `TRANSITION: WIDTH` and `@KEYFRAMES` are silent.
-    //
-    // Known false positive, disclosed rather than fixed (see
-    // LINT_NOT_VISIBLE): the match is a whole word inside the declaration,
-    // not a parsed property name, so `outline-width` fires even though an
-    // outline never occupies layout space — changing its width is paint
-    // only, never layout. Fixing that needs a real property-name parse
-    // rather than a word match, which is out of scope for a regex rule.
     test: (l) =>
-      /transition(-property)?\s*:[^;]*\b(width|height|top|left|right|bottom|margin|padding)\b/.test(l) ||
-      /@keyframes[^{]*\{[^}]*\b(width|height|top|left|right|bottom|margin|padding)\s*:/.test(l),
+      /transition(-property)?\s*:[^;]*\b(?<!outline-|--[\w-]*)(width|height|top|left|right|bottom|margin|padding)\b/.test(l) ||
+      /@keyframes[^{]*\{[^}]*\b(?<!outline-|--[\w-]*)(width|height|top|left|right|bottom|margin|padding)\s*:/.test(l),
     message:
       "Animating a layout property forces layout and paint each frame; `transform` and `opacity` are composited.",
     fix: "Animate `transform` / `opacity` instead — `translate` for position, `scale` for size.",
@@ -609,10 +657,27 @@ export const LINE_RULES: LineRule[] = [
     // the block is still naming every property, layout ones included,
     // rather than actually disabling them.
     //
+    // Fix round 1: the longhand `transition-property: all;` was invisible —
+    // the shorthand alternative only matched `transition:` — for the same
+    // reason `animates-layout-property` already reads both the shorthand
+    // and the `-property` longhand. Closed by making `-property` optional
+    // here too, one token, matching the sibling rule's own handling rather
+    // than diverging from it.
+    //
+    // Known, disclosed rather than fixed (see LINT_NOT_VISIBLE): the
+    // shorthand alternative has no notion of a string or a URL, so
+    // `content: "transition: all 200ms";` and
+    // `background: url(transition:all.png);` both fire on text that never
+    // reaches a real declaration — the same family of comment/string
+    // blindness already disclosed elsewhere in this file
+    // (`hasExplicitMinmaxFloor`, `overflow-hidden-root`'s override guard),
+    // just not previously named for this rule. Real string/URL awareness
+    // needs more than a word match, which is out of scope for a regex rule.
+    //
     // Case: both alternatives are case-sensitive, matching the rest of this
     // file — `TRANSITION: ALL` and `TRANSITION-ALL` are silent.
     test: (l) =>
-      /transition\s*:\s*all\b/.test(l) ||
+      /transition(-property)?\s*:\s*all\b/.test(l) ||
       /(?:^|[\s"'`])(?:[a-z][a-z0-9-]*:)*transition-all(?:["'\s]|$)/.test(l),
     message:
       "`transition: all` animates every property that changes, including layout properties you did not intend.",
@@ -909,7 +974,9 @@ export const LINT_NOT_VISIBLE: string[] = [
   "**A brace hiding in a string or a comment *before* the matched `hidden` silences `overflow-hidden-root` outright, rather than misreading its selector or its override.** The selector lookup (`enclosingOpenBrace`) scans backward from the declaration counting brace balance, and has no notion of a comment or a string — the same disclosed limitation `hasExplicitMinmaxFloor` and the override guard above already carry, but on the *other* side of the match: `body { content: \"}\"; overflow-x: hidden; }` and `body { /* } */ overflow-x: hidden; }` are both silent, because the quoted or commented `}` is read as a real, already-spent close and the balance-tracked scan walks straight past `body`'s own `{` before it can find it, returning no enclosing block at all. This is distinct from the already-disclosed comment/string blindness in the override guard, which only reads text *after* the matched declaration and produces a wrong (silenced) finding by misreading an override; this is text *before* the match, and it silences the rule by misreading the selector lookup itself, with no override involved.",
   "**Whether an animation is actually reduced.** `motion-no-reduced-cover` looks for the media feature anywhere in the source it was given, so a project honouring the preference in a separate stylesheet reads as uncovered here.",
   "**Runtime motion.** Anything animated from JavaScript, a motion library, or SwiftUI is invisible to this — it reads CSS declarations only.",
-  "**A property name that merely contains a matched word, not the word as a full property.** `animates-layout-property` reads `width`, `height`, `top`, `left`, `right`, `bottom`, `margin` and `padding` as whole words bounded by non-word characters, not as parsed property names, so `max-width`, `min-height`, `border-right-width` and `margin-top` all correctly fire because they really do affect layout — but so does `outline-width`, which does not: an outline is painted outside the box without changing its size, so animating it costs paint, never layout. The list is also not exhaustive in the other direction: `inset`, `gap`, `row-gap`, `column-gap`, `flex-basis` and `font-size` all move layout when animated and are not on it, so a `transition` naming only one of those draws nothing from this rule.",
+  "**Inert values `motion-no-reduced-cover` does not recognise as meaning \"no animation\".** Its trigger excludes only a literal `none` value on `animation`/`animation-name` — the common reset. `animation: initial;`, `animation: unset;` and `animation: inherit;` all resolve to that same property's own initial value (`none`), but are not excluded, so each still fires as if it declared a real animation. Neither does the shorthand omitting a name entirely: `animation: 0s;` sets only a duration and resets every other sub-property — `animation-name` included — to its own initial value, which is also `none`, so this too draws a warning about an animation that is not actually there.",
+  "**A property name that merely contains a matched word, not the word as a full property — narrowed by a fix round, not eliminated.** `animates-layout-property` reads `width`, `height`, `top`, `left`, `right`, `bottom`, `margin` and `padding` as whole words bounded by non-word characters, not as parsed property names. Two demonstrated false positives from that are now excluded by a lookbehind: `outline-width` (outline is painted outside the box, so animating its width costs paint, never layout) and a custom-property name that merely ends in a watched word (`--card-width`, `--nav-height`, `--sidebar-margin` — a custom property carries no rendering behaviour of its own until consumed by `var()`). What the lookbehind does not reach: any *other* real CSS property whose name happens to end in one of the eight words without being layout-affecting — none is known today, but the mechanism is still a word match, not a parse, so a future one would not be caught. The list is also not exhaustive in the other direction: `inset`, `gap`, `row-gap`, `column-gap`, `flex-basis` and `font-size` all move layout when animated and are not on it, so a `transition` naming only one of those draws nothing from this rule.",
+  "**A string or a URL, for `transition-all`.** Its shorthand alternative has no notion of either, so `content: \"transition: all 200ms\";` and `background: url(transition:all.png);` both fire on text that never reaches a real declaration — the same family of comment/string blindness already disclosed for `hasExplicitMinmaxFloor` and `overflow-hidden-root`'s override guard, kept for `transition-all` for the same reason: real string/URL awareness needs more than a word match.",
 ];
 
 export const LINT_CLOSING =

@@ -221,7 +221,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
   const notVisible = LINT_NOT_VISIBLE.join("\n");
 
   it("has an entry for every demonstration below, and no empty list", () => {
-    expect(LINT_NOT_VISIBLE.length).toBe(21);
+    expect(LINT_NOT_VISIBLE.length).toBe(23);
     for (const entry of LINT_NOT_VISIBLE) expect(entry.startsWith("**")).toBe(true);
   });
 
@@ -1315,6 +1315,64 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
           @media (PREFERS-REDUCED-MOTION: reduce) { .card { animation: none; } }
         `)).toContain("motion-no-reduced-cover");
       });
+
+      // Fix round 1 Critical-adjacent: `animation: none;` is an ordinary
+      // reset written outside any motion context — a real, common pattern
+      // (e.g. cancelling an inherited animation on hover-out) — and the
+      // first cut fired on it regardless, because the trigger read only the
+      // property name, never its value.
+      describe("fix round 1: an inert animation is not a real animation", () => {
+        it("(fixed) does not fire on animation: none", () => {
+          expect(rules(`.a { animation: none; }`)).not.toContain("motion-no-reduced-cover");
+        });
+
+        it("(fixed) reads the animation-name longhand, not just the shorthand", () => {
+          expect(rules(`.card { animation-name: slide; animation-duration: 200ms; }`))
+            .toContain("motion-no-reduced-cover");
+        });
+
+        it("does not treat animation-name: none as a real animation either", () => {
+          expect(rules(`.a { animation-name: none; }`)).not.toContain("motion-no-reduced-cover");
+        });
+
+        // Adversarial probe: animation-duration alone, with no
+        // animation-name anywhere, names no real animation — the longhand
+        // fix must not turn this into a false positive by reading
+        // animation-duration as if it were animation-name.
+        it("does not treat animation-duration alone as a real animation", () => {
+          expect(rules(`.a { animation-duration: 200ms; }`)).not.toContain("motion-no-reduced-cover");
+        });
+
+        // Adversarial probe: animation-play-state alone, same reasoning.
+        it("does not treat animation-play-state alone as a real animation", () => {
+          expect(rules(`.a { animation-play-state: paused; }`)).not.toContain("motion-no-reduced-cover");
+        });
+
+        // Disclosed, not chased: only a literal `none` is excluded.
+        // `initial`/`unset`/`inherit` resolve to the same no-animation state
+        // and are not, so each still fires.
+        it("(disclosed gap) still fires on animation: initial, which also resolves to no animation", () => {
+          expect(rules(`.a { animation: initial; }`)).toContain("motion-no-reduced-cover");
+          expect(notVisible).toMatch(/animation: initial;.*animation: unset;.*animation: inherit;/);
+        });
+
+        // Adversarial probe that found a second, related instance of the
+        // same gap: a duration-only shorthand also resets animation-name to
+        // its own initial value (none), so this is inert too, and is not
+        // excluded either.
+        it("(disclosed gap) still fires on animation: 0s, a duration-only shorthand that also names no animation", () => {
+          expect(rules(`.a { animation: 0s; }`)).toContain("motion-no-reduced-cover");
+          expect(notVisible).toMatch(/animation: 0s;.*sets only a duration/);
+        });
+
+        // Regression guard against an over-broad exclusion: the fix must
+        // reject only the literal value `none`, not merely any value that
+        // happens to start the same way — a real animation name is free to
+        // start with any letter, "n" included.
+        it("still fires on a real animation whose name happens to start with n, like none does", () => {
+          expect(rules(`.card { animation: nudge-in 200ms ease; }`)).toContain("motion-no-reduced-cover");
+        });
+      });
     });
 
     describe("animates-layout-property", () => {
@@ -1369,12 +1427,65 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
         expect(designLint(`@KEYFRAMES grow { from { width: 0; } to { width: 100%; } }`)).toEqual([]);
       });
 
-      // Known, disclosed false positive: the match is a whole word, not a
-      // parsed property name. outline-width never occupies layout space, but
-      // still fires here — narrower coverage over a real property-name parse.
-      it("(false positive, disclosed) fires on outline-width, which does not actually affect layout", () => {
-        expect(rules(`.a { transition: outline-width 200ms ease; }`)).toContain("animates-layout-property");
-        expect(notVisible).toMatch(/outline-width/);
+      // Fix round 1 Critical: `\b` treats `-` as a boundary, so the bare
+      // word match used to fire on anything whose name merely *ends* in a
+      // watched word — an ordinary custom-property (design-token) name,
+      // not a layout property at all. `--foo` (no shared suffix with any
+      // watched word) was the probe that shipped as "safe"; these are the
+      // probes that actually could fail, and did before the fix.
+      describe("fix round 1 Critical: a custom property is not a layout property", () => {
+        it("(fixed) does not fire on --card-width, --nav-height or --sidebar-margin", () => {
+          for (const decl of [
+            `.a { transition: --card-width 200ms; }`,
+            `.a { transition: --nav-height 200ms; }`,
+            `.a { transition: --sidebar-margin 200ms; }`,
+          ]) expect(rules(decl), decl).not.toContain("animates-layout-property");
+        });
+
+        it("the same exclusion applies to the keyframes form", () => {
+          expect(rules(`@keyframes x { from { --card-width: 10px; } to { --card-width: 100px; } }`))
+            .not.toContain("animates-layout-property");
+        });
+
+        // The fix must not over-reach: a custom property separated from a
+        // real layout property by a delimiter it cannot cross still leaves
+        // the real property matched.
+        it("still fires on a real property listed after an unrelated custom property", () => {
+          expect(rules(`.a { transition: --foo, width 200ms; }`)).toContain("animates-layout-property");
+        });
+
+        // Legitimate compound property names must not be caught by the same
+        // fix — none of these starts `--`, so neither exclusion applies.
+        it("still fires on legitimate compound property names — regression guard", () => {
+          for (const decl of [
+            `.a { transition: width 200ms; }`,
+            `.a { transition: min-width 200ms; }`,
+            `.a { transition: max-width 200ms; }`,
+            `.a { transition: border-right-width 200ms; }`,
+          ]) expect(rules(decl), decl).toContain("animates-layout-property");
+        });
+      });
+
+      // Fix round 1 Important: a one-token fix, not a parsing problem — the
+      // same lookbehind shape that excludes a custom property also excludes
+      // this specific real property, via its own alternative.
+      it("(fixed) does not fire on outline-width, which does not actually affect layout", () => {
+        expect(rules(`.a { transition: outline-width 200ms ease; }`)).not.toContain("animates-layout-property");
+      });
+
+      // Adversarial probes beyond the two reported defects: properties that
+      // could plausibly have been swept up by either fix, or by the
+      // original word list, but should not fire.
+      it("stays silent on properties the fix could plausibly have over-reached into", () => {
+        expect(rules(`.a { transition: background-position 200ms; }`)).not.toContain("animates-layout-property");
+        expect(rules(`.a { transition: -webkit-transform 200ms; }`)).not.toContain("animates-layout-property");
+      });
+
+      // Known, disclosed miss (unaffected by the fix): inset affects layout
+      // exactly like top/left/right/bottom, but is not on the watched list.
+      it("(known miss, disclosed) does not fire on inset, which is not on the watched list", () => {
+        expect(rules(`.a { transition: inset 200ms; }`)).not.toContain("animates-layout-property");
+        expect(notVisible).toMatch(/`inset`, `gap`/);
       });
     });
 
@@ -1415,6 +1526,33 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
         expect(designLint(`.a { TRANSITION: ALL 200ms ease; }`)).toEqual([]);
         expect(designLint(`<div class="TRANSITION-ALL"></div>`)).toEqual([]);
       });
+
+      // Fix round 1: the longhand was invisible for the same reason
+      // animates-layout-property already reads both forms; closed the same
+      // one-token way (`-property` optional), not diverging from the
+      // sibling rule's own handling.
+      it("(fixed) reads the transition-property longhand for all too", () => {
+        expect(rules(`.a { transition-property: all; }`)).toContain("transition-all");
+      });
+
+      // Adversarial probe: a vendor-prefixed shorthand is a different shape
+      // from the longhand above, fed separately because "reads more forms"
+      // does not by itself confirm this one specific reach.
+      it("still fires through a vendor-prefixed shorthand", () => {
+        expect(rules(`.a { -webkit-transition: all 200ms; }`)).toContain("transition-all");
+      });
+
+      // Minor, disclosed rather than fixed: no notion of a string or a URL,
+      // the same family of blindness already disclosed for other rules in
+      // this file. Recorded rather than silently accepted.
+      it("(disclosed, minor) fires inside a string, not a real declaration", () => {
+        expect(rules(`.a { content: "transition: all 200ms"; }`)).toContain("transition-all");
+        expect(notVisible).toMatch(/never reaches a real declaration/);
+      });
+
+      it("(disclosed, minor) fires inside a url() too", () => {
+        expect(rules(`.a { background: url(transition:all.png); }`)).toContain("transition-all");
+      });
     });
 
     it("the three motion rules are named in the split-declaration disclosure", () => {
@@ -1426,6 +1564,16 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     it("discloses what an animation being reduced actually means, and that runtime motion is invisible", () => {
       expect(notVisible).toMatch(/looks for the media feature anywhere in the source it was given/i);
       expect(notVisible).toMatch(/anything animated from javascript, a motion library, or swiftui/i);
+    });
+
+    // Fix round 1: five new or rewritten disclosures — the inert-value gap,
+    // the narrowed (not eliminated) word-match false positive, and the
+    // string/URL blindness for transition-all.
+    it("discloses the fix-round-1 residual gaps, not just the fixes", () => {
+      expect(notVisible).toMatch(/animation: initial;.*animation: unset;.*animation: inherit;/);
+      expect(notVisible).toMatch(/animation: 0s;.*sets only a duration/);
+      expect(notVisible).toMatch(/narrowed by a fix round, not eliminated/);
+      expect(notVisible).toMatch(/A string or a URL, for `transition-all`/);
     });
   });
 });
