@@ -7,7 +7,8 @@ Self-contained design skills you can install into any skills-compatible agent
 npx skills@latest add HalidSaglam/saglitzdesign-mcp
 ```
 
-Each skill is condensed, actionable guidance that stands on its own. For the
+The seven depth skills are condensed, actionable guidance that stands on its
+own; `saglitzdesign` is the door and carries no depth guidance itself. For the
 **full knowledge base** (96 documents), the **34 tools** (design-system,
 color, type, layout, elevation and motion generators; accessibility, design and
 UX-copy auditors; production component code), the **example library**, and the

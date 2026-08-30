@@ -6,6 +6,7 @@ import { CATEGORIES, PLATFORMS, DESIGN_LANGUAGES, REVIEW_MAP, FOCUS_MAP, ROADMAP
 import { loadRecipes } from "../dist/recipes.js";
 import { loadExamples } from "../dist/examples.js";
 import { securityReport, HEADER_SOURCE_TOKENS, HEADER_SOURCES_SENTENCE, HEADER_METHOD_NAMES } from "../dist/security.js";
+import { PROMPT_NAMES } from "../dist/prompts.js";
 import { liveToolNames, liveDisclosureTools } from "./helpers/liveServer.js";
 
 // Structural guarantees for the curated content. These are the checks that
@@ -565,16 +566,35 @@ describe("skills distribution", () => {
     expect(problems).toEqual([]);
   });
 
+  // `design_review` is the name of a *prompt* (and of a `/saglitzdesign:` slash
+  // command), not of a tool, and it matches this guard's `design_` prefix — so
+  // a skill that correctly backticks the eight workflow names would be told it
+  // points at a phantom tool. The server has two named surfaces; this guard
+  // knew about one. `PROMPT_NAMES` is real, so it is not a phantom: the
+  // umbrella's own workflow list is held to `PROMPT_NAMES` exactly, by
+  // "names the eight workflows exactly as the server serves them" below.
   it("never points at a tool that does not exist", () => {
+    const real = new Set([...TOOL_NAMES, ...PROMPT_NAMES]);
     const phantom: string[] = [];
     for (const n of names) {
       for (const m of read(n).matchAll(/`([a-z][a-z0-9_]{4,})`/g)) {
-        if (/^(get|search|list|design|audit|generate|create|suggest|fix|compare|seo)_/.test(m[1]) && !TOOL_NAMES.has(m[1])) {
+        if (/^(get|search|list|design|audit|generate|create|suggest|fix|compare|seo)_/.test(m[1]) && !real.has(m[1])) {
           phantom.push(`${n} → ${m[1]}`);
         }
       }
     }
     expect(phantom).toEqual([]);
+  });
+
+  // Vacuity control for the guard above, in the shape the review found it in:
+  // the eight workflow names are the ones most likely to be mistyped in a
+  // skill, and before this round none of the three existing guards read them.
+  it("a mistyped workflow name would be caught, not excused as a prompt", () => {
+    const real = new Set([...TOOL_NAMES, ...PROMPT_NAMES]);
+    expect(real.has("design_review")).toBe(true);
+    expect(real.has("design_reviw")).toBe(false);
+    expect(real.has("audit_project")).toBe(true);
+    expect(real.has("audit_projekt")).toBe(false);
   });
 
   /**
@@ -1135,6 +1155,33 @@ describe("the umbrella skill routes into every depth skill", () => {
     const fm = readFileSync(umbrella, "utf8").split("---")[1] ?? "";
     expect(fm.toLowerCase()).toMatch(/not for|does not cover|beyond/);
   });
+
+  // Whole-branch review, Minor: the umbrella names all eight workflows, and
+  // nothing checked the names. Three guards existed and this fell between all
+  // of them — `routedSkillNames` above guards the seven *skill* names, the
+  // tool guard elsewhere in this file inspects only backticked snake_case
+  // names whose prefix is in its own allowlist (`design_review` would have
+  // been reported as a phantom tool, and four of the eight would have escaped
+  // on their prefix), and `scripts/preflight-release.mjs` checks `commands/`
+  // against `src/prompts.ts`. A skill naming a *prompt* was guarded by none.
+  // A typo in any of the eight shipped silently.
+  it("names the eight workflows exactly as the server serves them", () => {
+    const body = readFileSync(umbrella, "utf8");
+    // Scoped to the list itself, between the two em dashes that bracket it —
+    // not to the paragraph, and not to the file. A whole-file sweep would be
+    // satisfied by any backticked name anywhere, which is the vacuity this
+    // guard exists to avoid.
+    const list = /eight guided workflows — (.+?) — which drive/s.exec(body);
+    expect(list, "the workflow list has moved or been reworded").toBeTruthy();
+    const named = [...list![1].matchAll(/`([a-z_]+)`/g)].map((m) => m[1]);
+    expect(named.sort()).toEqual([...PROMPT_NAMES].sort());
+  });
+
+  // …and that they are not tools, which is the other half of the claim: the
+  // sentence tells a reader they cannot be called by name.
+  it("none of the eight is a tool name", () => {
+    expect(PROMPT_NAMES.filter((p) => TOOL_NAMES.has(p))).toEqual([]);
+  });
 });
 
 describe("release metadata is in sync", () => {
@@ -1212,8 +1259,10 @@ const tierOf = (host: string): keyof typeof SOURCE_TIERS | null => {
 };
 
 /**
- * The one operation in this file that can *throw* rather than fail. 33 sources
- * across 20 documents are not URLs at all — whole `book`, `craft`, `process`
+ * The one operation in this file that can *throw* rather than fail. 55 sources
+ * across 19 documents are not URLs at all — a hand-written pair that had
+ * drifted in both directions since it was written, which is why the count is
+ * now asserted below rather than only stated here — whole `book`, `craft`, `process`
  * and `marketing` categories cite book titles like "Breakthrough Advertising
  * (Eugene Schwartz)" — and `new URL(...)` on one of those raises a TypeError
  * that aborts the run and names neither the document nor the source. None of
@@ -1249,6 +1298,30 @@ describe("the source tiers", () => {
 
   it("resolves a host regardless of case", () => {
     expect(tierOf("DEVELOPER.APPLE.COM")).toBe("vendor");
+  });
+
+  // The count `hostOf`'s comment states, asserted rather than only written
+  // down. The pair in that comment was hand-typed and had drifted in *both*
+  // directions by the time anyone re-measured it — 33/20 stated against 55/19
+  // measured — which is the same failure this file fixed elsewhere by deriving
+  // a number instead of writing one. A range rather than an equality: the
+  // point is that the class is large and non-empty (so `hostOf`'s
+  // throw-instead-of-fail guard is load-bearing, not theoretical), not that it
+  // is frozen at today's figure.
+  it("the non-URL source class is real and roughly the size hostOf's comment claims", () => {
+    const offenders = docs.flatMap((d) => (d.sources ?? []).filter((u) => hostOf(u) === null).map(() => d.id));
+    const documents = new Set(offenders);
+    expect(offenders.length).toBeGreaterThanOrEqual(40);
+    expect(offenders.length).toBeLessThanOrEqual(80);
+    expect(documents.size).toBeGreaterThanOrEqual(12);
+    expect(documents.size).toBeLessThanOrEqual(30);
+    // And the comment's own numbers must sit inside the band it is checked
+    // against, so a future edit cannot restate a figure this test would reject.
+    const stated = readFileSync(join(__dirname, "integrity.test.ts"), "utf8")
+      .match(/(\d+) sources\n \* across (\d+) documents are not URLs at all/);
+    expect(stated, "hostOf's comment no longer states a count in the expected shape").toBeTruthy();
+    expect(Number(stated![1])).toBe(offenders.length);
+    expect(Number(stated![2])).toBe(documents.size);
   });
 
   it("keeps security documents on standard and vendor sources only", () => {
@@ -1766,7 +1839,14 @@ describe("every surface that lists audit_security's header sources lists all of 
   // token named anywhere else in a long document would satisfy the check
   // without the row a reader of that row ever seeing it.
   const skill = readFileSync(join(root, "skills", "ship-quality-gate", "SKILL.md"), "utf8").replace(/‑/g, "-");
-  const skillRow = skill.split("\n").find((l) => l.includes("`audit_security`")) ?? "";
+  // A *table row*, not merely the first line that mentions the tool. The
+  // locator used to be "first line containing `audit_security`", which is the
+  // `full.indexOf(l)` shape this repository has already been bitten by once:
+  // it silently resolved to whichever line came first, so a paragraph added
+  // above the table — one was, in the fix round that rewrote this skill's
+  // opening — became "the row", and twenty-two token assertions failed
+  // against prose that was never supposed to carry them.
+  const skillRow = skill.split("\n").find((l) => l.trimStart().startsWith("|") && l.includes("`audit_security`")) ?? "";
 
   // Scoped to its own bullet for the same reason the README and the skill are
   // scoped to their rows: a token satisfied by some other sentence of the

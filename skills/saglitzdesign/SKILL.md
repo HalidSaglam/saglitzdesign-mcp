@@ -15,12 +15,17 @@ The sign the work gives off, and which of the seven depth skills answers it. Rea
 | The work is… | Route to |
 |---|---|
 | Native iOS, iPadOS, or macOS UI — HIG conventions, Liquid Glass, or porting a design onto an Apple platform | `apple-platform-design` |
-| Critiquing an existing UI — a screenshot, a live page, or code — for what's wrong with it | `design-review` |
+| Auditing a whole project or repository — running every deterministic auditor over it, before it ships or to see what is wrong with it | `ship-quality-gate` |
+| Critiquing one interface — a screenshot, a live page, or a screen's code — for what's wrong with it | `design-review` |
 | Checking whether a codebase has a real design system, or migrating scattered values onto tokens | `design-system-audit` |
 | Building or improving a landing page or marketing site so it converts | `landing-page-conversion` |
 | Adding or fixing motion — transitions, hovers, presses, gestures, page transitions | `motion-and-animation` |
-| Running every deterministic auditor across a whole project before it ships | `ship-quality-gate` |
 | Anything else — building or restyling a UI with no more specific match above | `clean-interface-design` |
+
+The two audit-shaped rows overlap, and the order resolves it deliberately:
+"audit this repo for what's wrong with it" is a whole-project run, so it goes
+to `ship-quality-gate` — the deterministic gate — rather than to the taste
+critique. Reach for `design-review` when the target really is one screen.
 
 ## Four invariants, whichever skill you land in
 
@@ -31,4 +36,6 @@ The sign the work gives off, and which of the seven depth skills answers it. Rea
 
 ## Full depth
 
-The build/review/port method itself — and the generators, recipes, and knowledge lookups it drives — lives in the SaglitzDesign MCP server (`npx saglitzdesign-mcp`), not in this file or any of the seven skills. Its tools include `get_design_roadmap`, `create_design_system`, `audit_project`, and the rest of the generators and auditors named inside each depth skill; its eight commands (build_website, build_landing_page, build_mobile_app_ui, redesign, port_to_platform, critique_screenshot, design_review, review_paywall) drive the whole method end to end for anyone who wants more than a skill's condensed guidance.
+The build/review/port method itself — and the generators, recipes, and knowledge lookups it drives — lives in the SaglitzDesign MCP server (`npx saglitzdesign-mcp`), not in this file or any of the seven skills. Its tools include `get_design_roadmap`, `create_design_system`, `audit_project`, and the rest of the generators and auditors named inside each depth skill.
+
+It also ships eight guided workflows — `build_website`, `build_landing_page`, `build_mobile_app_ui`, `redesign`, `port_to_platform`, `critique_screenshot`, `design_review`, `review_paywall` — which drive the whole method end to end for anyone who wants more than a skill's condensed guidance. Two channels, two spellings, and they are not interchangeable: installed as an MCP server (`npx saglitzdesign-mcp`, `claude mcp add`) they arrive as MCP **prompts**; installed as a plugin they arrive additionally as `/saglitzdesign:…` **slash commands**, which are files in `commands/` that an MCP install does not deliver. None of the eight is a tool, so none can be called by name the way `audit_project` can — you invoke them, they never fire on their own.

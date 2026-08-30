@@ -40,7 +40,7 @@ The best landing pages don't just look good — they **guide the user toward act
 
 ## Don't repeat the last page shape
 
-When you're producing a full page or screen rather than a single component, vary its macrostructure across runs, not just its colors and copy — a project where every screen sits in the same shape reads as generated no matter how clean each one is on its own. Before writing CSS, look for a prior stamp comment in the project's existing stylesheets. If one is there, pick a **different** shape from the set below, plus a different navigation and footer treatment than the stamped run used:
+When you're producing a full page or screen rather than a single component, vary its macrostructure across runs, not just its colors and copy — a project where every screen sits in the same shape reads as generated no matter how clean each one is on its own. Before writing CSS, look for a prior stamp comment in the project's existing stylesheets. If one is there, differ from **every axis it records** — the shape, and the navigation and footer treatments if it names them. A stamp that records only a shape (the earlier format) tells you nothing about the previous nav or footer, so differ on the shape and choose the other two freely. Shapes:
 
 - `centered-stack` — single column, vertically stacked, content centered
 - `split-panel` — two-column split, primary content one side, supporting visual the other
@@ -48,7 +48,13 @@ When you're producing a full page or screen rather than a single component, vary
 - `bento-grid` — an asymmetric grid of modules/cards instead of a stacked column
 - `rail-scroll` — full-bleed panels alternating edge-to-edge, no shared column width
 
-Leave your own stamp as the first line of the CSS you write, naming the shape you picked, e.g. `/* saglitzdesign · macrostructure: sidebar-shell */`. No tool writes this — you're already writing the stylesheet, so the comment is yours to add.
+Leave your own stamp as the first line of the CSS you write, naming all three axes so the next run has something to differ from — the shape from the list above, and a short hyphenated token of your own for the navigation and the footer:
+
+```css
+/* saglitzdesign · macrostructure: sidebar-shell · nav: collapsible-rail · footer: single-line */
+```
+
+Record all three even when you only varied one. A stamp that names the shape alone is what the first version of this instruction produced, and it asked the next run to differ from a nav and a footer the artifact did not carry. No tool writes this — you're already writing the stylesheet, so the comment is yours to add.
 
 ## Anti-patterns
 

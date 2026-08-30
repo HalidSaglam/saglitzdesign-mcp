@@ -6,12 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.27.0] — 2026-08-30
 
-Eight of the entries below describe releases that were never tagged or
-published: v0.20.0 through v0.26.0, and v0.18.0 before them (`npm view
+Eight of the entries below describe releases that were never published:
+v0.20.0 through v0.26.0, and v0.18.0 before them (`npm view
 saglitzdesign-mcp versions` lists neither — it jumps 0.17.0 → 0.19.0 → 0.19.1
 → nothing since). The tag/publish step is the maintainer's to run, and for
-those eight releases it has not run. `npm view saglitzdesign-mcp version`
-still answers `0.19.1`, so v0.19.1's entry further down is the newest one
+those eight releases it has not run. (`git tag` returns nothing at all, so
+"never tagged" does not distinguish these eight from the nine versions that
+*were* published — only "never published" does.)
+`npm view saglitzdesign-mcp version` still answers `0.19.1`, so v0.19.1's entry further down is the newest one
 anyone outside this repository can actually install. Counting this one, nine
 entries now describe work nobody outside this repository has received, so
 publishing v0.27.0 does not ship "a design front door" as a small increment
@@ -28,9 +30,10 @@ way generated pages look generated.
 ### Added
 
 - **`saglitzdesign` — an eighth skill directory, and the one an agent actually
-  reaches for.** Its `description` frontmatter field is the entire trigger
-  surface a skills-compatible agent matches against — there is no separate
-  keyword list — and it answers to "design", "redesign", "build", "restyle",
+  reaches for.** Its `description` frontmatter field is what carries its
+  trigger vocabulary — there is no separate keyword list, so the description
+  is where every phrase that should reach this skill has to appear — and it
+  answers to "design", "redesign", "build", "restyle",
   "improve", "critique", "review", "audit", "simplify", "polish", or
   "animate" a user interface, plus unasked appearance decisions such as
   porting a component to
@@ -44,7 +47,7 @@ way generated pages look generated.
   auditors at the close, and ground every claimed number in a tool's measured
   output.
 
-- **Two tests holding the umbrella to what it claims**, added after the first
+- **Three tests holding the umbrella to what it claims**, added after the first
   version of its own frontmatter broke on the very CLI it ships through:
   `npx skills@latest add ./ --dry-run` reported "Found 7 skills" against a
   tree of eight `SKILL.md` files and printed a `⚠ Skipped` line naming
@@ -53,12 +56,14 @@ way generated pages look generated.
   none of them parses YAML. All 1622 tests were green at the time. One new
   test parses the umbrella's routing table and asserts, in both directions,
   that it names every depth skill directory on disk and no directory that
-  isn't one; the other walks all eight `SKILL.md` frontmatter blocks and
+  isn't one; a second walks all eight `SKILL.md` frontmatter blocks and
   rejects the handful of plain-scalar shapes (an unquoted `: `, a trailing
-  `:`, an unquoted ` #`) that break the real parser the skills CLI uses. Both
-  are narrow by design — the second is explicitly not a YAML parser and says
-  so in its own comment — but they now stand between a broken skill and a
-  release, which nothing did before.
+  `:`, an unquoted ` #`) that break the real parser the skills CLI uses; a
+  third holds the umbrella's own description to the boundary sentence that
+  keeps it off pure functionality. All three are narrow by design — the
+  second is explicitly not a YAML parser and says so in its own comment — but
+  they now stand between a broken skill and a release, which nothing did
+  before.
 
 - **`grid-track-no-min` — a CSS Grid `info` lint rule, sourced to CSS Grid
   Level 1 §7.2.1 and §6.6.** §7.2.1 defines a bare `1fr` track as
@@ -70,8 +75,14 @@ way generated pages look generated.
   why the rule is `info` rather than `warning` and why it says a track *can*
   hold above its `fr` share, not that this one does — it is a robustness
   note pointing at `minmax(0, 1fr)`, not a proven overflow. It fires only
-  where the track also carries an `<img>`, one of the few intrinsic-size
-  cases the rule can see in source alone.
+  where the snippet also contains an `<img>` — one of the few intrinsic-size
+  cases the rule can see in source alone, and a gate that is snippet-wide
+  rather than grid-scoped: any `<img>` anywhere in the text handed to
+  `design_lint` satisfies it, so a bare-`1fr` grid with no image of its own
+  still fires when an unrelated `<img>` sits elsewhere in the same snippet.
+  The tool's own `notVisible` list says exactly that, and an earlier draft of
+  this entry narrowed it to "the track", which is the flattering direction
+  and the wrong one.
 
 - **`overflow-hidden-root` — a `warning` lint rule, sourced to CSS Overflow
   Level 3 §3.1**, which states that `overflow: hidden` leaves a box "still a
@@ -84,9 +95,13 @@ way generated pages look generated.
 
 - **Three motion lint rules, and two refused for lack of one.** The sourcing
   is the point:
-  - `motion-no-reduced-cover` fires on any `animation`/`animation-name`/
+  - `motion-no-reduced-cover` fires on an `animation`/`animation-name`/
     `@keyframes` with no `prefers-reduced-motion` query anywhere in the same
-    source. WCAG 2.1 SC 2.3.3 (Animation from Interactions) is Level AAA and
+    source. Not on *any* of them: a literal `none` value — the ordinary
+    inert reset, quoted or not — is deliberately excluded, so
+    `.a { animation: none; }` and `style={{ animation: "none" }}` are silent
+    where `.a { animation: slide 1s; }` fires. WCAG 2.1 SC 2.3.3 (Animation
+    from Interactions) is Level AAA and
     scoped to motion "triggered by interaction" — it does not reach an
     autoplaying or otherwise non-interactive animation, which this rule still
     flags. Media Queries Level 5 §12.1 is the source that actually covers the
@@ -98,7 +113,9 @@ way generated pages look generated.
     of which properties are compositor-only, not on a CSS specification the
     way the two rules above do. It flags `width`, `height`, `top`,
     `left`, `right`, `bottom`, `margin`, and `padding` in a `transition`,
-    `transition-property`, or `@keyframes` body, because animating them
+    `transition-property`, or `@keyframes` body — the keyframes half reading
+    the enclosing block rather than the line, so a normally-formatted
+    keyframes block is graded like a collapsed one — because animating them
     forces layout and paint every frame where `transform`/`opacity` would
     composite alone. That is a performance claim, not a correctness one: the
     documented consequence is *slower*, not *wrong* — nothing about the
@@ -118,9 +135,13 @@ way generated pages look generated.
   `centered-stack`, `split-panel`, `sidebar-shell`, `bento-grid`,
   `rail-scroll` — and instruct the agent building a full page to check the
   project's existing stylesheets for a prior `/* saglitzdesign ·
-  macrostructure: … */` comment and pick a different shape than the one it
-  finds, so a project doesn't accumulate screens that are all the same shape
-  underneath different colors and copy. No tool writes this stamp: it's a
+  macrostructure: … · nav: … · footer: … */` comment and differ from every
+  axis it records, so a project doesn't accumulate screens that are all the
+  same shape underneath different colors and copy. The stamp carries all
+  three axes because the instruction asks the agent to differ on all three:
+  an earlier draft recorded the shape alone while asking for a different
+  navigation and footer than "the stamped run used", which the stamp did not
+  carry. No tool writes this stamp: it's a
   comment the agent leaves for itself in CSS it is already writing. That
   isn't an oversight — every one of this server's 34 tools is registered
   through a single wrapper that stamps every registration with
@@ -129,12 +150,82 @@ way generated pages look generated.
   actually writing to disk, making that declaration false for the one new
   tool that wrote it.
 
+### Fixed
+
+Everything in this section is a rule that fired on **correct** code. Measured
+before the fix, a stylesheet in which every decision was right — tokens in
+`@layer tokens`, a `@supports` feature query for `overflow: clip`,
+`repeat(auto-fit, minmax(200px, 1fr))`, `min-height` over `height`, a
+`transition` naming only `transform` and `opacity`, a `prefers-reduced-motion`
+block, a `:focus-visible` ring — drew **four findings, two of them warnings**.
+It now draws none, and that stylesheet is a test.
+
+- **`animates-layout-property`'s `@keyframes` half was unreachable on any
+  formatted stylesheet.** It was a single-line regex needing the at-rule
+  keyword, its `{` and the moving declaration on one physical line, so a
+  keyframes block written across lines drew nothing while its collapsed
+  one-line form drew the finding. Every fixture behind it was a collapsed
+  one-liner, so the rule and its tests shared one blind spot and each kept
+  agreeing with the other. The keyframes half now reads the enclosing block
+  chain, the fixtures are written the way stylesheets are written, and the
+  finding lands on the moving declaration's own line.
+- **`animates-layout-property` fired on a JS/JSX style object that transitions
+  only composited properties.** The value span was `[^;]*`, written for CSS,
+  where `;` ends a declaration; an object literal ends it with a comma, so the
+  span ran into the next key and any sibling named `margin`, `padding`, `top`,
+  `left`, `right`, `bottom`, `width` or `height` supplied the match.
+  `{ transition: "opacity 200ms", margin: 0 }` fired. The span is now bounded
+  by the value's own quotes; a genuine comma-separated CSS transition list
+  still fires.
+- **`motion-no-reduced-cover`'s inert-reset exclusion was defeated by a
+  quote.** `animation: none` was excluded; `style={{ animation: "none" }}` was
+  not, because the exclusion read the character straight after the colon. It
+  now steps over one opening quote.
+- **`overflow-hidden-root` fired on two of the three standard spellings of the
+  fallback idiom it recommends.** Only the same-block form
+  (`overflow-x: hidden; overflow-x: clip;`) was recognised;
+  `@supports not (overflow: clip) { body { overflow-x: hidden; } }` and
+  `body { overflow-x: hidden; }` followed by an `@supports (overflow: clip)`
+  upgrade both fired, on code that has explicitly done what the rule's `fix`
+  asks. Both are now recognised, with their limits disclosed.
+- **A nested at-rule prelude silenced `overflow-hidden-root` outright.** The
+  override guard stripped a nested block's *contents* but not the prelude
+  introducing it, so it read the feature-query condition in
+  `body { overflow-x: hidden; @supports (overflow: clip) { ... } }` as a live
+  `clip` declaration and cancelled a real finding.
+- **The three value rules stopped flagging the design tokens they recommend.**
+  `\b` treats `-` as a boundary, so `--border-color: #e5e7eb` drew
+  "hardcoded hex instead of a design token", `--header-height: 64px` drew a
+  fixed-height note, and `--border-radius: 8px` drew an ad-hoc-radius note —
+  each while the identically-correct `--brand`, `--height` and `--radius` were
+  silent, on nothing but whether the token's name ended in a watched word.
+  `animates-layout-property` had already closed this class for itself in this
+  release; `hardcoded-color`, `fixed-height-text` and `magic-number-radius`
+  now carry the same exclusion.
+- **`fixed-height-text` no longer flags `min-height`.** A floor cannot clip
+  anything, and `min-height` + padding is word-for-word what the rule's own
+  fix text recommends: it was flagging its own advice. `max-height` and
+  `line-height` are excluded by the same change.
+- **`magic-number-radius` no longer flags a squared corner or a pill.**
+  `border-radius: 0` and `border-radius: 9999px` are the two least ad-hoc
+  radii there are. Whole pixels from 1 to 999 still fire.
+- **`overflow-hidden-root` cited a document that does not make its claim.**
+  `spacing-layout` names the symptom people reach for `overflow-x: hidden` to
+  hide and says nothing about `hidden` versus `clip` or about scroll
+  containers; the rule's real source lived only in a code comment. The claim
+  now lives in `modern-css-design-primitives`, the rule cites that, and
+  `tests/lint.test.ts` gained the claim guard `tests/apple.test.ts` has
+  carried since the SEO package — it checks that every cited document
+  actually carries its rule's claim, not merely that the id resolves.
+
 ### Changed
 
 - **Skill users must re-run `npx skills@latest add HalidSaglam/saglitzdesign-mcp`
   to get the new `saglitzdesign` skill and the macrostructure stamp** — the
-  two changes above that live inside `skills/`. The three lint rules live in
-  `src/lint.ts` and reach only an MCP or plugin install, never a skills-only
+  two changes above that live inside `skills/`. The five lint rules added in
+  this release (`grid-track-no-min`, `overflow-hidden-root`, and the three
+  motion rules) live in `src/lint.ts` and reach only an MCP or plugin
+  install, never a skills-only
   one; the two guard tests live in `tests/` and ship in neither — a skill
   install gets none of this release's other changes either way. A skill is
   copied into the installing agent at install time and

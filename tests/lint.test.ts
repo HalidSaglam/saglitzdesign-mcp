@@ -528,14 +528,18 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(notVisible).toMatch(/important modifier/i);
   });
 
-  it("11a. fixed-height-text does not mean fixed — min-height and max-height fire", () => {
-    // The pattern is a word-boundary `height:`, and `-` is a word boundary.
-    expect(rules(`.a { min-height: 40px; }`)).toEqual(["fixed-height-text"]);
-    expect(rules(`.a { max-height: 200px; }`)).toEqual(["fixed-height-text"]);
-    // Which means the rule flags the `min-height` its own fix text recommends.
-    expect(designLint(`.a { min-height: 40px; }`)[0].fix).toContain("min-height");
-    // line-height escapes only because `line` is on the suppressor list.
+  it("11a. fixed-height-text does not mean fixed — but it no longer reaches min/max-height", () => {
+    // Was a word-boundary `height:`, and `-` is a word boundary, so the rule
+    // fired on `min-height` — the floor its own fix text tells you to write,
+    // and a value that cannot clip anything. `(?<![-\w])` closed it.
+    expect(designLint(`.a { min-height: 40px; }`)).toEqual([]);
+    expect(designLint(`.a { max-height: 200px; }`)).toEqual([]);
+    // The fix text still recommends min-height; it just no longer flags it.
+    expect(designLint(`.a { height: 40px; }`)[0].fix).toContain("min-height");
+    // line-height is now excluded by the property match, not only by the
+    // `line` suppressor — so the silence no longer rests on an accident.
     expect(designLint(`.a { line-height: 40px; }`)).toEqual([]);
+    expect(designLint(`.a { LINE-height: 40px; }`)).toEqual([]);
     // The other half of the pattern: two-or-more-digit whole pixels, nothing else.
     for (const css of [
       `.a { height: 9px; }`,
@@ -546,7 +550,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     ]) expect(designLint(css), css).toEqual([]);
     expect(rules(`.a { height: 40px; }`)).toEqual(["fixed-height-text"]);
     expect(notVisible).toMatch(/does not mean \*fixed\*/i);
-    expect(notVisible).toMatch(/flags its own advice/i);
+    expect(notVisible).toMatch(/firing on it was the rule flagging its own advice/i);
     expect(notVisible).toMatch(/two or more digits and a literal `px`/i);
     // The unit is literal and lower-case, so "two-or-more-digit whole pixels
     // are read" is false as an unconditional claim — these are exactly that.
@@ -621,12 +625,23 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(notVisible).toMatch(/pointer-focus exemption/i);
   });
 
-  it("11b. magic-number-radius reads whole pixels — 0px and 9999px fire, 50% and 0.5rem do not", () => {
-    expect(rules(`.a { border-radius: 0px; }`)).toEqual(["magic-number-radius"]);
-    expect(rules(`.a { border-radius: 9999px; }`)).toEqual(["magic-number-radius"]);
+  it("11b. magic-number-radius reads whole pixels 1–999 — a square, a pill, 50% and 0.5rem all pass", () => {
+    // Silent for two different reasons, and the disclosure separates them:
+    // these two are not whole pixels …
     expect(designLint(`.a { border-radius: 50%; }`)).toEqual([]);
     expect(designLint(`.a { border-radius: 0.5rem; }`)).toEqual([]);
+    // … and these are whole pixels the rule deliberately passes over, because
+    // a squared corner and a pill are not ad-hoc radii. Both used to fire.
+    expect(designLint(`.a { border-radius: 0; }`)).toEqual([]);
+    expect(designLint(`.a { border-radius: 0px; }`)).toEqual([]);
+    expect(designLint(`.a { border-radius: 9999px; }`)).toEqual([]);
+    // The blunt threshold, stated in the disclosure and demonstrated here.
+    expect(rules(`.a { border-radius: 999px; }`)).toEqual(["magic-number-radius"]);
+    expect(designLint(`.a { border-radius: 1000px; }`)).toEqual([]);
+    // …against the shape that still fires, so none of the above is vacuous.
+    expect(rules(`.a { border-radius: 6px; }`)).toEqual(["magic-number-radius"]);
     expect(notVisible).toMatch(/a squared corner and a pill are the two least ad-hoc radii/i);
+    expect(notVisible).toMatch(/whole pixels between 1 and 999 only/i);
   });
 
   it("10d. hardcoded-color is case-sensitive per branch, not per rule", () => {
@@ -647,21 +662,32 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(notVisible).toMatch(/Nothing but whitespace may sit between the colon and the digits/i);
   });
 
-  // `\b` matches after `--`, so the three value rules reach custom-property
-  // *definitions* — the design tokens their own fix text sends you to write.
-  // This is the case that falsified the closed-list phrasing, which is why the
-  // entries now say "include" and "a sample rather than a closed list".
-  it("11d. the value rules reach custom-property definitions — the tokens they recommend", () => {
-    expect(rules(`:root { --header-height: 64px; }`)).toEqual(["fixed-height-text"]);
-    for (const css of [`:root { --height: 40px; }`, `:root { --card-height: 40px; }`, `:root { --nav-height: 40px; }`])
-      expect(rules(css), css).toEqual(["fixed-height-text"]);
-    expect(rules(`:root { --border-radius: 8px; }`)).toEqual(["magic-number-radius"]);
-    expect(designLint(`:root { --radius: 8px; }`)).toEqual([]);
-    // hardcoded-color turns on whether the token name ends in a watched word.
-    expect(rules(`:root { --brand-color: #ff0000; }`)).toEqual(["hardcoded-color"]);
-    expect(designLint(`:root { --brand: #ff0000; }`)).toEqual([]);
+  // `\b` matched after `--`, so all three value rules reached custom-property
+  // *definitions* — the design tokens their own fix text sends you to write —
+  // and each fired or not on nothing but whether the token's name happened to
+  // end in a word it watched. `animates-layout-property` closed this class for
+  // itself with a `(?<!outline-|--[\w-]*)` lookbehind; the other three now
+  // carry the same exclusion, so the file treats one mechanism one way.
+  it("11d. no value rule fires on a custom-property definition — the tokens they recommend", () => {
+    for (const css of [
+      `:root { --header-height: 64px; }`,
+      `:root { --height: 40px; }`,
+      `:root { --card-height: 40px; }`,
+      `:root { --nav-height: 40px; }`,
+      `:root { --border-radius: 8px; }`,
+      `:root { --radius: 8px; }`,
+      `:root { --brand-color: #ff0000; }`,
+      `:root { --brand: #ff0000; }`,
+      `:root { --border-color: #e5e7eb; }`,
+      `@keyframes x { from { --card-width: 10px; } }\n@media (prefers-reduced-motion: reduce) { .a { animation: none; } }`,
+    ]) expect(designLint(css), css).toEqual([]);
+    // Vacuity control: the same three rules on real declarations, which is the
+    // only difference between these lines and the ones above.
+    expect(rules(`.a { height: 64px; }`)).toEqual(["fixed-height-text"]);
+    expect(rules(`.a { border-radius: 8px; }`)).toEqual(["magic-number-radius"]);
+    expect(rules(`.a { border-color: #e5e7eb; }`)).toEqual(["hardcoded-color"]);
     expect(notVisible).toContain("--header-height: 64px");
-    expect(notVisible).toMatch(/`--brand-color: #ff0000` fires while `--brand: #ff0000` does not/);
+    expect(notVisible).toMatch(/`--brand: #ff0000`, `--brand-color: #ff0000`, `--border-color: #e5e7eb`/);
     // The retracted completeness claim may not come back.
     expect(notVisible).not.toMatch(/treat that as the list rather than as an example of a larger one/i);
     expect(notVisible).toMatch(/a sample rather than a closed list/i);
@@ -1254,20 +1280,172 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
       expect(designLint(`body { /* } */ overflow-x: hidden; }`)).toEqual([]);
       expect(notVisible).toMatch(/hiding in a string or a comment/i);
     });
+
+    // Whole-branch review, Important: the same-block fallback guard was
+    // written for one spelling of the fallback-then-override idiom, and
+    // nobody asked what the others were. Both remaining standard spellings
+    // gate on a feature query, and the rule fired on both — on code where the
+    // author has done exactly what the rule's own `fix` asks for, and said so
+    // more explicitly than the same-block form does. Every fixture in this
+    // block carries its own control, because the failure mode of a "stand
+    // down" fix is standing down for everything.
+    describe("the two feature-query spellings of the same fallback idiom", () => {
+      it("is silent when the hidden is gated on the absence of clip", () => {
+        expect(designLint(`@supports not (overflow: clip) {\n  body { overflow-x: hidden; }\n}`)).toEqual([]);
+      });
+
+      it("is silent when a later @supports block upgrades the same root to clip", () => {
+        expect(designLint(
+          `body { overflow-x: hidden; }\n@supports (overflow: clip) {\n  body { overflow-x: clip; }\n}`
+        )).toEqual([]);
+      });
+
+      // Controls. The stand-down is keyed to a feature query *about overflow
+      // clipping*, and to a clip actually being declared — not to the mere
+      // presence of an at-rule, and not to text before the match.
+      it("still fires inside a feature query about something else", () => {
+        expect(rules(`@supports (display: grid) {\n  body { overflow-x: hidden; }\n}`))
+          .toContain("overflow-hidden-root");
+      });
+
+      it("still fires when the later @supports block declares no clip", () => {
+        expect(rules(`body { overflow-x: hidden; }\n@supports (overflow: clip) {\n  body { border: 0; }\n}`))
+          .toContain("overflow-hidden-root");
+      });
+
+      it("still fires when the @supports upgrade comes BEFORE the hidden — the cascade decides", () => {
+        expect(rules(`@supports (overflow: clip) {\n  body { overflow-x: clip; }\n}\nbody { overflow-x: hidden; }`))
+          .toContain("overflow-hidden-root");
+      });
+
+      // Disclosed cost of not parsing `not`/`and`/`or`: the contradictory
+      // spelling, which serves `hidden` precisely to the engines that support
+      // `clip`, goes silent with the correct one.
+      it("(false negative, disclosed) the contradictory polarity is silent too", () => {
+        expect(designLint(`@supports (overflow: clip) {\n  body { overflow-x: hidden; }\n}`)).toEqual([]);
+        expect(notVisible).toMatch(/without reading the `not`/);
+      });
+
+      // Disclosed cost of not re-matching the selector one level in.
+      it("(false negative, disclosed) an upgrade of some other element also stands the rule down", () => {
+        expect(designLint(
+          `body { overflow-x: hidden; }\n@supports (overflow: clip) {\n  .sidebar { overflow-x: clip; }\n}`
+        )).toEqual([]);
+        expect(notVisible).toMatch(/the selector inside that block is \*not\* checked/);
+      });
+    });
+
+    // Whole-branch review, Minor: an at-rule *prelude* nested inside the
+    // matched block sat at depth 0 after `stripNestedBlocks` removed only the
+    // block's contents, so the override regex read a feature-query condition
+    // as a live declaration and cancelled a finding on a block that declares
+    // no clip at all. The prelude is now cut with the block it introduces.
+    it("a nested @supports prelude is not read as a live clip override", () => {
+      expect(rules(`body {\n  overflow-x: hidden;\n  @supports (overflow: clip) { border: 0; }\n}`))
+        .toContain("overflow-hidden-root");
+      // Vacuity control: identical block, prelude removed — must also fire,
+      // so the assertion above is not passing for an unrelated reason.
+      expect(rules(`body {\n  overflow-x: hidden;\n  border: 0;\n}`)).toContain("overflow-hidden-root");
+      // …and the same shape for a nested selector, the other prelude kind.
+      expect(rules(`body {\n  overflow-x: hidden;\n  [data-overflow="clip"] { border: 0; }\n}`))
+        .toContain("overflow-hidden-root");
+      // The nested-block guard it must not break: a clip that really is
+      // nested still must not cancel, and a real same-block clip still must.
+      expect(rules(`body { overflow-x: hidden; .foo { overflow-x: clip; } }`)).toContain("overflow-hidden-root");
+      expect(designLint(`body { overflow-x: hidden; overflow-x: clip; }`)).toEqual([]);
+    });
+  });
+
+  // Whole-branch review, Minor M4: the disclosure entries are per-rule, and
+  // a caller reads a report all at once. Measured before this fix round, a
+  // stylesheet in which every decision was right drew four findings, two of
+  // them `warning` — three individually disclosed, and disclosed well, but
+  // adding up to "your correct stylesheet has four problems". Each of the
+  // four was a rule crying wolf and each was fixed; this pins the aggregate,
+  // which no per-rule test does.
+  it("a stylesheet where every decision is right draws nothing at all", () => {
+    const correct = [
+      `@layer tokens {`,
+      `  :root {`,
+      `    --color-surface: #ffffff;`,
+      `    --border-color: #e5e7eb;`,
+      `    --radius-md: 8px;`,
+      `    --space-3: 12px;`,
+      `  }`,
+      `}`,
+      ``,
+      `@supports not (overflow: clip) {`,
+      `  body { overflow-x: hidden; }`,
+      `}`,
+      `@supports (overflow: clip) {`,
+      `  body { overflow-x: clip; }`,
+      `}`,
+      ``,
+      `.grid {`,
+      `  display: grid;`,
+      `  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));`,
+      `  gap: var(--space-3);`,
+      `}`,
+      ``,
+      `.card {`,
+      `  background: var(--color-surface);`,
+      `  border: 1px solid var(--border-color);`,
+      `  border-radius: var(--radius-md);`,
+      `  padding: var(--space-3);`,
+      `}`,
+      ``,
+      `.button {`,
+      `  min-height: 44px;`,
+      `  transition: transform 200ms ease, opacity 200ms ease;`,
+      `}`,
+      `.button:focus-visible {`,
+      `  outline: 2px solid var(--color-text);`,
+      `  outline-offset: 2px;`,
+      `}`,
+      ``,
+      `.badge { border-radius: 9999px; }`,
+      ``,
+      `@keyframes fade {`,
+      `  from { opacity: 0; transform: translateY(4px); }`,
+      `  to { opacity: 1; transform: none; }`,
+      `}`,
+      `@media (prefers-reduced-motion: reduce) {`,
+      `  .button { transition-duration: 1ms; }`,
+      `  .fade { animation: none; }`,
+      `}`,
+    ].join("\n");
+    expect(designLint(correct)).toEqual([]);
+    // Vacuity control: the same file with one decision made wrong at a time.
+    // If the fixture above were silent for some structural reason rather than
+    // because it is correct, these would be silent too.
+    expect(rules(correct.replace(`min-height: 44px;`, `height: 44px;`))).toContain("fixed-height-text");
+    expect(rules(correct.replace(`border-radius: 9999px`, `border-radius: 7px`))).toContain("magic-number-radius");
+    // (`border: 1px solid #e5e7eb` is *not* the mutation here: the rule wants
+    // the hex directly after the property, which is disclosed above. This is.)
+    expect(rules(correct.replace(`background: var(--color-surface);`, `background: #ffffff;`))).toContain("hardcoded-color");
+    expect(rules(correct.replace(`transform 200ms ease, opacity 200ms ease`, `all 200ms ease`))).toContain("transition-all");
+    expect(rules(correct.replace(`transform: translateY(4px)`, `margin: 4px`))).toContain("animates-layout-property");
+    expect(LINT_CLOSING).toMatch(/is expected to draw \*\*nothing\*\*/);
   });
 
   describe("motion rules", () => {
     describe("motion-no-reduced-cover", () => {
       it("flags a keyframe animation with no reduced-motion cover", () => {
         expect(rules(`
-          @keyframes slide { from { transform: translateY(8px); } to { transform: none; } }
+          @keyframes slide {
+            from { transform: translateY(8px); }
+            to { transform: none; }
+          }
           .card { animation: slide 200ms ease-out; }
         `)).toContain("motion-no-reduced-cover");
       });
 
       it("does not flag it when the file honours the preference", () => {
         expect(rules(`
-          @keyframes slide { from { transform: translateY(8px); } to { transform: none; } }
+          @keyframes slide {
+            from { transform: translateY(8px); }
+            to { transform: none; }
+          }
           .card { animation: slide 200ms ease-out; }
           @media (prefers-reduced-motion: reduce) { .card { animation: none; } }
         `)).not.toContain("motion-no-reduced-cover");
@@ -1286,7 +1464,10 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
         ];
         for (const query of covered) {
           expect(rules(`
-            @keyframes slide { from { transform: translateY(8px); } to { transform: none; } }
+            @keyframes slide {
+            from { transform: translateY(8px); }
+            to { transform: none; }
+          }
             .card { animation: slide 200ms ease-out; }
             ${query}
           `), query).not.toContain("motion-no-reduced-cover");
@@ -1294,7 +1475,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
       });
 
       it("flags a bare @keyframes block on its own, not just the animation: declaration", () => {
-        expect(rules(`@keyframes slide { from { opacity: 0; } to { opacity: 1; } }`))
+        expect(rules(`@keyframes slide {\n  from { opacity: 0; }\n  to { opacity: 1; }\n}`))
           .toContain("motion-no-reduced-cover");
       });
 
@@ -1303,6 +1484,27 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
       // `@keyframes`, not a class name — so a pure-Tailwind animated element
       // is silent from this rule regardless of a motion-reduce: variant
       // beside it. Demonstrated so the silence is not mistaken for coverage.
+      // Whole-branch review, Important: fix round 1 added `(?!\s*none\b)` so
+      // an inert reset would stop firing, and the exclusion read the value
+      // immediately after the colon — so the quote CSS-in-JS puts there
+      // defeated it and the exact defect came back in the other spelling.
+      // Every assertion below has its animating counterpart beside it.
+      it("the inert reset is excluded in both spellings, quoted and not", () => {
+        for (const inert of [
+          `.a { animation: none; }`,
+          `.a { animation-name: none; }`,
+          `<div style={{ animation: "none" }} />`,
+          `<div style={{ animation: 'none' }} />`,
+          `<div style={{ animationName: "none" }} />`,
+        ]) expect(designLint(inert), inert).toEqual([]);
+        for (const live of [
+          `.a { animation: slide 1s; }`,
+          `<div style={{ animation: "slide 1s" }} />`,
+          `<div style={{ animation: 'slide 1s' }} />`,
+        ]) expect(rules(live), live).toContain("motion-no-reduced-cover");
+        expect(notVisible).toMatch(/optionally behind one opening quote/);
+      });
+
       it("does not recognise a Tailwind animate-* utility as an animation at all", () => {
         expect(rules(`<div class="animate-bounce motion-reduce:animate-none"></div>`))
           .not.toContain("motion-no-reduced-cover");
@@ -1403,28 +1605,107 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
         expect(rules(`.a { transition-property: width; }`)).toContain("animates-layout-property");
       });
 
-      it("reads a @keyframes body animating a layout property", () => {
-        expect(rules(`@keyframes grow { from { width: 0; } to { width: 100%; } }`)).toContain("animates-layout-property");
+      // Whole-branch review, Important: the value span was `[^;]*`, written
+      // for CSS, where `;` ends a declaration. A JavaScript style object ends
+      // it with a comma, so the span ran past it into the next key and any
+      // sibling named after one of the eight words supplied the match — on a
+      // component that animates nothing but opacity. React inline styles,
+      // emotion object syntax, CVA variant tables and theme objects are all
+      // that shape; template-literal CSS-in-JS uses `;` and was already safe,
+      // which is exactly how the class was missed.
+      describe("the value span stops at the value, not at the next object key", () => {
+        it("does not fire on a style object whose sibling key is a layout property", () => {
+          for (const src of [
+            `<div style={{ transition: "opacity 200ms ease", margin: 0 }} />`,
+            `<div style={{ transition: "opacity 200ms", padding: 12 }} />`,
+            `<div style={{ transition: "opacity 200ms", top: 0 }} />`,
+            `<div style={{ transition: 'opacity 200ms', margin: 0 }} />`,
+            `const s = { transition: "opacity 200ms", width: 100 };`,
+          ]) expect(designLint(src), src).toEqual([]);
+        });
+
+        // Vacuity controls, both directions. The quoted value is still read,
+        // and a genuine comma-separated CSS transition list still fires — so
+        // the fix is not "stop reading past a comma".
+        it("still fires when the layout property is inside the quoted value", () => {
+          expect(rules(`<div style={{ transition: "width 200ms" }} />`)).toContain("animates-layout-property");
+          expect(rules(`<div style={{ transition: 'height 200ms' }} />`)).toContain("animates-layout-property");
+        });
+
+        it("still fires on a genuine comma-separated CSS transition list", () => {
+          expect(rules(`.a { transition: opacity 200ms, width 200ms; }`)).toContain("animates-layout-property");
+        });
+
+        it("template-literal CSS-in-JS, which separates with a semicolon, stays silent", () => {
+          expect(designLint("const s = css`transition: opacity 200ms; margin: 0;`")).toEqual([]);
+        });
+
+        // Disclosed cost: an unquoted value has neither a quote nor a `;` to
+        // bound it, so the sibling key is still read as part of the value.
+        it("(false positive, disclosed) an unquoted object value is still unbounded", () => {
+          expect(rules(`<div style={{ transition: theme.motion.fast, margin: 0 }} />`))
+            .toContain("animates-layout-property");
+          expect(notVisible).toMatch(/has no quotes to bound it and no `;` to stop it/);
+        });
+      });
+
+      // Every @keyframes fixture below is written the way a stylesheet is
+      // written — the at-rule opener, the keyframe selectors and the
+      // declarations on separate lines. That is not cosmetic. The keyframes
+      // alternative used to be a single-line regex requiring `@keyframes`, its
+      // `{` and the moving declaration to share one physical line, so it was
+      // unreachable on any formatted stylesheet — and every fixture that had
+      // ever exercised it was a collapsed one-liner, which is why nothing
+      // caught it: the rule and its tests shared one blind spot, so each kept
+      // agreeing with the other. The collapsed form is kept in exactly one
+      // test below, as the *control* proving formatting is now irrelevant.
+      it("reads a @keyframes body animating a layout property, however it is formatted", () => {
+        expect(rules(`@keyframes grow {\n  from { width: 0; }\n  to { width: 100%; }\n}`))
+          .toContain("animates-layout-property");
+        expect(rules(`@keyframes grow { from { width: 0; } to { width: 100%; } }`))
+          .toContain("animates-layout-property");
+      });
+
+      // The finding lands on the moving declaration's own line — the line a
+      // caller has to change — not on the at-rule opener.
+      it("reports the declaration's line, not the @keyframes opener's", () => {
+        const found = designLint(`@keyframes grow {\n  from { width: 0; }\n  to { width: 100%; }\n}`)
+          .filter((f) => f.rule === "animates-layout-property");
+        expect(found.map((f) => f.line)).toEqual([2, 3]);
       });
 
       // The keyframes alternative reads the same eight names the transition
       // alternative does — right/bottom/margin/padding included, not just
-      // the first four.
+      // the first four. Fed as formatted blocks, which is the input class the
+      // one-line version of these four fixtures never reached.
       it("the keyframes form reads right, bottom, margin and padding too", () => {
-        expect(rules(`@keyframes x { from { right: 0; } to { right: 10px; } }`)).toContain("animates-layout-property");
-        expect(rules(`@keyframes x { from { bottom: 0; } to { bottom: 10px; } }`)).toContain("animates-layout-property");
-        expect(rules(`@keyframes x { from { margin: 0; } to { margin: 10px; } }`)).toContain("animates-layout-property");
-        expect(rules(`@keyframes x { from { padding: 0; } to { padding: 10px; } }`)).toContain("animates-layout-property");
+        for (const prop of ["right", "bottom", "margin", "padding"]) {
+          const css = `@keyframes x {\n  from { ${prop}: 0; }\n  to { ${prop}: 10px; }\n}`;
+          expect(rules(css), css).toContain("animates-layout-property");
+        }
+      });
+
+      // Depth is not read either: a declaration nested further inside the
+      // keyframes block is still inside it.
+      it("reads a layout declaration at any depth inside the keyframes block", () => {
+        expect(rules(`@keyframes x {\n  from {\n    margin: 0;\n  }\n}`)).toContain("animates-layout-property");
+      });
+
+      // …and the walk stops at the block. A layout declaration after the
+      // keyframes block has closed is an ordinary declaration, not motion.
+      it("does not fire on a layout declaration outside the keyframes block", () => {
+        expect(rules(`@keyframes x {\n  from { opacity: 0; }\n}\n.a {\n  margin: 0;\n}`))
+          .not.toContain("animates-layout-property");
       });
 
       it("does not fire on a keyframes body that only animates composited properties", () => {
-        expect(rules(`@keyframes slide { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }`))
+        expect(rules(`@keyframes slide {\n  from { transform: translateY(8px); opacity: 0; }\n  to { transform: none; opacity: 1; }\n}`))
           .not.toContain("animates-layout-property");
       });
 
       it("is case-sensitive on all three regexes", () => {
         expect(designLint(`.a { TRANSITION: WIDTH 200ms ease; }`)).toEqual([]);
-        expect(designLint(`@KEYFRAMES grow { from { width: 0; } to { width: 100%; } }`)).toEqual([]);
+        expect(designLint(`@KEYFRAMES grow {\n  from { width: 0; }\n  to { width: 100%; }\n}`)).toEqual([]);
       });
 
       // Fix round 1 Critical: `\b` treats `-` as a boundary, so the bare
@@ -1443,8 +1724,11 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
         });
 
         it("the same exclusion applies to the keyframes form", () => {
-          expect(rules(`@keyframes x { from { --card-width: 10px; } to { --card-width: 100px; } }`))
+          expect(rules(`@keyframes x {\n  from { --card-width: 10px; }\n  to { --card-width: 100px; }\n}`))
             .not.toContain("animates-layout-property");
+          // Vacuity control: the identical block moving a real `width`.
+          expect(rules(`@keyframes x {\n  from { width: 10px; }\n  to { width: 100px; }\n}`))
+            .toContain("animates-layout-property");
         });
 
         // The fix must not over-reach: a custom property separated from a
@@ -1592,6 +1876,20 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
 // resolve-check to see. Forgetting to extend a fixture is the likely real
 // mistake, and it produced total silence rather than a failure.
 //
+// Round 2 (this one) closed a second hole, found by the whole-branch review:
+// resolution is not the claim. `overflow-hidden-root` cited `spacing-layout`,
+// which resolves, and which names the *symptom* people reach for `overflow-x:
+// hidden` to hide — "Horizontal page scroll at any breakpoint" — while saying
+// nothing at all about `hidden` versus `clip` or about scroll containers. The
+// rule's substantive source lived only in a code comment no caller ever sees.
+// `tests/apple.test.ts` had carried the stronger guard since the generic-design
+// and SEO packages, for the same reason and after the same mistake, and the
+// comment here described this suite as though it already had parity with its
+// siblings. It does now: `CLAIM_VOCABULARY` below pins, for every rule, a
+// phrase from the cited document that carries that rule's own claim — not a
+// word the document merely contains, which is the way this kind of table goes
+// vacuous.
+//
 // This version reads `LINE_RULES` and `SOURCE_RULE_DOCS` directly instead —
 // both exported from lint.ts for exactly this — so there is no fixture to
 // forget: a new `LINE_RULES` entry (which is where Task 5's three citations,
@@ -1661,6 +1959,45 @@ describe("every doc a rule cites resolves to a real knowledge document", () => {
     const declared = new Set(RULE_DOCS.map((r) => r.rule));
     expect([...declared].filter((r) => !fired.has(r))).toEqual([]);
     expect([...fired].filter((r) => !declared.has(r))).toEqual([]);
+  });
+
+  // One phrase per rule, taken from the cited document, carrying *that rule's*
+  // claim. The failure mode this guards against is the loose pattern: /focus/i
+  // matches most of `accessibility`, so every rule in this table could be
+  // re-pointed at it and a lax vocabulary would still pass. Each entry below is
+  // a clause, not a keyword — a rule re-pointed at any other document in the
+  // knowledge base fails immediately.
+  const CLAIM_VOCABULARY: Record<string, RegExp> = {
+    "hardcoded-color": /never primitives, never raw hexes/,
+    "px-font-size": /Use relative units \(rem\) for font sizes on web/,
+    "important-overuse": /Treat `!important` as a smell everywhere except intentional utility layers/,
+    "fixed-height-text": /must grow with their content/,
+    "positive-tabindex": /logical tab order following visual order/,
+    "magic-number-radius": /Mixed radii \(sharp inputs next to very round cards next to pill buttons\) look accidental/,
+    "grid-track-no-min": /`repeat\(auto-fit, minmax\(280px, 1fr\)\)` gives breakpoint-free responsive grids/,
+    "overflow-hidden-root": /`clip` forbids scrolling entirely, so the box is \*\*not\*\* a scroll container/,
+    "motion-no-reduced-cover": /Respect `prefers-reduced-motion`/,
+    "animates-layout-property": /Animating width\/height\/top\/margin causes jank/,
+    "transition-all": /\*\*Only `transform` and `opacity`\*\* \(GPU-composited\)/,
+    "img-no-alt": /Images: meaningful → descriptive `alt`; decorative → `alt=""`/,
+    "clickable-div": /Everything operable by keyboard/,
+    "icon-button-no-label": /\*\*Icon-only controls need an accessible name:\*\*/,
+    "control-no-label": /Label ↔ input programmatic association is mandatory/,
+    "outline-none": /`:focus-visible` ring on every interactive element/,
+  };
+
+  it("covers every rule that declares a doc — no rule escapes the claim check", () => {
+    const declared = RULE_DOCS.map((r) => r.rule);
+    expect(declared.filter((r) => !(r in CLAIM_VOCABULARY))).toEqual([]);
+    expect(Object.keys(CLAIM_VOCABULARY).filter((r) => !declared.includes(r))).toEqual([]);
+  });
+
+  it.each(Object.entries(CLAIM_VOCABULARY))("%s cites a document that actually makes the claim", (rule, vocabulary) => {
+    const cited = RULE_DOCS.find((r) => r.rule === rule)?.doc;
+    expect(cited, `${rule} declares no doc id`).toBeTruthy();
+    const doc = findDoc(docs, cited!);
+    expect(doc, `${rule} → ${cited} does not resolve`).toBeTruthy();
+    expect(vocabulary.test(doc!.body), `${cited} never carries ${vocabulary}`).toBe(true);
   });
 
   it("the fixture's fired docs match what each rule declares", () => {

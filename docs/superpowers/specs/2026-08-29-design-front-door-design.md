@@ -120,8 +120,12 @@ your own. No tool writes anything and the guarantee holds.
 - The routing table names all seven depth skills and every name it uses exists on
   disk — equality in both directions, so an eighth skill that never joins the
   table goes red.
-- Both lint rules: positive and negative fixtures, plus their `notVisible`
-  entries.
+- All five lint rules — `grid-track-no-min` and `overflow-hidden-root` from
+  deliverable 2, and the three motion rules from deliverable 3: positive and
+  negative fixtures, plus their `notVisible` entries. (This bullet said "both
+  lint rules" while the same spec's own deliverable 3 added three more; the
+  five shipped with fixtures and disclosures, so nothing shipped wrong — the
+  spec section was incomplete relative to its own deliverables.)
 - The four existing skill guards cover the new skill automatically because they
   walk `skills/`. **The umbrella must carry `sources:`** or the binding guard
   passes vacuously on it.
