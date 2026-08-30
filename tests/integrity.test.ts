@@ -621,9 +621,35 @@ describe("skills distribution", () => {
     expect([...new Set(rows)].sort()).toEqual([...DISCLOSURE_TOOLS].sort());
   });
 
+  /**
+   * These two README-coverage checks (this one and "names every skill in
+   * both READMEs" below) ask a different question than the umbrella's
+   * routing guard does, so they need a different derivation, not the same
+   * regex copied over. The umbrella's routing table is a rigid grid — one
+   * name per cell, nothing else in it — so parsing cells is the right tool.
+   * A README is free-form prose: a skill name can sit inside a bullet, a
+   * sentence, bold text, or a backticked span, with no cell boundary to
+   * anchor on. What both checks actually assert is narrower than "the text
+   * contains this name somewhere" (which is what `.includes()` gave them,
+   * and is the same vacuity the routing guard exists to avoid — a mutation
+   * test below confirms it: renaming `design-review` to `design-reviews` in
+   * `skills/README.md` left this check green, because "design-review" is a
+   * substring of "design-reviews"). What they mean is "the name appears as
+   * itself" — not embedded as a prefix of some other, longer identifier.
+   * A `\b`-bounded regex says that directly: hyphens are non-word characters
+   * to JS regex, so `\bdesign-review\b` finds no boundary between the "w" of
+   * "review" and the "s" tacked onto "design-reviews" (both are word
+   * characters), and does not match — while it matches the same name set off
+   * by punctuation, whitespace, or backticks, wherever it appears in prose.
+   * Skill names are already constrained elsewhere in this suite to
+   * `[a-z][a-z0-9-]*`, so no regex metacharacter can appear in one and no
+   * escaping is needed before interpolating it into the pattern.
+   */
+  const mentionsSkillName = (text: string, name: string) => new RegExp(`\\b${name}\\b`).test(text);
+
   it("lists every skill in the skills README", () => {
     const readme = readFileSync(join(skillsDir, "README.md"), "utf8");
-    const missing = names.filter((n) => !readme.includes(n));
+    const missing = names.filter((n) => !mentionsSkillName(readme, n));
     expect(missing).toEqual([]);
   });
 
@@ -655,7 +681,7 @@ describe("skills distribution", () => {
   it("names every skill in both READMEs", () => {
     for (const [label, path] of [["README.md", join(root, "README.md")], ["skills/README.md", join(skillsDir, "README.md")]]) {
       const text = readFileSync(path, "utf8");
-      expect(names.filter((n) => !text.includes(n)), label).toEqual([]);
+      expect(names.filter((n) => !mentionsSkillName(text, n)), label).toEqual([]);
     }
   });
 
@@ -1008,10 +1034,32 @@ describe("skills distribution", () => {
  * the brief this test was written from and ruled out before landing.
  *
  * Task 1 chose a regular row syntax for exactly this reason: a markdown table
- * row whose last cell is a single backticked directory name and nothing else.
- * The regex below was confirmed against the real file to extract exactly the
- * seven rows it ships today — no more, no fewer.
+ * row whose cells include one that is a single backticked directory name and
+ * nothing else. `routedSkillNames` finds that cell by splitting each `|`
+ * row on `|` and matching each cell on its own — not by anchoring the whole
+ * line to require the name in the *last* cell, which broke two ways a review
+ * demonstrated: an extra column appended after the name cell (the anchor to
+ * end-of-line no longer reaches), and a digit in the directory name (an
+ * earlier `[a-z][a-z-]*` character class excluded it). Per-cell matching on
+ * `` `[a-z][a-z0-9-]*` `` fixes both — position within the row no longer
+ * matters, and digits are allowed — while still refusing a cell that mixes
+ * the name with other text (`Uses \`npx\` here` is not a bare name cell), so
+ * a description that happens to backtick an unrelated word is not mistaken
+ * for a route. Confirmed against the real file to extract exactly the seven
+ * rows it ships today — no more, no fewer.
  */
+function routedSkillNames(body: string): string[] {
+  const names: string[] = [];
+  for (const line of body.split("\n")) {
+    if (!/^\|.*\|\s*$/.test(line)) continue; // not a table row
+    for (const cell of line.split("|")) {
+      const m = cell.trim().match(/^`([a-z][a-z0-9-]*)`$/);
+      if (m) names.push(m[1]);
+    }
+  }
+  return names;
+}
+
 describe("the umbrella skill routes into every depth skill", () => {
   const skillsDir = join(root, "skills");
   const umbrella = join(skillsDir, "saglitzdesign", "SKILL.md");
@@ -1019,11 +1067,10 @@ describe("the umbrella skill routes into every depth skill", () => {
     .filter((e) => e.isDirectory() && e.name !== "saglitzdesign")
     .map((e) => e.name)
     .sort();
-  const ROUTING_ROW = /^\|.*\|\s*`([a-z][a-z-]*)`\s*\|\s*$/gm;
 
   it("names every depth skill in a routing row, and names no other directory", () => {
     const body = readFileSync(umbrella, "utf8");
-    const routed = [...body.matchAll(ROUTING_ROW)].map((m) => m[1]).sort();
+    const routed = routedSkillNames(body).sort();
     // Equality in both directions: a depth skill with no routing row is
     // unreachable through the door (caught by `depth` having an entry
     // `routed` lacks); a row naming a directory that does not exist sends the
