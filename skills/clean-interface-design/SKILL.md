@@ -38,6 +38,18 @@ Most "AI-looking" UI fails the same way: too many colors, too many type sizes, i
 
 The best landing pages don't just look good — they **guide the user toward action without making them think.** One primary CTA, a clear value-first headline, proof near the CTA, and a single obvious path down the page. (See the SaglitzDesign `conversion-ux` and `clean-app-design` docs, and the `build_landing_page` workflow.)
 
+## Don't repeat the last page shape
+
+When you're producing a full page or screen rather than a single component, vary its macrostructure across runs, not just its colors and copy — a project where every screen sits in the same shape reads as generated no matter how clean each one is on its own. Before writing CSS, look for a prior stamp comment in the project's existing stylesheets. If one is there, pick a **different** shape from the set below, plus a different navigation and footer treatment than the stamped run used:
+
+- `centered-stack` — single column, vertically stacked, content centered
+- `split-panel` — two-column split, primary content one side, supporting visual the other
+- `sidebar-shell` — persistent side navigation running alongside a main content area
+- `bento-grid` — an asymmetric grid of modules/cards instead of a stacked column
+- `rail-scroll` — full-bleed panels alternating edge-to-edge, no shared column width
+
+Leave your own stamp as the first line of the CSS you write, naming the shape you picked, e.g. `/* saglitzdesign · macrostructure: sidebar-shell */`. No tool writes this — you're already writing the stylesheet, so the comment is yours to add.
+
 ## Anti-patterns
 
 - Multiple accent colors; the accent used for 30% of the screen.

@@ -34,6 +34,18 @@ Hero (promise + CTA + proof) → problem / how-it-works (3 steps) → benefit se
 
 Repeat the CTA every ~1.5–2 viewport heights. Every CTA on the page points to the **same** action.
 
+## Vary the shape between builds
+
+The narrative order above is what converts, and it holds regardless of layout; the macrostructure — how the hero, sections, nav, and footer are actually laid out — is a separate axis, and it's the one that makes every generated landing page look interchangeable when it stays fixed. Before writing CSS, look for a prior stamp comment in the project's existing stylesheets. If one is there, pick a **different** shape from the set below for this build, plus a different navigation and footer treatment than the stamped run used:
+
+- `centered-stack` — single column, vertically stacked, hero and sections centered
+- `split-panel` — hero splits into copy and visual side by side; sections below stay full width
+- `sidebar-shell` — persistent side navigation runs the page (product-tour style landing)
+- `bento-grid` — features and proof arranged as an asymmetric grid instead of stacked sections
+- `rail-scroll` — full-bleed panels alternating edge-to-edge, no shared column width
+
+Leave your own stamp as the first line of the CSS you write, naming the shape you chose, e.g. `/* saglitzdesign · macrostructure: bento-grid */`. No tool writes this — you're already producing the CSS, so the comment is yours to add.
+
 ## Persuasion, ethically (Cialdini)
 
 - **Social proof:** specific numbers ("12,483 teams" > "thousands"); named testimonials with photo + role + concrete result.
