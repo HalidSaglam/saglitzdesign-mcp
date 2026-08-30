@@ -4,7 +4,7 @@ title: "Modern CSS Design Primitives — What the Browser Now Does For You"
 category: craft
 platform: web
 tags: [css, tokens, dark-mode, color, contrast, baseline, container-queries, anchor-positioning]
-sources: ["https://web.dev/baseline/2026", "https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/contrast-color", "https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/light-dark", "https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color-mix", "https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_anchor_positioning", "https://web.dev/blog/interop-2026"]
+sources: ["https://web.dev/baseline/2026", "https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/contrast-color", "https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/light-dark", "https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/color-mix", "https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_anchor_positioning", "https://web.dev/blog/interop-2026", "https://www.w3.org/TR/css-overflow-3/#overflow-properties", "https://developer.mozilla.org/en-US/docs/Web/CSS/overflow"]
 updated: 2026-08-03
 ---
 
@@ -74,6 +74,7 @@ Perceptually uniform lightness means a ramp built by stepping `L` actually looks
 - **New font-relative units** `rcap`, `rch`, `rex`, `ric` (Baseline 2026) — root-relative versions of cap height, character width, x-height and ideograph width. `rch` is the honest unit for a measure: `max-width: 65rch` says what you mean, where `65ch` drifts with the element's own font.
 - **`shape()`** (Baseline 2026) — responsive custom shapes for `clip-path`, in real CSS units rather than an SVG path's coordinate space.
 - **`text-box`** trims the leading above and below a text block, so a heading's optical box matches its visual one. It is the fix for "why is there always extra space above my h1".
+- **`overflow: clip` instead of `overflow: hidden` on the root.** These are not two spellings of the same thing. `hidden` makes the box a **scroll container** — it only suppresses the scrolling *UI*, and the box can still be scrolled programmatically or by focusing something outside the visible area, which is how a page that "has no horizontal scrollbar" still jumps sideways on focus. `clip` forbids scrolling entirely, so the box is **not** a scroll container. `hidden` on `html`/`body` also makes `position: sticky` stop working in descendants, because sticky positions against the nearest scroll container. Reach for `clip` (or `overflow-x: clip`), and fix whatever is actually overflowing rather than hiding it. Where you still need a fallback, write it as a fallback: either `overflow-x: hidden; overflow-x: clip;` in one block, or gate it with `@supports`.
 
 ## Structure and interaction
 
@@ -91,6 +92,7 @@ Perceptually uniform lightness means a ramp built by stepping `L` actually looks
 - [ ] Measure expressed in `rch` (or `ch` on the element that owns the text), capped at 45–75 characters.
 - [ ] Inputs that should grow use `field-sizing: content` instead of a resize observer.
 - [ ] Anything relying on anchor positioning has a checked fallback.
+- [ ] The root uses `overflow: clip`, not `overflow: hidden` — or declares `hidden` only as an explicit fallback for it.
 - [ ] Tokens that must reach iOS or Android kept as discrete values, not only as `light-dark()` pairs.
 
 ## Anti-patterns

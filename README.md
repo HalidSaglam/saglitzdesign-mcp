@@ -73,8 +73,10 @@ allowlist** — the six Apple design‑language guides (`apple-hig-liquid-glass`
 `apple-shipping-readiness`, `wwdc-design-principles`) and the five `security`
 documents. **The other 85 are curated but not yet checked**, and extending the
 assertion to them is its own piece of work rather than a formality: measured
-today, 66 of the 85 would fail on 282 citations across 133 distinct hosts (plus 55
-sources that are not URLs at all). Note
+today, 66 of the 85 would fail on 282 sources between them — 227 URL citations
+across 133 distinct hosts, plus 55 that are not URLs at all and so have no
+host to check. (The 227 and the 55 are the two halves of the 282, not two
+figures to add.) Note
 that `apple-intelligence-design` and `visionos-spatial-design` are Apple‑topic
 documents that sit *outside* the enforced set. `get_design_doc` prints which
 side of this line a document is on, next to its sources, so you never have to
@@ -123,8 +125,10 @@ critique rubric, and iterates until it passes.
 > command carries `disable-model-invocation`, so the agent never starts one on
 > its own. Asked in prose it reaches for the skills instead, and they cover much
 > of the same ground — design review, landing‑page conversion, Apple platforms —
-> as guidance rather than as this orchestrated build. Nothing in them covers
-> `review_paywall`, which runs only when you type it.
+> as guidance rather than as this orchestrated build. The `saglitzdesign`
+> skill's own trigger vocabulary names paywalls, so prose about one does reach
+> a skill; what no skill carries is `review_paywall`'s RevenueCat benchmark
+> scoring, which runs only when you type it.
 >
 > The visual critique loop uses whatever browser tool is connected (Claude in
 > Chrome, Playwright, or chrome‑devtools MCP) to see and refine its own output.
@@ -225,8 +229,9 @@ claude mcp add --scope user saglitzdesign node /absolute/path/to/saglitzdesign-m
 
 ### As a plugin
 
-One install brings all three pieces — the MCP server, the seven skills and a
-slash command for every workflow:
+One install brings all three pieces — the MCP server, all eight skills (the
+seven depth skills plus the umbrella that routes into them) and a slash
+command for every workflow:
 
 ```bash
 claude plugin marketplace add HalidSaglam/saglitzdesign-mcp
@@ -241,9 +246,9 @@ the plugin. `claude plugin details saglitzdesign@saglitz` lists what arrived.
 
 | Install | Server, knowledge base, recipes | Skills | `/saglitzdesign:…` commands |
 |---|---|---|---|
-| `claude plugin install saglitzdesign@saglitz` | yes | the seven skills | one per workflow |
+| `claude plugin install saglitzdesign@saglitz` | yes | all eight — seven depth skills plus the umbrella | one per workflow |
 | `npx saglitzdesign-mcp` / `claude mcp add` | yes | — | — |
-| `npx skills@latest add HalidSaglam/saglitzdesign-mcp` | — | the seven skills | — |
+| `npx skills@latest add HalidSaglam/saglitzdesign-mcp` | — | all eight — seven depth skills plus the umbrella | — |
 
 The npm package's `files:` list covers `dist/`, `knowledge/` and `recipes/`, and
 does not name `skills/` or `commands/` — so an MCP-only install has every tool
@@ -290,10 +295,12 @@ skills into any [skills](https://skills.sh)-compatible agent:
 npx skills@latest add HalidSaglam/saglitzdesign-mcp
 ```
 
-Seven skills — `clean-interface-design`, `landing-page-conversion`,
-`design-review`, `motion-and-animation`, `apple-platform-design`,
-`design-system-audit`, `ship-quality-gate` — each standalone guidance that also
-points to the full MCP for depth. See [`skills/`](skills/).
+Eight skills. `saglitzdesign` is the umbrella: it carries no depth guidance
+of its own, and routes the work into whichever of the other seven fits. Those
+seven — `clean-interface-design`, `landing-page-conversion`, `design-review`,
+`motion-and-animation`, `apple-platform-design`, `design-system-audit`,
+`ship-quality-gate` — are each standalone guidance that also points to the
+full MCP for depth. See [`skills/`](skills/).
 
 Each skill is *copied* into your agent and its content hash pinned in
 `skills-lock.json`, so an installed skill does not change when this repository

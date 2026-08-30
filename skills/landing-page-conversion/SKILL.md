@@ -34,6 +34,24 @@ Hero (promise + CTA + proof) → problem / how-it-works (3 steps) → benefit se
 
 Repeat the CTA every ~1.5–2 viewport heights. Every CTA on the page points to the **same** action.
 
+## Vary the shape between builds
+
+The narrative order above is what converts, and it holds regardless of layout; the macrostructure — how the hero, sections, nav, and footer are actually laid out — is a separate axis, and it's the one that makes every generated landing page look interchangeable when it stays fixed. Before writing CSS, look for a prior stamp comment in the project's existing stylesheets. If one is there, differ from **every axis it records** — the shape, and the navigation and footer treatments if it names them. A stamp that records only a shape (the earlier format) tells you nothing about the previous nav or footer, so differ on the shape and choose the other two freely. Shapes:
+
+- `centered-stack` — single column, vertically stacked, hero and sections centered
+- `split-panel` — hero splits into copy and visual side by side; sections below stay full width
+- `sidebar-shell` — persistent side navigation runs the page (product-tour style landing)
+- `bento-grid` — features and proof arranged as an asymmetric grid instead of stacked sections
+- `rail-scroll` — full-bleed panels alternating edge-to-edge, no shared column width
+
+Leave your own stamp as the first line of the CSS you write, naming all three axes so the next run has something to differ from — the shape from the list above, and a short hyphenated token of your own for the navigation and the footer:
+
+```css
+/* saglitzdesign · macrostructure: bento-grid · nav: centered-logo · footer: fat-sitemap */
+```
+
+Record all three even when you only varied one. A stamp that names the shape alone is what the first version of this instruction produced, and it asked the next run to differ from a nav and a footer the artifact did not carry. No tool writes this — you're already producing the CSS, so the comment is yours to add.
+
 ## Persuasion, ethically (Cialdini)
 
 - **Social proof:** specific numbers ("12,483 teams" > "thousands"); named testimonials with photo + role + concrete result.

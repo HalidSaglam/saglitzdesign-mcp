@@ -6,6 +6,7 @@ import { CATEGORIES, PLATFORMS, DESIGN_LANGUAGES, REVIEW_MAP, FOCUS_MAP, ROADMAP
 import { loadRecipes } from "../dist/recipes.js";
 import { loadExamples } from "../dist/examples.js";
 import { securityReport, HEADER_SOURCE_TOKENS, HEADER_SOURCES_SENTENCE, HEADER_METHOD_NAMES } from "../dist/security.js";
+import { PROMPT_NAMES } from "../dist/prompts.js";
 import { liveToolNames, liveDisclosureTools } from "./helpers/liveServer.js";
 
 // Structural guarantees for the curated content. These are the checks that
@@ -275,6 +276,81 @@ describe("bundled assets", () => {
   });
 });
 
+/**
+ * A minimal, explicitly scoped check that a skill's frontmatter would not
+ * break the real YAML parser the `skills` CLI installs it with. That CLI
+ * silently *skips* a file whose frontmatter fails to parse — confirmed live
+ * (`npx skills@latest add ./ --dry-run` reported "Found 7 skills" against a
+ * tree holding eight `SKILL.md` files, with a `⚠ Skipped … YAML parse error`
+ * line naming the broken one) and independently against a real parser
+ * (Python's PyYAML) — so a broken skill ships with the product's own install
+ * channel silently dropping it, while every guard in this suite that reads
+ * `SKILL.md` with a regex stays green, because none of them parses YAML.
+ *
+ * THIS IS NOT A YAML PARSER, and does not claim the reach of one. This
+ * repository declares no YAML dependency (`dependencies` are
+ * `@modelcontextprotocol/sdk` and `zod`; the frontmatter reader in
+ * `src/knowledge.ts` is a hand-rolled per-line parser, not a spec-compliant
+ * one either) and this check keeps that shape rather than pull in a library
+ * to validate one field on one file.
+ *
+ * What it assumes: every frontmatter line is a flat, single-line
+ * `key: value` pair — true of all eight skills' frontmatter today, and true
+ * of nothing this check does not itself verify. A line that is not shaped
+ * that way — a block-scalar opener (`|`/`>`), a nested mapping, a list item,
+ * a flow collection (`[...]`/`{...}`) — is reported as *unrecognized* rather
+ * than silently accepted; this check does not know whether such a line is
+ * valid YAML, so it refuses to guess and fails loud instead.
+ *
+ * For each recognized `key: value` line, and only when the value is
+ * unquoted (does not start with `"` or `'`), it enforces exactly the three
+ * plain-scalar rules that would otherwise truncate or break the value:
+ *   - no `: ` (colon-space) inside the value — this is the exact defect
+ *     shipped: `… even unasked: porting …` reads as a second mapping key
+ *     opening where none is allowed, and the real parser raises "nested
+ *     mappings are not allowed in compact mappings" at that point.
+ *   - the value does not end in `:` — the same rule, at the line's boundary.
+ *   - no ` #` inside the value — a space-hash pair opens a YAML comment
+ *     outside quotes, silently truncating everything after it. Nothing
+ *     shipped trips this today; it is checked because it is the same class
+ *     of bug in a different character.
+ * A value that starts with `"` or `'` is checked only for a balanced,
+ * matching closing quote of the same character — internal escaping
+ * (`\"`, `''`) is NOT validated, so a quoted value with a mismatched
+ * internal escape could still pass this check.
+ *
+ * NOTHING ELSE IS CHECKED. Every other way a plain scalar can break YAML —
+ * a leading indicator character (`[`, `{`, `&`, `*`, `!`, `%`, `@`, a
+ * backtick, a leading `-` or `?` followed by space), tabs used for
+ * indentation, anchors, aliases, directives, multi-document markers, or any
+ * other corner of the grammar — is not evaluated here at all. A green run of
+ * this check means "parses under the narrow shape this repository's
+ * frontmatter actually uses," not "is valid YAML."
+ */
+function frontmatterYamlProblems(text: string): string[] {
+  const problems: string[] = [];
+  for (const line of text.split("\n")) {
+    if (line.trim() === "") continue;
+    const m = line.match(/^([A-Za-z][A-Za-z0-9_-]*):\s(.*)$/);
+    if (!m) {
+      problems.push(`unrecognized frontmatter line, not a flat "key: value" pair: ${JSON.stringify(line)}`);
+      continue;
+    }
+    const value = m[2];
+    if (value.startsWith('"') || value.startsWith("'")) {
+      const quote = value[0];
+      if (!(value.length >= 2 && value.endsWith(quote))) {
+        problems.push(`quoted value missing its closing ${quote}: ${JSON.stringify(line)}`);
+      }
+      continue;
+    }
+    if (value.includes(": ")) problems.push(`unquoted value contains ": " (opens a nested mapping): ${JSON.stringify(line)}`);
+    if (value.endsWith(":")) problems.push(`unquoted value ends in ":" (opens a nested mapping): ${JSON.stringify(line)}`);
+    if (value.includes(" #")) problems.push(`unquoted value contains " #" (opens a YAML comment): ${JSON.stringify(line)}`);
+  }
+  return problems;
+}
+
 describe("skills distribution", () => {
   // skills/ ships separately via `npx skills add` and is not exercised by the
   // server, so nothing else would notice it drifting away from the tool set.
@@ -291,6 +367,18 @@ describe("skills distribution", () => {
       const description = body.match(/^description: (.+)$/m)?.[1] ?? "";
       expect(description.length, `${n}: description`).toBeGreaterThan(40);
     }
+  });
+
+  // See `frontmatterYamlProblems` above for exactly what this does and does
+  // not check, and why: a plain-scalar break here means the `skills` CLI
+  // silently drops the file, and nothing else in this suite parses YAML.
+  it("keeps every skill's frontmatter parseable under the shape the skills CLI expects", () => {
+    const problems: string[] = [];
+    for (const n of names) {
+      const frontmatter = read(n).split(/^---$/m)[1] ?? "";
+      for (const p of frontmatterYamlProblems(frontmatter)) problems.push(`${n}: ${p}`);
+    }
+    expect(problems).toEqual([]);
   });
 
   /**
@@ -478,16 +566,35 @@ describe("skills distribution", () => {
     expect(problems).toEqual([]);
   });
 
+  // `design_review` is the name of a *prompt* (and of a `/saglitzdesign:` slash
+  // command), not of a tool, and it matches this guard's `design_` prefix — so
+  // a skill that correctly backticks the eight workflow names would be told it
+  // points at a phantom tool. The server has two named surfaces; this guard
+  // knew about one. `PROMPT_NAMES` is real, so it is not a phantom: the
+  // umbrella's own workflow list is held to `PROMPT_NAMES` exactly, by
+  // "names the eight workflows exactly as the server serves them" below.
   it("never points at a tool that does not exist", () => {
+    const real = new Set([...TOOL_NAMES, ...PROMPT_NAMES]);
     const phantom: string[] = [];
     for (const n of names) {
       for (const m of read(n).matchAll(/`([a-z][a-z0-9_]{4,})`/g)) {
-        if (/^(get|search|list|design|audit|generate|create|suggest|fix|compare|seo)_/.test(m[1]) && !TOOL_NAMES.has(m[1])) {
+        if (/^(get|search|list|design|audit|generate|create|suggest|fix|compare|seo)_/.test(m[1]) && !real.has(m[1])) {
           phantom.push(`${n} → ${m[1]}`);
         }
       }
     }
     expect(phantom).toEqual([]);
+  });
+
+  // Vacuity control for the guard above, in the shape the review found it in:
+  // the eight workflow names are the ones most likely to be mistyped in a
+  // skill, and before this round none of the three existing guards read them.
+  it("a mistyped workflow name would be caught, not excused as a prompt", () => {
+    const real = new Set([...TOOL_NAMES, ...PROMPT_NAMES]);
+    expect(real.has("design_review")).toBe(true);
+    expect(real.has("design_reviw")).toBe(false);
+    expect(real.has("audit_project")).toBe(true);
+    expect(real.has("audit_projekt")).toBe(false);
   });
 
   /**
@@ -534,9 +641,88 @@ describe("skills distribution", () => {
     expect([...new Set(rows)].sort()).toEqual([...DISCLOSURE_TOOLS].sort());
   });
 
+  /**
+   * These two README-coverage checks (this one and "names every skill in
+   * both READMEs" below) ask a different question than the umbrella's
+   * routing guard does, so they need a different derivation, not the same
+   * regex copied over. The umbrella's routing table is a rigid grid — one
+   * name per cell, nothing else in it — so parsing cells is the right tool.
+   * A README is free-form prose: a skill name can sit inside a bullet, a
+   * sentence, bold text, or a backticked span, with no cell boundary to
+   * anchor on. What both checks actually assert is narrower than "the text
+   * contains this name somewhere" (which is what `.includes()` gave them,
+   * and is the same vacuity the routing guard exists to avoid). What they
+   * mean is "the name appears as itself" — not embedded inside some other,
+   * longer identifier, on either side.
+   *
+   * FOUR ROUNDS OF ONE CHARACTER CLASS, and why there is no fifth. Each
+   * earlier fix widened a single boundary expression, closed exactly the case
+   * it had been shown, and was then described as closing renames in general:
+   *
+   *   - `\bname\b` closed `design-reviews`, but a hyphen is non-word to JS
+   *     regex, so `\b` finds a ready-made boundary at the very hyphen that
+   *     `design-review-legacy` introduces — the natural rename shape here,
+   *     since every skill directory is already hyphen-separated.
+   *   - `(?<![a-z0-9-])` closed the hyphen-joined and digit-appended cases,
+   *     but not `design-review_legacy`.
+   *   - `(?<![\w-])` closed that one and broke ordinary markdown: `_design-
+   *     review_`, an italic mention, was reported as a missing skill.
+   *
+   * The last round is the informative one. One expression was being asked to
+   * do two jobs — separate name characters from non-name characters, *and*
+   * survive markdown syntax — and `_` belongs to both alphabets at once: it
+   * is a character a directory name may contain, and it is emphasis
+   * punctuation in the page the name is looked for in. No single class can
+   * serve both, which is why widening it yielded three holes and then a false
+   * alarm.
+   *
+   * SO THE TWO JOBS ARE SPLIT. The page is reduced to the identifiers it
+   * names; the name is then looked up in that set.
+   *
+   *   1. Normalise emphasis away. Only `_` needs handling: `*` and a backtick
+   *      are not name characters, so the tokeniser in step 2 already treats
+   *      them as separators and `**design-review**` needs no preparation. An
+   *      underscore is blanked exactly where CommonMark reads emphasis rather
+   *      than an identifier — the intraword rule, which is the distinction
+   *      this check needs: `_design-review_` is italic (blanked, so the name
+   *      is seen), `design-review_legacy` is one word (kept, so it is not).
+   *      Blanked to a space rather than deleted, as `plain()` and `scanLine`
+   *      do below, so a mark cannot silently join its two neighbours.
+   *   2. Tokenise into identifier-shaped runs — letter, digit, underscore,
+   *      hyphen — and ask whether the name is one of them. Membership, not
+   *      adjacency: a name embedded in a longer identifier is simply a
+   *      different token, absent in every direction at once, with no
+   *      lookaround left to widen.
+   *
+   * The split earns something no boundary class could: a skill directory
+   * named with an underscore works. `_design_review_` in a README is emphasis
+   * around the identifier `design_review`, and step 1 blanks the outer two
+   * marks while keeping the inner one, because that is what the intraword
+   * rule says about each of them.
+   *
+   * WHAT THIS STILL DOES NOT COVER, as a class rather than as the characters
+   * that happen to have been tried: a rename glued to the name by anything
+   * that is *not* a letter, digit, underscore or hyphen splits into two
+   * tokens, and the bare name is then found in one of them.
+   * `design-review.legacy` is the readable member of that class; a zero-width
+   * space as the join and an emphasis mark used as glue (`design-review*x`)
+   * are the unreadable ones. A name written with a leading or trailing
+   * underscore is in it too, since step 1 reads that as emphasis by design.
+   * None is closed here, because closing them means putting punctuation back
+   * into the token class, which is the direction the previous four rounds
+   * went. What is covered is the class with a plausible authoring path: a
+   * rename that is itself a well-formed identifier.
+   *
+   * Neither check reads meaning. A name is "named" if the page contains it as
+   * a token anywhere — including inside a sentence saying it was removed.
+   */
+  const identifiersIn = (text: string) =>
+    new Set(text.replace(/(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/gu, " ").match(/[\p{L}\p{N}_-]+/gu) ?? []);
+  const mentionsSkillName = (text: string, name: string) => identifiersIn(text).has(name);
+
   it("lists every skill in the skills README", () => {
     const readme = readFileSync(join(skillsDir, "README.md"), "utf8");
-    const missing = names.filter((n) => !readme.includes(n));
+    const missing = names.filter((n) => !mentionsSkillName(readme, n));
     expect(missing).toEqual([]);
   });
 
@@ -568,7 +754,7 @@ describe("skills distribution", () => {
   it("names every skill in both READMEs", () => {
     for (const [label, path] of [["README.md", join(root, "README.md")], ["skills/README.md", join(skillsDir, "README.md")]]) {
       const text = readFileSync(path, "utf8");
-      expect(names.filter((n) => !text.includes(n)), label).toEqual([]);
+      expect(names.filter((n) => !mentionsSkillName(text, n)), label).toEqual([]);
     }
   });
 
@@ -906,6 +1092,98 @@ describe("skills distribution", () => {
   });
 });
 
+/**
+ * The umbrella skill (`skills/saglitzdesign/SKILL.md`) claims to be the front
+ * door into the seven depth skills. This holds it to that claim from both
+ * sides, derived off disk rather than a hand-written list on either side —
+ * the drift class the tool-name guard above already closed once.
+ *
+ * The routing table is read by parsing its rows, not by searching the body
+ * for each directory name as a substring. A substring test passes vacuously
+ * when a row is renamed to a string that contains another skill's name —
+ * `clean-interface-designs` still contains `clean-interface-design` — which
+ * is the same defect recorded against an earlier package's `text.includes(n)`
+ * (a name that is a prefix of another passes vacuously), reintroduced here in
+ * the brief this test was written from and ruled out before landing.
+ *
+ * Task 1 chose a regular row syntax for exactly this reason: a markdown table
+ * row whose cells include one that is a single backticked directory name and
+ * nothing else. `routedSkillNames` finds that cell by splitting each `|`
+ * row on `|` and matching each cell on its own — not by anchoring the whole
+ * line to require the name in the *last* cell, which broke two ways a review
+ * demonstrated: an extra column appended after the name cell (the anchor to
+ * end-of-line no longer reaches), and a digit in the directory name (an
+ * earlier `[a-z][a-z-]*` character class excluded it). Per-cell matching on
+ * `` `[a-z][a-z0-9-]*` `` fixes both — position within the row no longer
+ * matters, and digits are allowed — while still refusing a cell that mixes
+ * the name with other text (`Uses \`npx\` here` is not a bare name cell), so
+ * a description that happens to backtick an unrelated word is not mistaken
+ * for a route. Confirmed against the real file to extract exactly the seven
+ * rows it ships today — no more, no fewer.
+ */
+function routedSkillNames(body: string): string[] {
+  const names: string[] = [];
+  for (const line of body.split("\n")) {
+    if (!/^\|.*\|\s*$/.test(line)) continue; // not a table row
+    for (const cell of line.split("|")) {
+      const m = cell.trim().match(/^`([a-z][a-z0-9-]*)`$/);
+      if (m) names.push(m[1]);
+    }
+  }
+  return names;
+}
+
+describe("the umbrella skill routes into every depth skill", () => {
+  const skillsDir = join(root, "skills");
+  const umbrella = join(skillsDir, "saglitzdesign", "SKILL.md");
+  const depth = readdirSync(skillsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && e.name !== "saglitzdesign")
+    .map((e) => e.name)
+    .sort();
+
+  it("names every depth skill in a routing row, and names no other directory", () => {
+    const body = readFileSync(umbrella, "utf8");
+    const routed = routedSkillNames(body).sort();
+    // Equality in both directions: a depth skill with no routing row is
+    // unreachable through the door (caught by `depth` having an entry
+    // `routed` lacks); a row naming a directory that does not exist sends the
+    // reader nowhere (caught the other way round).
+    expect(routed).toEqual(depth);
+  });
+
+  it("states the boundary that keeps it off pure functionality", () => {
+    const fm = readFileSync(umbrella, "utf8").split("---")[1] ?? "";
+    expect(fm.toLowerCase()).toMatch(/not for|does not cover|beyond/);
+  });
+
+  // Whole-branch review, Minor: the umbrella names all eight workflows, and
+  // nothing checked the names. Three guards existed and this fell between all
+  // of them — `routedSkillNames` above guards the seven *skill* names, the
+  // tool guard elsewhere in this file inspects only backticked snake_case
+  // names whose prefix is in its own allowlist (`design_review` would have
+  // been reported as a phantom tool, and four of the eight would have escaped
+  // on their prefix), and `scripts/preflight-release.mjs` checks `commands/`
+  // against `src/prompts.ts`. A skill naming a *prompt* was guarded by none.
+  // A typo in any of the eight shipped silently.
+  it("names the eight workflows exactly as the server serves them", () => {
+    const body = readFileSync(umbrella, "utf8");
+    // Scoped to the list itself, between the two em dashes that bracket it —
+    // not to the paragraph, and not to the file. A whole-file sweep would be
+    // satisfied by any backticked name anywhere, which is the vacuity this
+    // guard exists to avoid.
+    const list = /eight guided workflows — (.+?) — which drive/s.exec(body);
+    expect(list, "the workflow list has moved or been reworded").toBeTruthy();
+    const named = [...list![1].matchAll(/`([a-z_]+)`/g)].map((m) => m[1]);
+    expect(named.sort()).toEqual([...PROMPT_NAMES].sort());
+  });
+
+  // …and that they are not tools, which is the other half of the claim: the
+  // sentence tells a reader they cannot be called by name.
+  it("none of the eight is a tool name", () => {
+    expect(PROMPT_NAMES.filter((p) => TOOL_NAMES.has(p))).toEqual([]);
+  });
+});
+
 describe("release metadata is in sync", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const manifest = JSON.parse(readFileSync(join(root, "server.json"), "utf8"));
@@ -981,8 +1259,10 @@ const tierOf = (host: string): keyof typeof SOURCE_TIERS | null => {
 };
 
 /**
- * The one operation in this file that can *throw* rather than fail. 33 sources
- * across 20 documents are not URLs at all — whole `book`, `craft`, `process`
+ * The one operation in this file that can *throw* rather than fail. 55 sources
+ * across 19 documents are not URLs at all — a hand-written pair that had
+ * drifted in both directions since it was written, which is why the count is
+ * now asserted below rather than only stated here — whole `book`, `craft`, `process`
  * and `marketing` categories cite book titles like "Breakthrough Advertising
  * (Eugene Schwartz)" — and `new URL(...)` on one of those raises a TypeError
  * that aborts the run and names neither the document nor the source. None of
@@ -1018,6 +1298,30 @@ describe("the source tiers", () => {
 
   it("resolves a host regardless of case", () => {
     expect(tierOf("DEVELOPER.APPLE.COM")).toBe("vendor");
+  });
+
+  // The count `hostOf`'s comment states, asserted rather than only written
+  // down. The pair in that comment was hand-typed and had drifted in *both*
+  // directions by the time anyone re-measured it — 33/20 stated against 55/19
+  // measured — which is the same failure this file fixed elsewhere by deriving
+  // a number instead of writing one. A range rather than an equality: the
+  // point is that the class is large and non-empty (so `hostOf`'s
+  // throw-instead-of-fail guard is load-bearing, not theoretical), not that it
+  // is frozen at today's figure.
+  it("the non-URL source class is real and roughly the size hostOf's comment claims", () => {
+    const offenders = docs.flatMap((d) => (d.sources ?? []).filter((u) => hostOf(u) === null).map(() => d.id));
+    const documents = new Set(offenders);
+    expect(offenders.length).toBeGreaterThanOrEqual(40);
+    expect(offenders.length).toBeLessThanOrEqual(80);
+    expect(documents.size).toBeGreaterThanOrEqual(12);
+    expect(documents.size).toBeLessThanOrEqual(30);
+    // And the comment's own numbers must sit inside the band it is checked
+    // against, so a future edit cannot restate a figure this test would reject.
+    const stated = readFileSync(join(__dirname, "integrity.test.ts"), "utf8")
+      .match(/(\d+) sources\n \* across (\d+) documents are not URLs at all/);
+    expect(stated, "hostOf's comment no longer states a count in the expected shape").toBeTruthy();
+    expect(Number(stated![1])).toBe(offenders.length);
+    expect(Number(stated![2])).toBe(documents.size);
   });
 
   it("keeps security documents on standard and vendor sources only", () => {
@@ -1535,7 +1839,14 @@ describe("every surface that lists audit_security's header sources lists all of 
   // token named anywhere else in a long document would satisfy the check
   // without the row a reader of that row ever seeing it.
   const skill = readFileSync(join(root, "skills", "ship-quality-gate", "SKILL.md"), "utf8").replace(/‑/g, "-");
-  const skillRow = skill.split("\n").find((l) => l.includes("`audit_security`")) ?? "";
+  // A *table row*, not merely the first line that mentions the tool. The
+  // locator used to be "first line containing `audit_security`", which is the
+  // `full.indexOf(l)` shape this repository has already been bitten by once:
+  // it silently resolved to whichever line came first, so a paragraph added
+  // above the table — one was, in the fix round that rewrote this skill's
+  // opening — became "the row", and twenty-two token assertions failed
+  // against prose that was never supposed to carry them.
+  const skillRow = skill.split("\n").find((l) => l.trimStart().startsWith("|") && l.includes("`audit_security`")) ?? "";
 
   // Scoped to its own bullet for the same reason the README and the skill are
   // scoped to their rows: a token satisfied by some other sentence of the
