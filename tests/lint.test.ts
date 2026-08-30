@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   auditStructuredFrom, renderNotVisibleSection, assembleAuditReport,
   designLint, designLintReport, LINT_NOT_VISIBLE, LINT_PREAMBLE, LINT_CLOSING,
+  LINE_RULES, SOURCE_RULE_DOCS,
 } from "../dist/lint.js";
 import { layoutSystemReport } from "../dist/layout.js";
 import { loadKnowledge, findDoc } from "../dist/knowledge.js";
@@ -220,7 +221,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
   const notVisible = LINT_NOT_VISIBLE.join("\n");
 
   it("has an entry for every demonstration below, and no empty list", () => {
-    expect(LINT_NOT_VISIBLE.length).toBe(16);
+    expect(LINT_NOT_VISIBLE.length).toBe(17);
     for (const entry of LINT_NOT_VISIBLE) expect(entry.startsWith("**")).toBe(true);
   });
 
@@ -1073,10 +1074,121 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
       expect(designLint(`body.no-scroll { overflow-x: hidden; }`)).toEqual([]);
     });
 
-    // Also fed for reach: overflow-y is a real way to lock vertical scroll on
-    // the root and this rule's property alternation does not include it.
-    it("does not read overflow-y — only the bare property and -x", () => {
-      expect(designLint(`body { overflow-y: hidden; }`)).toEqual([]);
+    // overflow-y is just as real a way to lock the root's scroll and to
+    // establish a scroll container as overflow-x — CSS Overflow 3 §3.1 does
+    // not distinguish axes for that status — so this is the same defect on
+    // the same property family, not a scope boundary. Fixed, not disclosed.
+    it("fires on overflow-y too — CSS Overflow 3 §3.1 does not distinguish axes", () => {
+      expect(rules(`body { overflow-y: hidden; }`)).toContain("overflow-hidden-root");
+    });
+
+    describe("fallback-then-override — the standard way to ship clip with a hidden fallback", () => {
+      // Round-1 review Critical: this is exactly the rule's own `fix`, and the
+      // first version of this rule cried wolf on it because it read `hidden`
+      // without ever asking whether a later declaration for the same property,
+      // in the same block, already overrides it.
+      it("does not fire when a later same-property clip overrides it, same line", () => {
+        expect(designLint(`body { overflow-x: hidden; overflow-x: clip; }`)).toEqual([]);
+      });
+
+      it("does not fire when the override is on its own line", () => {
+        expect(designLint(`body {\n  overflow-x: hidden;\n  overflow-x: clip;\n}`)).toEqual([]);
+      });
+
+      it("does not fire for the bare overflow property overridden the same way", () => {
+        expect(designLint(`body { overflow: hidden; overflow: clip; }`)).toEqual([]);
+      });
+
+      // Order matters: the cascade applies the *later* declaration, so a
+      // clip that comes before a later hidden does not save it — hidden is
+      // genuinely the value in effect and this must still fire.
+      it("still fires when hidden comes after clip — the cascade's later value wins", () => {
+        expect(rules(`body { overflow-x: clip; overflow-x: hidden; }`)).toContain("overflow-hidden-root");
+      });
+
+      it("still fires across lines with clip first", () => {
+        expect(rules(`body {\n  overflow-x: clip;\n  overflow-x: hidden;\n}`)).toContain("overflow-hidden-root");
+      });
+
+      // A mismatched property does not cancel it — correctly, not as a gap:
+      // overflow-y is left hidden, and the root is still a scroll container
+      // on that axis alone regardless of what overflow-x becomes.
+      it("does NOT cancel on a differently-spelled property — overflow-y is still hidden", () => {
+        expect(rules(`body { overflow: hidden; overflow-x: clip; }`)).toContain("overflow-hidden-root");
+      });
+
+      // "Same block" is scoped to the balanced braces the selector opened —
+      // an override in a sibling rule must not cancel this one.
+      it("an override in a different rule (a different block) does not cancel this one", () => {
+        expect(rules(`body { overflow-x: hidden; }\n.other { overflow-x: clip; }`)).toContain("overflow-hidden-root");
+      });
+
+      // Known, disclosed false positive: a shorthand `hidden` that IS fully
+      // neutralised, but only by two later longhands together, is not
+      // recognised — see LINT_NOT_VISIBLE. Fixing it needs the
+      // shorthand/longhand interaction modelled, not just a property-text
+      // match.
+      it("(false positive) still fires when a shorthand hidden is fully overridden by two later longhands", () => {
+        expect(rules(`body { overflow: hidden; overflow-x: clip; overflow-y: clip; }`)).toContain("overflow-hidden-root");
+      });
+
+      // Fed for reach, and a real bug found and fixed by that feeding (not
+      // just the override guard — the selector lookup itself): a nested rule
+      // for a DIFFERENT selector, sitting inside the same top-level block,
+      // used to confuse the naive `lastIndexOf("{")` search into reading the
+      // nested rule's own (already-closed) brace as the enclosing one, which
+      // misread the selector entirely and silenced the finding no matter
+      // which side of the nested rule the `hidden` declaration was on. Fixed
+      // by `enclosingOpenBrace`'s balance-tracked backward scan.
+      it("a nested rule for a different selector does not confuse the enclosing-selector lookup, nested block before hidden", () => {
+        expect(rules(`body { .foo { overflow-x: clip; } overflow-x: hidden; }`)).toContain("overflow-hidden-root");
+      });
+
+      it("...nor when the nested block comes after hidden, and its own clip must not cancel the outer hidden", () => {
+        expect(rules(`body { overflow-x: hidden; .foo { overflow-x: clip; } }`)).toContain("overflow-hidden-root");
+      });
+
+      it("...nor when the nested block carries no override at all", () => {
+        expect(rules(`body { .foo { color: red; } overflow-x: hidden; }`)).toContain("overflow-hidden-root");
+      });
+    });
+
+    // Fed for reach: a qualified selector that still targets the root
+    // element does not satisfy the selector match, which only accepts
+    // `html`/`body`/`:root` as the selector's own trailing token. Real
+    // selector matching needs actual parsing and risks new false positives
+    // on this text-based rule — a genuine scope boundary, disclosed rather
+    // than fixed.
+    it("is silent on a compound selector that still targets body — a disclosed scope boundary, not a fix", () => {
+      expect(designLint(`body.no-scroll { overflow-x: hidden; }`)).toEqual([]);
+      expect(notVisible).toMatch(/qualified selector/i);
+    });
+
+    // Fed for reach: a selector list still reaches body/html/:root as the
+    // trailing token, and fires.
+    it("fires when the selector is a list that ends in the root element", () => {
+      expect(rules(`html, body { overflow-x: hidden; }`)).toContain("overflow-hidden-root");
+    });
+
+    // Fed for reach: `!important` after `hidden` does not block the match —
+    // the regex has no end anchor, so trailing text is irrelevant.
+    it("fires with a trailing !important", () => {
+      expect(rules(`body { overflow-x: hidden !important; }`)).toContain("overflow-hidden-root");
+    });
+
+    // Fed for reach: the override guard has no notion of a comment or a
+    // string, the same disclosed limitation `hasExplicitMinmaxFloor` already
+    // carries for `minmax(...)`. A commented-out or quoted clip is read as a
+    // real, live override and wrongly silences a finding that should fire —
+    // a known false negative, disclosed rather than fixed (real comment/
+    // string awareness is out of scope for a regex-based override check).
+    it("(false negative, disclosed) a commented-out override is read as real and wrongly silences the finding", () => {
+      expect(designLint(`body { overflow-x: hidden; /* overflow-x: clip; */ }`)).toEqual([]);
+    });
+
+    it("(false negative, disclosed) a quoted clip inside a string is read as real and wrongly silences the finding", () => {
+      expect(designLint(`body { overflow-x: hidden; content: "overflow-x: clip"; }`)).toEqual([]);
+      expect(notVisible).toMatch(/comment or a string/i);
     });
   });
 });
@@ -1086,40 +1198,60 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
 // perf.ts, generic.ts) has one, and this one's absence was itself a false
 // claim in an earlier round: a brief for this file asserted the check
 // existed here when it did not, and the ids were verified by hand instead.
-// Both sides below are derived from live data rather than hand-typed, so
-// this cannot drift the way `LINE_RULES.length` once did in a disclosure
-// sentence: `ALL_LINT_RULE_IDS` is the only hand-maintained piece (mirroring
-// the `CLAIM_VOCABULARY` tables in seo.test.ts/perf.test.ts/generic.test.ts,
-// which are hand-typed the same way and guarded the same way), and the two
-// completeness checks below make a rule id falling off that list, or a new
-// rule id never being added to it, a failing test rather than a silent gap.
-// `KITCHEN_SINK` is the fixture that fires every one of them at once; a
-// future rule (this plan's Task 5 adds three more citations) is "inherited"
-// by this guard only if its own trigger line is appended to that fixture and
-// its id to this list — both are asserted below, so forgetting either fails
-// loudly rather than leaving the new rule's doc id unchecked.
+//
+// Round 1 of this suite swept doc ids from *fired findings*, produced from a
+// hand-built `KITCHEN_SINK` fixture. Review found the hole in that design
+// directly: a new rule with a bogus `doc` id and a novel trigger, added
+// without also touching `KITCHEN_SINK`, made the whole suite pass — 4/4,
+// silent — because a rule that never fires contributes no finding for the
+// resolve-check to see. Forgetting to extend a fixture is the likely real
+// mistake, and it produced total silence rather than a failure.
+//
+// This version reads `LINE_RULES` and `SOURCE_RULE_DOCS` directly instead —
+// both exported from lint.ts for exactly this — so there is no fixture to
+// forget: a new `LINE_RULES` entry (which is where Task 5's three citations,
+// and any line rule after it, will land) or a new `SOURCE_RULE_DOCS` key is
+// swept in by construction, the moment it exists, before anyone writes a
+// single test fixture for it. `KITCHEN_SINK` is kept below only as a
+// behavioural cross-check — it confirms the ids actually declared are the
+// ones actually emitted for the rules that exist today — not as the
+// resolve-check's source of truth.
 describe("every doc a rule cites resolves to a real knowledge document", () => {
   const docs = loadKnowledge(join(__dirname, "..", "knowledge"));
 
-  const ALL_LINT_RULE_IDS = [
-    "hardcoded-color",
-    "px-font-size",
-    "important-overuse",
-    "fixed-height-text",
-    "positive-tabindex",
-    "magic-number-radius",
-    "grid-track-no-min",
-    "overflow-hidden-root",
-    "img-no-alt",
-    "clickable-div",
-    "icon-button-no-label",
-    "control-no-label",
-    "outline-none",
+  // Derived from the rule definitions themselves, not hand-typed: adding a
+  // rule to `LINE_RULES` or a key to `SOURCE_RULE_DOCS` changes this list
+  // automatically, so it cannot go stale the way a hand-maintained id list
+  // (the `CLAIM_VOCABULARY` tables in seo.test.ts/perf.test.ts/generic.test.ts
+  // are hand-typed and accept that trade-off) can.
+  const RULE_DOCS: { rule: string; doc?: string }[] = [
+    ...LINE_RULES.map((r) => ({ rule: r.id, doc: r.doc })),
+    ...Object.entries(SOURCE_RULE_DOCS).map(([rule, doc]) => ({ rule, doc })),
   ];
 
-  // One snippet that draws every rule id above at least once. Each line is
-  // self-contained (its own selector/tag, its own closing brace) so no
-  // rule's suppressor or full-text gate accidentally swallows another's.
+  it("loads the knowledge base, so the checks below are not vacuous", () => {
+    expect(docs.length).toBeGreaterThan(0);
+  });
+
+  it("has more than a handful of rules, so this is not vacuously true either", () => {
+    expect(RULE_DOCS.length).toBeGreaterThanOrEqual(13);
+  });
+
+  it("every rule declares a doc id — none is missing or blank", () => {
+    expect(RULE_DOCS.filter((r) => !r.doc).map((r) => r.rule)).toEqual([]);
+  });
+
+  it("resolves every declared id — reading the rule definitions, not fired findings", () => {
+    const dangling = RULE_DOCS.filter((r) => r.doc && !findDoc(docs, r.doc)).map((r) => `${r.rule} → ${r.doc}`);
+    expect(dangling).toEqual([]);
+  });
+
+  // Behavioural cross-check, not the resolve-check itself (see the block
+  // comment above): confirms the declared ids are the ones a real run
+  // actually emits, for every rule id that exists today. One snippet that
+  // draws every rule at least once; each line is self-contained (its own
+  // selector/tag, its own closing brace) so no rule's suppressor or
+  // full-text gate accidentally swallows another's.
   const KITCHEN_SINK = [
     `.hc { color: #ff0000; }`,
     `.pf { font-size: 14px; }`,
@@ -1136,28 +1268,18 @@ describe("every doc a rule cites resolves to a real knowledge document", () => {
     `.a { outline: none; }`,
   ].join("\n");
 
-  const findings = designLint(KITCHEN_SINK);
-
-  it("loads the knowledge base, so the checks below are not vacuous", () => {
-    expect(docs.length).toBeGreaterThan(0);
+  it("the fixture fires every declared rule id, and no undeclared one", () => {
+    const fired = new Set(designLint(KITCHEN_SINK).map((f) => f.rule));
+    const declared = new Set(RULE_DOCS.map((r) => r.rule));
+    expect([...declared].filter((r) => !fired.has(r))).toEqual([]);
+    expect([...fired].filter((r) => !declared.has(r))).toEqual([]);
   });
 
-  it("fires every rule in the list, so no rule id escapes the citation check", () => {
-    const fired = new Set(findings.map((f) => f.rule));
-    const never = ALL_LINT_RULE_IDS.filter((r) => !fired.has(r));
-    expect(never).toEqual([]);
-  });
-
-  it("emits no rule the list does not cover, so an added rule can't slip past unnoticed", () => {
-    const fired = new Set(findings.map((f) => f.rule));
-    const undeclared = [...fired].filter((r) => !ALL_LINT_RULE_IDS.includes(r));
-    expect(undeclared).toEqual([]);
-  });
-
-  it("resolves every cited id", () => {
-    const dangling = findings
-      .filter((f) => !f.doc || !findDoc(docs, f.doc))
-      .map((f) => `${f.rule} → ${f.doc}`);
-    expect(dangling).toEqual([]);
+  it("the fixture's fired docs match what each rule declares", () => {
+    const byRule = new Map(RULE_DOCS.map((r) => [r.rule, r.doc]));
+    const mismatched = designLint(KITCHEN_SINK)
+      .filter((f) => f.doc !== byRule.get(f.rule))
+      .map((f) => `${f.rule}: fired ${f.doc}, declared ${byRule.get(f.rule)}`);
+    expect(mismatched).toEqual([]);
   });
 });

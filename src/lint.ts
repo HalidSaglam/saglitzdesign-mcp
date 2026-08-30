@@ -212,9 +212,90 @@ function hasExplicitMinmaxFloor(line: string): boolean {
   return false;
 }
 
+/**
+ * Index just past the `}` that closes the block opened at `openIdx` (which
+ * must itself be the index of a `{`), found by depth-counting rather than a
+ * naive `indexOf("}")` — a nested block between the two (a media query
+ * wrapping the rule, or a nested selector under CSS nesting) would close a
+ * naive search on its own inner `}`, misreporting where the outer block
+ * actually ends. This is the same technique as `topLevelSplit`'s paren
+ * count, one bracket pair over. No comment or string awareness — a brace
+ * inside either is read as real, the same disclosed limitation
+ * `hasExplicitMinmaxFloor` already carries for `minmax(...)`. Returns
+ * `text.length` if the block never closes (truncated/invalid input), so a
+ * caller can always safely slice up to the result.
+ */
+function braceEnd(text: string, openIdx: number): number {
+  let depth = 1;
+  let i = openIdx + 1;
+  while (i < text.length && depth > 0) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}") depth--;
+    i++;
+  }
+  return depth === 0 ? i - 1 : text.length;
+}
+
+/**
+ * The `{` that actually encloses position `from` in `text` — found by
+ * scanning backward and tracking brace *balance*, not `text.lastIndexOf("{",
+ * from)`. The naive search finds the textually-last `{` before `from`
+ * regardless of whether it was already closed by a `}` that also occurs
+ * before `from`: for `body { .foo { overflow-x: clip; } overflow-x: hidden;
+ * }`, the `{` nearest the `hidden` declaration is `.foo`'s own, and it is
+ * already closed by the `}` right after `clip;` — `lastIndexOf` returns it
+ * anyway, so a caller reading it as "the enclosing selector's brace" reads
+ * `.foo` as the selector for a declaration that is actually `body`'s own,
+ * one level up. Scanning backward and counting `}` as balance to spend
+ * against each `{` it meets skips exactly the closed pairs and stops at the
+ * first genuinely unmatched `{` — the real enclosing block, at any nesting
+ * depth. Returns -1 if `from` is not inside any block.
+ */
+function enclosingOpenBrace(text: string, from: number): number {
+  let balance = 0;
+  for (let i = from - 1; i >= 0; i--) {
+    if (text[i] === "}") balance++;
+    else if (text[i] === "{") {
+      if (balance > 0) balance--;
+      else return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * `text` with every top-level-relative `{...}` span removed — depth-tracked,
+ * the same technique `topLevelSplit` uses for parens, one bracket pair over.
+ * Exists so `overflow-hidden-root`'s override check reads only the *direct*
+ * declarations of the block it was handed (as `braceEnd` bounds it), not text
+ * that happens to sit inside a differently-scoped nested rule between them —
+ * `body { .foo { overflow-x: clip; } overflow-x: hidden; }` has a `clip` in
+ * its text, but that `clip` belongs to `.foo`, not to `body`, and must not be
+ * read as an override of body's own `hidden`. Without this, a naive
+ * substring search over the whole block body would treat any nested
+ * selector's declarations as if they were the outer selector's own.
+ */
+function stripNestedBlocks(text: string): string {
+  let depth = 0;
+  let out = "";
+  for (const ch of text) {
+    if (ch === "{") { depth++; continue; }
+    if (ch === "}") { depth = Math.max(0, depth - 1); continue; }
+    if (depth === 0) out += ch;
+  }
+  return out;
+}
+
 // ── line rules ───────────────────────────────────────────────────────────────
 
-const LINE_RULES: LineRule[] = [
+// Exported (only) so tests/lint.test.ts's doc-resolve guard can iterate the
+// rule definitions themselves rather than sweep them up from fired findings.
+// A findings-based sweep only catches a new rule's dangling `doc` id if that
+// rule's own trigger was also added to the test's fixture — forgetting the
+// fixture (a demonstrated real mistake in review) produces total silence.
+// Reading `LINE_RULES` directly has no fixture to forget: a new entry here
+// is swept in the moment it exists.
+export const LINE_RULES: LineRule[] = [
   {
     id: "hardcoded-color",
     severity: "warning",
@@ -301,8 +382,9 @@ const LINE_RULES: LineRule[] = [
     // CSS Overflow Level 3 §3.1: `hidden` keeps the box "still a scroll
     // container" (only the UI is suppressed; programmatic scrolling remains),
     // while `clip` "forbids scrolling entirely … and therefore the box is not a
-    // scroll container". On the root that difference is load-bearing, because a
-    // scroll container is what descendants position against.
+    // scroll container". §3.1 does not distinguish axes for that status, which
+    // is why both `overflow-x` and `overflow-y` are read below — a root that is
+    // `hidden` on either axis is a scroll container regardless of the other.
     //
     // Case: both regexes on this rule's path are case-sensitive, deliberately
     // matching the rest of this file's line rules (see the disclosure sentence
@@ -321,21 +403,57 @@ const LINE_RULES: LineRule[] = [
     // line; for a selector on a prior line it keeps walking back through
     // `full` the way `statementStart` in src/security.ts does for a
     // differently-shaped lookup.
+    //
+    // Fallback-then-override: declaring `hidden` and then, later in the same
+    // block, the *same* property again as `clip` is the standard way to ship
+    // `clip` while keeping a fallback for browsers that predate it — it is
+    // this rule's own `fix`, so firing on it would be crying wolf at the exact
+    // thing it recommends. "Same block" has no guaranteed structure in a
+    // snippet, so it is defined the only way that is checkable without a real
+    // parser: from the `{` already found for the selector, out to the `}`
+    // that balances it (`braceEnd`, depth-counted so a nested block in
+    // between — a media query, a nested rule — cannot close it early). Only a
+    // later occurrence of the identical property text (`overflow`,
+    // `overflow-x` or `overflow-y` — never a different one of the three)
+    // cancels the finding: `overflow: hidden` followed only by `overflow-x:
+    // clip` still fires, correctly, because `overflow-y` is left `hidden` and
+    // the box is still a scroll container either way. An earlier `clip`
+    // *before* the `hidden` this rule matched does not cancel it either — the
+    // cascade applies the later declaration, so if `hidden` comes last it
+    // really is the one in effect. The override text is also read only at
+    // the block's own top level (`stripNestedBlocks`, same depth-tracking
+    // idea as `topLevelSplit`'s commas): `body { .foo { overflow-x: clip; }
+    // overflow-x: hidden; }` has a `clip` in its text, but that `clip`
+    // belongs to the nested `.foo` rule, not to `body`, and must not cancel
+    // body's own `hidden` — reading `rest` as raw text without this would
+    // have done exactly that. What this does not see: `overflow: hidden`
+    // fully neutralised by two later longhands together (`overflow-x: clip;
+    // overflow-y: clip;`) is not recognised as an override, because the
+    // property texts differ from the shorthand that set `hidden` — a disclosed
+    // false positive, narrower coverage over parsing the shorthand/longhand
+    // interaction properly. Nor does the override check know about comments
+    // or strings, the same disclosed limitation `hasExplicitMinmaxFloor`
+    // already carries: a commented-out or quoted `overflow-x: clip` reads as
+    // a real, live override and wrongly cancels a finding that should fire.
     test: (l, full) => {
-      const m = /overflow(-x)?\s*:\s*hidden/.exec(l);
+      const m = /overflow(-x|-y)?\s*:\s*hidden/.exec(l);
       if (!m) return false;
       const at = full.indexOf(l);
-      const before = full.slice(0, (at < 0 ? 0 : at) + m.index);
-      const open = before.lastIndexOf("{");
+      const abs = (at < 0 ? 0 : at) + m.index;
+      const open = enclosingOpenBrace(full, abs);
       if (open < 0) return false;
-      const sel = before.slice(before.lastIndexOf("}", open) + 1, open);
-      return /(^|[\s,])(html|body|:root)\s*$/.test(sel.trim().replace(/\s+/g, " "));
+      const sel = full.slice(full.lastIndexOf("}", open) + 1, open);
+      if (!/(^|[\s,])(html|body|:root)\s*$/.test(sel.trim().replace(/\s+/g, " "))) return false;
+      const property = "overflow" + (m[1] ?? "");
+      const rest = stripNestedBlocks(full.slice(abs + m[0].length, braceEnd(full, open)));
+      if (new RegExp(`${property}\\s*:\\s*clip\\b`).test(rest)) return false;
+      return true;
     },
     message:
       "`overflow: hidden` on the root still makes it a scroll container — only the " +
       "scrolling UI is suppressed (CSS Overflow 3 §3.1). `overflow: clip` is not a " +
       "scroll container at all.",
-    fix: "Use `overflow-x: clip` on `html`/`body`, and fix the element that actually overflows.",
+    fix: "Use `clip` instead of `hidden` (`overflow`/`overflow-x`/`overflow-y`) on `html`/`body`, and fix the element that actually overflows.",
     doc: "spacing-layout",
   },
 ];
@@ -346,6 +464,22 @@ const IMAGE_TAGS = new Set(["img", "image"]);
 const CLICKABLE_CONTAINERS = new Set(["div", "span", "li", "section"]);
 const LABELLED_CONTROLS = new Set(["input", "select", "textarea"]);
 const UNLABELLED_INPUT_TYPES = new Set(["hidden", "submit", "button", "image", "reset"]);
+
+/**
+ * The doc each source (tag) rule cites, centralised and exported for the same
+ * reason `LINE_RULES` is: `tests/lint.test.ts`'s doc-resolve guard reads this
+ * directly rather than needing a fixture to fire every rule first. The `push`
+ * calls below reference this table instead of repeating the string literal,
+ * so there is exactly one place a source rule's doc id can drift from what
+ * this table (and the test that walks it) believes it is.
+ */
+export const SOURCE_RULE_DOCS: Record<string, string> = {
+  "img-no-alt": "accessibility",
+  "clickable-div": "accessibility",
+  "icon-button-no-label": "iconography",
+  "control-no-label": "forms-inputs",
+  "outline-none": "accessibility",
+};
 
 function sourceFindings(src: string): LintFinding[] {
   const found: LintFinding[] = [];
@@ -362,7 +496,7 @@ function sourceFindings(src: string): LintFinding[] {
         rule: "img-no-alt",
         message: `<${tag.name}> without an alt attribute — invisible/opaque to screen readers.`,
         fix: 'Add alt="" for decorative images, or a descriptive alt for meaningful ones.',
-        doc: "accessibility",
+        doc: SOURCE_RULE_DOCS["img-no-alt"],
       });
     }
 
@@ -377,7 +511,7 @@ function sourceFindings(src: string): LintFinding[] {
         rule: "clickable-div",
         message: `Clickable <${tag.name}> without a role — not focusable or announced as interactive.`,
         fix: 'Use a <button> (or add role="button", tabIndex={0}, and key handlers).',
-        doc: "accessibility",
+        doc: SOURCE_RULE_DOCS["clickable-div"],
       });
     }
 
@@ -390,7 +524,7 @@ function sourceFindings(src: string): LintFinding[] {
           rule: "icon-button-no-label",
           message: "Icon-only <button> without an accessible name.",
           fix: 'Add aria-label="…" (or visually-hidden text). See iconography.',
-          doc: "iconography",
+          doc: SOURCE_RULE_DOCS["icon-button-no-label"],
         });
       }
     }
@@ -413,7 +547,7 @@ function sourceFindings(src: string): LintFinding[] {
           rule: "control-no-label",
           message: `<${tag.name}> with no way to associate a label (no id, aria-label or aria-labelledby).`,
           fix: "Pair it with a <label for> via id, or add aria-label. A placeholder is not a label.",
-          doc: "forms-inputs",
+          doc: SOURCE_RULE_DOCS["control-no-label"],
         });
       }
     }
@@ -436,7 +570,7 @@ function sourceFindings(src: string): LintFinding[] {
         rule: "outline-none",
         message: "Focus outline removed with no visible replacement — kills keyboard focus visibility.",
         fix: "Never remove focus indication outright. Pair it with :focus-visible { outline: 2px solid var(--ring) } (or focus-visible:ring-2).",
-        doc: "accessibility",
+        doc: SOURCE_RULE_DOCS["outline-none"],
       });
     }
   }
@@ -587,6 +721,7 @@ export const LINT_NOT_VISIBLE: string[] = [
   "**How many defects a snippet has.** At most one finding per rule per line: `<img src=a><img src=b><img src=c>` on a single line reports one `img-no-alt`, and `.a { color: #fff; background: #000; }` reports one `hardcoded-color`. The same two images on two lines report two. The summary counts findings, not defects, and it undercounts a minified or densely written file.",
   "**Whether a bare `1fr` track actually overflows — and four narrower things `grid-track-no-min` reads as a whole line of raw text, not as individual tracks, live CSS, or a scoped file.** §6.6's automatic-minimum conditions depend on the grid item's own properties — its overflow, whether the track it spans has an `auto` min sizing function, whether it shares that axis with a flexible track — and the declaration does not carry any of them, so a finding here is a robustness note, not a proven overflow. The guard itself is whole-line, not per-track: `hasExplicitMinmaxFloor` fires true the moment *any* `minmax(...)` call on the line has a first argument that is not `auto`, whatever that argument's value or shape — `minmax(0, 1fr)`, `minmax(200px, 1fr)` and a nested `minmax(min(18rem, 100%), 1fr)` all count — so `grid-template-columns: minmax(0, 1fr) 1fr` is one line with one genuinely guarded track and one genuinely bare one, and reports neither. That is a known false negative, kept because parsing the track list into individual tracks is a full grammar this linter does not implement — narrower coverage over a parser, not a silent gap. The shorthand `grid-template` property is not read at all — only the longhand `grid-template-columns`/`grid-template-rows` are — so `grid-template: \"a b\" 1fr / 1fr 1fr` draws nothing. The `<img>` gate is snippet-wide, not grid-scoped: it is satisfied by any `<img>` anywhere in the text handed to `design_lint`, so a bare-`1fr` grid with no image of its own still fires when an unrelated `<img>` sits elsewhere in the same snippet, and — the reverse of the same gap — a finding says nothing about which track, if any, the image it cites actually occupies. And the guard has no notion of a comment or a string: `grid-template-columns: 1fr /* minmax(200px, 1fr) */;` and `grid-template-columns: 1fr; content: \"minmax(200px, 1fr)\";` are both read as if the commented-out or quoted `minmax(200px, 1fr)` were a real, live guard on the same declaration, so a genuinely bare `1fr` on either line is silenced by text that never reaches the browser at all — the same family as the commented-out-code blind spot named above, on this rule specifically.",
   "**What is overflowing.** `overflow-hidden-root` reads the declaration, not the layout, so it cannot say which element exceeds the viewport — only that the root was made a scroll container to hide it.",
+  "**A qualified selector `overflow-hidden-root` still targets, and two override shapes its own fallback guard cannot see.** The selector match accepts only `html`, `body` or `:root` as the selector's own trailing token, so a rule that still targets the root through a class or attribute — `body.no-scroll { overflow-x: hidden; }` — passes silently even though the declaration reaches the same element. Real selector matching needs actual parsing and risks new false positives on a text-based rule, which is a scope boundary rather than an oversight. Separately, the fallback-then-override guard (a later same-property `clip` in the same block cancels a `hidden`) only recognises the identical property being overridden: `overflow: hidden` fully neutralised by two later longhands together — `overflow-x: clip; overflow-y: clip;` — still fires, because neither longhand's property text matches the shorthand that set `hidden`. That is a known false positive, kept because modelling the shorthand/longhand interaction is a step past the property-text match this rule otherwise makes. The override guard also has no notion of a comment or a string, the same disclosed limitation `hasExplicitMinmaxFloor` already carries for `minmax(...)`: `body { overflow-x: hidden; /* overflow-x: clip; */ }` and `body { overflow-x: hidden; content: \"overflow-x: clip\"; }` both read the commented-out or quoted `clip` as a real, live override and wrongly silence a finding that should fire — a known false negative in the opposite direction from the other two.",
 ];
 
 export const LINT_CLOSING =
