@@ -221,7 +221,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
   const notVisible = LINT_NOT_VISIBLE.join("\n");
 
   it("has an entry for every demonstration below, and no empty list", () => {
-    expect(LINT_NOT_VISIBLE.length).toBe(17);
+    expect(LINT_NOT_VISIBLE.length).toBe(18);
     for (const entry of LINT_NOT_VISIBLE) expect(entry.startsWith("**")).toBe(true);
   });
 
@@ -1117,6 +1117,29 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
         expect(rules(`body { overflow: hidden; overflow-x: clip; }`)).toContain("overflow-hidden-root");
       });
 
+      // Round-2 review Critical: the mirror of the case above. A later BARE
+      // `overflow: clip` shorthand resets both axes regardless of which
+      // longhand set `hidden` — this is not a mismatched property, it is the
+      // one property that always wins over an earlier longhand, and failing
+      // to recognise it was a false positive (this rule crying wolf at code
+      // that is not, in fact, a scroll container).
+      it("DOES cancel when a later bare `overflow` shorthand overrides an earlier overflow-x longhand", () => {
+        expect(designLint(`body { overflow-x: hidden; overflow: clip; }`)).toEqual([]);
+      });
+
+      it("DOES cancel when a later bare `overflow` shorthand overrides an earlier overflow-y longhand", () => {
+        expect(designLint(`body { overflow-y: hidden; overflow: clip; }`)).toEqual([]);
+      });
+
+      // The two known-gap false positive above (two longhands neutralising a
+      // shorthand) is unaffected by the shorthand-mirror fix: this rule only
+      // reads a later *shorthand* as overriding an earlier longhand, never
+      // the reverse, so it stays a disclosed gap rather than becoming one
+      // more thing silently "fixed" by accident.
+      it("still does NOT cancel the reverse — two later longhands do not override an earlier bare shorthand", () => {
+        expect(rules(`body { overflow: hidden; overflow-x: clip; overflow-y: clip; }`)).toContain("overflow-hidden-root");
+      });
+
       // "Same block" is scoped to the balanced braces the selector opened —
       // an override in a sibling rule must not cancel this one.
       it("an override in a different rule (a different block) does not cancel this one", () => {
@@ -1150,6 +1173,29 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
 
       it("...nor when the nested block carries no override at all", () => {
         expect(rules(`body { .foo { color: red; } overflow-x: hidden; }`)).toContain("overflow-hidden-root");
+      });
+
+      // Round-2 review Critical: a real bug in the *position* lookup, not the
+      // override guard. An earlier version located its own match with
+      // `full.indexOf(l)`, which always resolves to the FIRST byte-identical
+      // line in the snippet. Two blocks that both declare `overflow-x:
+      // hidden;` with identical indentation — ordinary in real CSS — used to
+      // both resolve to the first block's position: the second block's
+      // selector and its own overrides were checked against the wrong block
+      // entirely. Concretely, this made a genuinely-overridden `hidden` in a
+      // LATER block still fire, because it was graded as if it were the
+      // FIRST block's un-overridden `hidden`. Fixed by passing each line's
+      // real start offset down from designLint's own iteration instead of
+      // searching for it by content.
+      it("a later block's overridden hidden is not confused with an earlier block's identical, un-overridden line", () => {
+        const found = designLint(
+          `body {\n  overflow-x: hidden;\n}\nhtml {\n  overflow-x: hidden;\n  overflow-x: clip;\n}`
+        );
+        // body's own hidden (line 2) is real and un-overridden: fires.
+        // html's hidden (line 5) is overridden by its own clip (line 6): must
+        // NOT fire — and must not be silently dropped either, it must resolve
+        // to the correct (overridden) verdict for html's own block.
+        expect(found.filter((f) => f.rule === "overflow-hidden-root").map((f) => f.line)).toEqual([2]);
       });
     });
 
@@ -1189,6 +1235,23 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     it("(false negative, disclosed) a quoted clip inside a string is read as real and wrongly silences the finding", () => {
       expect(designLint(`body { overflow-x: hidden; content: "overflow-x: clip"; }`)).toEqual([]);
       expect(notVisible).toMatch(/comment or a string/i);
+    });
+
+    // Round-2 review Critical, disclosed rather than fixed: a brace hiding in
+    // a string or comment BEFORE the matched declaration defeats
+    // enclosingOpenBrace's balance count itself, silencing the rule outright
+    // — distinct from the already-disclosed override-guard blindness above,
+    // which only reads text after the match and misreads an override rather
+    // than the selector lookup. Fixing this needs real string/comment
+    // awareness in the backward scan, the same scope boundary this file
+    // already declines elsewhere (`hasExplicitMinmaxFloor`, `braceEnd`).
+    it("(false negative, disclosed) a brace inside a string before the match silences the rule via the selector lookup", () => {
+      expect(designLint(`body { content: "}"; overflow-x: hidden; }`)).toEqual([]);
+    });
+
+    it("(false negative, disclosed) a brace inside a comment before the match silences the rule the same way", () => {
+      expect(designLint(`body { /* } */ overflow-x: hidden; }`)).toEqual([]);
+      expect(notVisible).toMatch(/hiding in a string or a comment/i);
     });
   });
 });
