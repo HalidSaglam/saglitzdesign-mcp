@@ -217,7 +217,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
   const notVisible = LINT_NOT_VISIBLE.join("\n");
 
   it("has an entry for every demonstration below, and no empty list", () => {
-    expect(LINT_NOT_VISIBLE.length).toBe(14);
+    expect(LINT_NOT_VISIBLE.length).toBe(15);
     for (const entry of LINT_NOT_VISIBLE) expect(entry.startsWith("**")).toBe(true);
   });
 
@@ -746,5 +746,46 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
     expect(designLint(`.a { color: #fff; background: #000; }`)).toHaveLength(1);
     expect(notVisible).toMatch(/How many defects a snippet has/i);
     expect(notVisible).toMatch(/findings, not defects/i);
+  });
+
+  describe("grid-track-no-min", () => {
+    it("fires on a bare 1fr track in a snippet that renders an image", () => {
+      expect(rules(`
+        <div class="g"><img src="a.png" alt="a"></div>
+        <style>.g { display: grid; grid-template-columns: 1fr 1fr; }</style>
+      `)).toContain("grid-track-no-min");
+    });
+
+    it("does not fire when the track already carries a minimum", () => {
+      expect(rules(`
+        <div class="g"><img src="a.png" alt="a"></div>
+        <style>.g { display: grid; grid-template-columns: minmax(0, 1fr) 1fr; }</style>
+      `)).not.toContain("grid-track-no-min");
+    });
+
+    it("does not fire on a grid with no image in the snippet", () => {
+      expect(rules(`.g { display: grid; grid-template-columns: 1fr 1fr; }`))
+        .not.toContain("grid-track-no-min");
+    });
+
+    it("does not fire on a fixed track", () => {
+      expect(rules(`
+        <img src="a.png" alt="a">
+        <style>.g { grid-template-columns: 200px 200px; }</style>
+      `)).not.toContain("grid-track-no-min");
+    });
+
+    // The brief's own second fixture is a known false negative, not a clean
+    // pass: `minmax(0, 1fr) 1fr` guards its first track and leaves its second
+    // bare, and the line-level `!/minmax\(\s*0/` clause reads the whole line
+    // as guarded. Kept anyway — narrowing over completeness — but the gap has
+    // to be named in the disclosure rather than shipped silently.
+    it("names the mixed-track gap in the disclosure", () => {
+      expect(notVisible).toMatch(/one guarded track and one bare one/i);
+      expect(rules(`
+        <div class="g"><img src="a.png" alt="a"></div>
+        <style>.g { display: grid; grid-template-columns: minmax(0, 1fr) 1fr; }</style>
+      `)).not.toContain("grid-track-no-min");
+    });
   });
 });
