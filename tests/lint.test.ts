@@ -1488,7 +1488,14 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
       // an inert reset would stop firing, and the exclusion read the value
       // immediately after the colon — so the quote CSS-in-JS puts there
       // defeated it and the exact defect came back in the other spelling.
-      // Every assertion below has its animating counterpart beside it.
+      // A second whole-branch review found the `animationName: "none"` row
+      // below passing for the wrong reason: the trigger did not yet read the
+      // camelCase longhand at all, so it never reached the exclusion this
+      // test is about — the assertion was true, but of a silence one rule
+      // earlier than the one under test, and `animationName: "pulse"`, a
+      // real animation, was just as silent. Closed by widening the trigger
+      // to read `animationName` alongside `animation`/`animation-name`; now
+      // every assertion below has its animating counterpart beside it.
       it("the inert reset is excluded in both spellings, quoted and not", () => {
         for (const inert of [
           `.a { animation: none; }`,
@@ -1501,6 +1508,7 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
           `.a { animation: slide 1s; }`,
           `<div style={{ animation: "slide 1s" }} />`,
           `<div style={{ animation: 'slide 1s' }} />`,
+          `<div style={{ animationName: "pulse" }} />`,
         ]) expect(rules(live), live).toContain("motion-no-reduced-cover");
         expect(notVisible).toMatch(/optionally behind one opening quote/);
       });
@@ -1770,6 +1778,48 @@ describe("what design_lint cannot see — one demonstration per disclosure entry
       it("(known miss, disclosed) does not fire on inset, which is not on the watched list", () => {
         expect(rules(`.a { transition: inset 200ms; }`)).not.toContain("animates-layout-property");
         expect(notVisible).toMatch(/`inset`, `gap`/);
+      });
+
+      // Whole-branch review, Important (perf): the keyframes alternative
+      // (`layoutDeclInKeyframes`) asks, per matching line, whether some
+      // enclosing prelude spells `@keyframes` — a question that walks
+      // `full` backward, brace by brace, to the start of the text. On a
+      // large, flat, keyframes-free stylesheet dense with the eight watched
+      // properties, every declaration-bearing line paid for that walk to
+      // conclude "no", which is quadratic: measured at 339 KB / 30,001
+      // lines / no `@keyframes` this took 3.4s before the fix below.
+      //
+      // A wall-clock assertion here would be flaky, so this pins the
+      // property directly instead: since the alternative can only ever
+      // return `true` when the substring `@keyframes` exists somewhere in
+      // the text, a document that never spells it should never need to walk
+      // backward through the text at all. `full` is wrapped in a `Proxy`
+      // around a boxed `String` that counts every numeric-index character
+      // read (`full[i]`, which is exactly what the backward brace walk
+      // does) without changing what any string method sees — `toString`/
+      // `valueOf`/`Symbol.toPrimitive` and every inherited method are
+      // rebound to the real boxed string so regex matching, `.slice`, and
+      // `.includes` all behave normally. A keyframes-free document of
+      // meaningful size should read zero characters this way; reverting the
+      // guard in `layoutDeclInKeyframes` reproduces millions of reads on
+      // the same input (verified by hand, not shipped as a test — a
+      // negative assertion on an already-reverted fix proves nothing about
+      // the shipped code).
+      it("a large @keyframes-free stylesheet triggers no backward brace scan", () => {
+        const decls = Array.from({ length: 500 }, (_, i) => `.a${i} {\n  width: ${i % 9}px;\n}`).join("\n");
+        let charAccesses = 0;
+        const boxed = new String(decls);
+        const proxied = new Proxy(boxed, {
+          get(target, prop, receiver) {
+            if (typeof prop === "string" && /^\d+$/.test(prop)) charAccesses++;
+            if (prop === "toString" || prop === "valueOf") return () => target.valueOf();
+            if (prop === Symbol.toPrimitive) return () => target.valueOf();
+            const v = (target as unknown as Record<string | symbol, unknown>)[prop as never];
+            return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+          },
+        });
+        expect(designLint(proxied as unknown as string)).toEqual([]);
+        expect(charAccesses).toBe(0);
       });
     });
 

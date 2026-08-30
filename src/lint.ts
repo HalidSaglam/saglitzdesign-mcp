@@ -443,8 +443,44 @@ function supportsClipUpgrade(text: string, from: number, override: RegExp): bool
  * Still a word match, not a parse: it inherits `enclosingPreludes`'s
  * comment/string blind spot, and a `width:` inside a *string* in a keyframe
  * (`content: "width: 0"`) reads as a declaration.
+ *
+ * Whole-branch review, Important (perf): this can only ever return `true`
+ * when some enclosing prelude contains the literal substring `@keyframes` —
+ * that is the entire question it answers — so a document that never spells
+ * `@keyframes` anywhere cannot satisfy it regardless of how many layout
+ * declarations it has. Before the guard below, every declaration-bearing
+ * line still paid for `enclosingPreludes`'s balance-tracked backward walk:
+ * `enclosingOpenBrace` scans back to the *start of the text* to confirm
+ * there is no further enclosing block once the immediate one's prelude has
+ * been read and rejected, which is O(that declaration's own offset) even
+ * when the file has no `@keyframes` at all — and `designLint` runs this rule
+ * over every line, so a flat, keyframes-free stylesheet dense with `width`/
+ * `height`/`top`/`left`/`right`/`bottom`/`margin`/`padding` declarations (a
+ * compiled CSS bundle, say) paid quadratic time for a question whose answer
+ * was "no" from the first character.
+ *
+ * The obvious guard — `full.includes("@keyframes")` inline here — trades one
+ * quadratic cost for a smaller one of the same shape: `designLint` calls this
+ * once per declaration-bearing line, `full` is the same string every time
+ * within one call, and `.includes` still walks the whole document looking
+ * for a substring that is not there, so a keyframes-free file with N such
+ * lines would still do N full-document scans. `hasKeyframesCached` below
+ * answers the question once per document instead of once per line: it keys
+ * on `full` by reference, which every call in a single `designLint` pass
+ * shares, so the first call pays the one real scan and every later call in
+ * the same pass is an `===` check against the cached string.
  */
+let keyframesCacheText: string | null = null;
+let keyframesCacheHas = false;
+function hasKeyframesCached(full: string): boolean {
+  if (full !== keyframesCacheText) {
+    keyframesCacheText = full;
+    keyframesCacheHas = full.includes("@keyframes");
+  }
+  return keyframesCacheHas;
+}
 function layoutDeclInKeyframes(line: string, full: string, offset: number): boolean {
+  if (!hasKeyframesCached(full)) return false;
   const re = /\b(?<!outline-|--[\w-]*)(?:width|height|top|left|right|bottom|margin|padding)\s*:/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(line)) !== null) {
@@ -516,9 +552,13 @@ export const LINE_RULES: LineRule[] = [
     // clip anything, and it is word-for-word what this rule's own `fix` tells
     // the caller to write instead ("Prefer min-height + padding so content can
     // grow"). The rule flagged its own advice, which was disclosed for a
-    // while and is fixed here. `max-height` can clip, but not for the reason
-    // in the message — it is a ceiling on a box, not a fixed height, and the
-    // fix it would be given is the one it already follows.
+    // while and is fixed here. `max-height` shares the same lookbehind for a
+    // different reason, and it is not the same shape as `min-height`: a
+    // ceiling genuinely can clip wrapped content the way this rule's message
+    // warns about, so its silence is a real, adjudicated gap rather than the
+    // rule flagging advice it already follows — kept because the property
+    // match here does not distinguish a floor from a ceiling, disclosed in
+    // LINT_NOT_VISIBLE rather than chased.
     //
     // `line-height: 40px` was already suppressed by the `line` half of the
     // suppressor below; it is now excluded by the property match too, so the
@@ -798,12 +838,28 @@ export const LINE_RULES: LineRule[] = [
     // `animation-name` anywhere, name no real animation and are correctly
     // left unread.
     //
-    // Case: both alternatives are case-sensitive, matching every line rule
+    // Whole-branch review: the longhand fix above only read the hyphenated
+    // CSS spelling, `animation-name`. A JS/JSX style object writes the same
+    // longhand in camelCase — `style={{ animationName: "pulse" }}` — which
+    // contains neither a hyphen nor `animation` immediately followed by a
+    // colon, so it read as no match at all: not excluded as inert, simply
+    // never seen, a real animation included. A test asserting the inert
+    // spelling (`animationName: "none"`) was silent passed for that reason
+    // rather than for the exclusion it claimed to demonstrate — its
+    // animating counterpart, `animationName: "pulse"`, was just as silent.
+    // Closed by the same technique as the shorthand's own camelCase problem
+    // would need — an alternation, not a parse — by reading `Name` as well
+    // as `-name`. The `none`-value exclusion applies to this spelling
+    // exactly as it does to the other two: `style={{ animationName: "none"
+    // }}` is still read as no animation.
+    //
+    // Case: all three spellings are case-sensitive, matching every line rule
     // in this file except positive-tabindex — `ANIMATION:`, `@KEYFRAMES` and
     // `PREFERS-REDUCED-MOTION` are each silent where the lowercase form
-    // fires or covers.
+    // fires or covers, and `animationname` (all lower) is silent too: `Name`
+    // is matched literally, camelCase and all.
     test: (l, full) =>
-      /(^|[\s;{])animation(-name)?\s*:(?!\s*["']?none\b)|@keyframes\s/.test(l) &&
+      /(^|[\s;{])animation(?:-name|Name)?\s*:(?!\s*["']?none\b)|@keyframes\s/.test(l) &&
       !/prefers-reduced-motion/.test(full),
     message:
       "An animation with nothing honouring `prefers-reduced-motion` in the same source.",
