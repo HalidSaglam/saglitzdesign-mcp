@@ -4,6 +4,80 @@ All notable changes to SaglitzDesign MCP are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.28.0] — 2026-08-31
+
+v0.27.0's tag is pushed (`refs/tags/v0.27.0` exists on `origin`) but the
+release it triggered failed: build, `preflight-release`, the full suite and
+the packed-tarball smoke test all passed, and the "Publish to npm" step then
+hit `npm error 404 ... could not be found or you do not have permission to
+access it` on the registry `PUT` (run `33386023873`). That is the documented
+failure mode of the one-time setup this package has never had — npm's OIDC
+Trusted Publisher, configured once at npmjs.com → **saglitzdesign-mcp** →
+Settings → Trusted Publisher (see `RELEASING.md`) — not a defect in that
+release's own gates, all of which ran clean first. `npm view
+saglitzdesign-mcp version` still answers `0.19.1`. So this is now the
+**tenth** entry in this file describing work nobody outside this repository
+has received — v0.20.0 through v0.26.0, v0.18.0 before them, v0.27.0, and this
+one — so publishing v0.28.0 is not a small increment shipped on top of an
+already-shipped v0.27.0. It ships everything described in all ten entries at
+once, to a registry that currently has none of it.
+
+This release fixes three word-boundary defects in `audit_ux_copy`'s
+vocabulary matchers and gives the tool a disclosure list and structured
+findings, matching the seven auditors that already had them.
+
+### Fixed
+
+- **The three vocabulary matchers in `audit_ux_copy` fired on substrings of
+  ordinary English, not the words on their own lists.** `FILLER` used
+  `lower.includes(f)` with no boundary at all: `just` fired on "Adjust the
+  layout" (via *adjust*), and `very` fired on "Every delivery" (via *every*).
+  `WEAK_CTA` used `startsWith`, so `go` fired on "Government portal".
+  `JARGON` used `\b`, which treats a hyphen as a boundary, so `cutting-edge`
+  fired inside `non-cutting-edge` — a phrase meaning the opposite of jargon.
+  One helper now serves all three, over a character class derived from what
+  these entries are (prose words and hyphenated marketing jargon: letters,
+  digits, and the internal hyphen `cutting-edge` needs), not from whichever
+  character a failing fixture showed next. `WEAK_CTA` **keeps `startsWith`
+  deliberately** — "Submit form" is a weak CTA and still has to fire — and
+  gains the same trailing boundary the other two lists gained, plus the
+  ability to begin after a leading quote, bracket, or emoji: `"Go"`, `(Go)`,
+  and `👉 Go` now all fire; "Government portal" still does not.
+
+  Checked directly rather than trusted from fixtures alone: comparing the old
+  and new matchers over every markdown file in this repository (207 files, as
+  of this change) found the new matcher's hits are a strict subset of the
+  old matcher's hits in every one of them, with zero exceptions on that
+  corpus — on the real prose this repository actually contains, the change
+  only ever removes a false positive, never adds one.
+
+### Added
+
+- **`audit_ux_copy` now returns `structuredContent`** — one `LintFinding` per
+  triggered check, in the shape `design_lint` and the other structured
+  auditors already use — so an agent can chain its findings instead of
+  re-parsing markdown. It also now renders a "Not visible to this audit"
+  disclosure, making it the **eighth** tool in this server to publish one,
+  joining `design_lint` and the six `audit_*` tools that already had it. The
+  disclosure names what class of thing the tool cannot see — among them, the
+  three word lists' closed, English-only vocabulary; the shape gate
+  (`isLikelyCta`) that skips any candidate CTA over five words or split
+  across more than one sentence; a syllable count produced by a heuristic
+  with no dictionary behind it; and a sentence splitter with no abbreviation
+  handling, so a title like "Mr." inflates the sentence count it feeds every
+  readability number the tool reports. It is not reproduced entry-by-entry
+  here — a second copy in this file would drift from the tool's own list the
+  first time either one changed, so read the tool's output (or
+  `skills/ship-quality-gate/SKILL.md`'s table) for the full ten.
+
+  One number in that disclosure is deliberately not exact: how often the
+  three word lists fire across this repository's own 105-file documentation
+  corpus is stated as "well over a hundred hits across the large majority of
+  those files," not a point count — because that corpus includes the
+  documents describing the tool's own reach, this changelog entry now among
+  them, so quoting a flagged phrase to document the gap moves the count each
+  time it's written about.
+
 ## [0.27.0] — 2026-08-30
 
 Eight of the entries below describe releases that were never published:
