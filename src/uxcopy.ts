@@ -22,6 +22,29 @@ const FILLER = ["just", "simply", "please note", "in order to", "very", "really"
 const WEAK_CTA = ["submit", "click here", "learn more", "read more", "here", "continue", "ok", "go", "enter"];
 const STRONG_CTA_HINT = "Lead with a specific action verb tied to the outcome: 'Start free trial', 'Create account', 'Get the report', 'Send message'.";
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Characters that extend a word list entry — a hyphen included, since entries
+// like "cutting-edge" carry one internally. `\b` is wrong here: a hyphen is a
+// non-word character, so it puts a boundary *inside* "non-cutting-edge" right
+// before "cutting-edge" and the phrase reads as jargon when it's the opposite
+// of jargon. Anything NOT in this class — space, punctuation, an underscore
+// (markdown italics), string start/end — is a legitimate edge for an entry.
+const ENTRY_EDGE = "[a-z0-9-]";
+
+// One matcher for all three lists: an entry counts only when neither side of
+// it continues into another ENTRY_EDGE character. `anchorStart` additionally
+// requires the match to begin at position 0, which is what WEAK_CTA's
+// startsWith behaviour becomes once it also needs a boundary *after* the
+// match — "go" still opens "Go now", but no longer opens "Government portal".
+function entryPattern(entry: string, anchorStart = false): RegExp {
+  const esc = escapeRegExp(entry);
+  const lead = anchorStart ? "^" : `(?<!${ENTRY_EDGE})`;
+  return new RegExp(`${lead}${esc}(?!${ENTRY_EDGE})`, "i");
+}
+
 export interface CopyMetrics {
   words: number;
   sentences: number;
@@ -51,13 +74,14 @@ export function analyzeCopy(text: string): CopyMetrics {
 
   const lower = text.toLowerCase();
   const passiveHits = (text.match(/\b(is|are|was|were|be|been|being)\s+\w+(ed|en)\b(\s+by\b)?/gi) ?? []).slice(0, 8);
-  const jargonHits = JARGON.filter((j) => new RegExp(`\\b${j}\\b`, "i").test(lower));
-  const fillerHits = FILLER.filter((f) => lower.includes(f));
+  const jargonHits = JARGON.filter((j) => entryPattern(j).test(lower));
+  const fillerHits = FILLER.filter((f) => entryPattern(f).test(lower));
   const youCount = (lower.match(/\b(you|your|you're|yours)\b/g) ?? []).length;
   const weCount = (lower.match(/\b(we|our|us|we're)\b/g) ?? []).length;
 
   const isLikelyCta = wordCount <= 5 && sentCount === 1;
-  const weakCta = isLikelyCta ? WEAK_CTA.find((c) => lower.trim() === c || lower.trim().startsWith(c)) : undefined;
+  const trimmedLower = lower.trim();
+  const weakCta = isLikelyCta ? WEAK_CTA.find((c) => entryPattern(c, true).test(trimmedLower)) : undefined;
 
   return {
     words: wordCount, sentences: sentCount, avgSentenceLen: Math.round(asl * 10) / 10,
