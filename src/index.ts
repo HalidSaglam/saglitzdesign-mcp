@@ -727,11 +727,18 @@ tool(
 // ── Tool 22: audit UX copy ───────────────────────────────────────────────────
 tool(
   "audit_ux_copy",
-  "Audit UI / marketing copy objectively: readability (Flesch reading ease + grade level), average sentence length, passive voice, jargon/hype words, filler, user-focus ('you' vs 'we'), and weak CTAs. Returns metrics plus specific flagged phrases and fixes. The machine-checkable slice of UX writing — pair with get_design_doc('ux-writing') for voice/tone judgment.",
+  "Audit UI / marketing copy objectively: readability (Flesch reading ease + grade level), average sentence length, passive voice, jargon/hype words, filler, user-focus ('you' vs 'we'), and weak CTAs. Returns metrics plus specific flagged phrases and fixes. The machine-checkable slice of UX writing — pair with get_design_doc('ux-writing') for voice/tone judgment. "
+    + "It reads source and does not measure anything: no usability session is run, no A/B result is read, and no finding here is or can be a statement about whether the copy actually works for a reader. "
+    + "It also has no notion of register: it has no way to tell short UI copy from long-form prose, so a paragraph of accurate technical documentation can draw more jargon/filler hits than a paragraph of real hype. "
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, line), a severity summary, and a machine-readable `notVisible` list of what it could not check.",
   {
     text: z.string().describe("The copy to audit (a headline, paragraph, button label, error message, or full page copy)"),
   },
-  async ({ text: copy }) => text(uxCopyReport(copy)),
+  async ({ text: copy }) => {
+    const { text: body, structured } = uxCopyReport(copy);
+    return { ...text(body), structuredContent: structured };
+  },
+  AUDIT_OUTPUT_SCHEMA,
 );
 
 // ── Tool 23: create design system (flagship orchestrator) ────────────────────
