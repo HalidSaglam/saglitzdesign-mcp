@@ -28,4 +28,13 @@ describe("word lists match whole words, not substrings", () => {
     expect(a("Go").weakCta).toBe("go");
     expect(a("Submit form").weakCta).toBe("submit");
   });
+
+  it("reads a weak CTA through leading wrapper characters, not through leading words", () => {
+    expect(a("  Go").weakCta).toBe("go");
+    expect(a("Go!").weakCta).toBe("go");
+    expect(a('"Go"').weakCta).toBe("go");
+    expect(a("(Go)").weakCta).toBe("go");
+    expect(a("\u{1F449} Go").weakCta).toBe("go");
+    expect(a("Please submit the form").weakCta).toBeUndefined();
+  });
 });

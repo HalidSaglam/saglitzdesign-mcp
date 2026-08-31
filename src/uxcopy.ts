@@ -34,14 +34,25 @@ function escapeRegExp(s: string): string {
 // (markdown italics), string start/end — is a legitimate edge for an entry.
 const ENTRY_EDGE = "[a-z0-9-]";
 
+// A leading run of characters that are themselves never part of an entry —
+// punctuation, a quote mark, an emoji, whitespace. Skippable before an
+// anchored match because none of it is content: "👉 Go" and "\"Go\"" still
+// begin with "Go" once the wrapper around it is set aside. It cannot eat an
+// ENTRY_EDGE character, so it can never swallow real words on the way to a
+// later one — "Please submit the form" still fails to start with "submit".
+const LEADING_NOISE = `[^${ENTRY_EDGE.slice(1, -1)}]*`;
+
 // One matcher for all three lists: an entry counts only when neither side of
 // it continues into another ENTRY_EDGE character. `anchorStart` additionally
-// requires the match to begin at position 0, which is what WEAK_CTA's
-// startsWith behaviour becomes once it also needs a boundary *after* the
-// match — "go" still opens "Go now", but no longer opens "Government portal".
+// requires the match to begin at position 0 (after any leading noise is set
+// aside), which is what WEAK_CTA's startsWith behaviour becomes once it also
+// needs a boundary *after* the match — "go" still opens "Go now", but no
+// longer opens "Government portal", and now "👉 Go" and a quoted "Go" still
+// count as beginning with "go" while "Learn more about our submit process"
+// still does not begin with "submit".
 function entryPattern(entry: string, anchorStart = false): RegExp {
   const esc = escapeRegExp(entry);
-  const lead = anchorStart ? "^" : `(?<!${ENTRY_EDGE})`;
+  const lead = anchorStart ? `^${LEADING_NOISE}` : `(?<!${ENTRY_EDGE})`;
   return new RegExp(`${lead}${esc}(?!${ENTRY_EDGE})`, "i");
 }
 
