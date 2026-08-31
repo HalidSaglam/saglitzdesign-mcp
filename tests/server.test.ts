@@ -102,6 +102,9 @@ const EXTRA_SCHEMA_PROPS: Record<string, string[]> = {
   audit_generic_design: ["score", "scan"],
   audit_project: ["scan"],
   audit_apple_ui: ["scan"],
+  // `audit_ux_copy` returns the metrics table its markdown prints — every call
+  // computes it, so it is required rather than optional below.
+  audit_ux_copy: ["metrics"],
 };
 
 /**
@@ -121,6 +124,7 @@ const EXTRA_REQUIRED_PROPS: Record<string, string[]> = {
   // successful call scanned a directory and there is no shape in which the
   // block is legitimately absent.
   audit_apple_ui: ["scan"],
+  audit_ux_copy: ["metrics"],
 };
 
 /**

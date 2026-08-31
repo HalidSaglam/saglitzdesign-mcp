@@ -637,10 +637,16 @@ describe("skills distribution", () => {
    * four accept a snippet" — are not read by this guard at all, only the row
    * names are. A ninth tool joining (or one leaving) would flip `rows.length`
    * without touching a single word of that prose, and nothing here would fail.
-   * Hand-verified correct as of the round that added `audit_ux_copy` (0.27.0):
-   * all four numerals above are accurate, including "the other four", which
-   * stayed true only because `audit_ux_copy` joined `design_lint` in the
-   * snippet-only camp rather than the directory-or-snippet one. Not closed
+   * Hand-verified correct as of the round that added `audit_ux_copy` — which
+   * is **0.28.0**, not 0.27.0 as this comment said until the whole-branch
+   * review caught it: the row landed in `b80fe82`, `package.json` reads
+   * 0.28.0, and 0.27.0's changelog entry does not mention the tool at all. A
+   * stale numeral inside the comment about stale numerals, for the third time
+   * in this file. All four numerals above are accurate, including "the other
+   * four", which stayed true only because `audit_ux_copy` joined `design_lint`
+   * in the snippet-only camp rather than the directory-or-snippet one — and
+   * which now names those four auditors in the prose, so a reader no longer
+   * has to subtract two from eight and get four. Not closed
    * here on purpose — `plugin.test.ts`'s "states no number in the plugin
    * description" test already solved the general version of this problem (a
    * regex matching digit-or-word numerals against a live count, for exactly
