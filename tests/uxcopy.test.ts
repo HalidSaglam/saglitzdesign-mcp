@@ -70,6 +70,15 @@ describe("the boundary's disclosed flip side", () => {
     expect(a("Please click here to continue with your order").weakCta).toBeUndefined();
     expect(a("Go. Now.").weakCta).toBeUndefined();
   });
+
+  // A distinct error source from the syllable heuristic above, feeding the
+  // same three headline numbers (avgSentenceLen, Flesch reading ease, grade
+  // level) by a different route: `sentences()` has no notion of an
+  // abbreviation, so a period that does not end a sentence is still read as
+  // one.
+  it("inflates the sentence count on an abbreviation's period", () => {
+    expect(a("Ask Mr. Smith for help now.").sentences).toBe(2); // actually one
+  });
 });
 
 describe("audit_ux_copy structured output", () => {
