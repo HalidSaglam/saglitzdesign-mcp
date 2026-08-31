@@ -602,7 +602,7 @@ describe("skills distribution", () => {
    * them, held equal as sets.
    *
    * The left side comes off the running server: a tool publishes a disclosure
-   * list when its `outputSchema` declares `notVisible`. Seven do. The right side
+   * list when its `outputSchema` declares `notVisible`. Eight do. The right side
    * is the first column of `ship-quality-gate`'s table, which is the one place
    * in `skills/` that enumerates them. Neither side is written out here.
    *
@@ -621,7 +621,7 @@ describe("skills distribution", () => {
    * which is how these three were found and what `LINT_NOT_VISIBLE`'s own
    * header prescribes.
    *
-   * So what it does catch is narrow, and worth having for it: an eighth auditor
+   * So what it does catch is narrow, and worth having for it: a ninth auditor
    * shipping with no row, a row for a tool that stopped publishing a list, and a
    * tool renamed on one side only.
    *
@@ -630,6 +630,31 @@ describe("skills distribution", () => {
    * go green the moment a second skill grew a tool table, and this equality
    * would then be asserting something it does not mean. If this skill is renamed
    * the read below throws, which is the loud direction.
+   *
+   * ANOTHER THING THIS CANNOT CATCH, left open rather than closed here: the
+   * prose numerals around the table — "## The eight", "eight auditors" in the
+   * opening paragraph, "Six of the eight read a real repository", "the other
+   * four accept a snippet" — are not read by this guard at all, only the row
+   * names are. A ninth tool joining (or one leaving) would flip `rows.length`
+   * without touching a single word of that prose, and nothing here would fail.
+   * Hand-verified correct as of the round that added `audit_ux_copy` — which
+   * is **0.28.0**, not 0.27.0 as this comment said until the whole-branch
+   * review caught it: the row landed in `b80fe82`, `package.json` reads
+   * 0.28.0, and 0.27.0's changelog entry does not mention the tool at all. A
+   * stale numeral inside the comment about stale numerals, for the third time
+   * in this file. All four numerals above are accurate, including "the other
+   * four", which stayed true only because `audit_ux_copy` joined `design_lint`
+   * in the snippet-only camp rather than the directory-or-snippet one — and
+   * which now names those four auditors in the prose, so a reader no longer
+   * has to subtract two from eight and get four. Not closed
+   * here on purpose — `plugin.test.ts`'s "states no number in the plugin
+   * description" test already solved the general version of this problem (a
+   * regex matching digit-or-word numerals against a live count, for exactly
+   * this description), and lifting that same approach onto a full skill
+   * file's free-form prose — several numeral shapes, several nouns, numerals
+   * that are not counts of anything ("eight configuration and Swift rules" a
+   * few lines down, unrelated to this count) — is a wider job than fixing one
+   * stale word here. Left for whoever next touches this guard or this skill.
    */
   it("keeps the disclosure-tool catalogue in step with the tools that publish one", () => {
     const table = read("ship-quality-gate");

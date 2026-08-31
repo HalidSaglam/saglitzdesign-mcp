@@ -4,6 +4,166 @@ All notable changes to SaglitzDesign MCP are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.28.0] — 2026-08-31
+
+v0.27.0's tag is pushed (`refs/tags/v0.27.0` exists on `origin`) but the
+release it triggered failed: build, `preflight-release`, the full suite and
+the packed-tarball smoke test all passed, and the "Publish to npm" step then
+hit `npm error 404 ... could not be found or you do not have permission to
+access it` on the registry `PUT` (run `33386023873`). That is the documented
+failure mode of the one-time setup this package has never had — npm's OIDC
+Trusted Publisher, configured once at npmjs.com → **saglitzdesign-mcp** →
+Settings → Trusted Publisher (see `RELEASING.md`) — not a defect in that
+release's own gates, all of which ran clean first. `npm view
+saglitzdesign-mcp version` still answers `0.19.1`. So this is now the
+**tenth** entry in this file describing work nobody outside this repository
+has received — v0.20.0 through v0.26.0, v0.18.0 before them, v0.27.0, and this
+one — so publishing v0.28.0 is not a small increment shipped on top of an
+already-shipped v0.27.0. It ships everything described in all ten entries at
+once, to a registry that currently has none of it.
+
+This release fixes four word-boundary defects in `audit_ux_copy`'s matchers
+— three in its vocabulary lists, and one shared by every matcher in the file,
+which read any non-ASCII letter as a word edge — and gives the tool a
+disclosure list, structured findings and a structured metrics block, matching
+the seven auditors that already had the first two.
+
+### Fixed
+
+- **The three vocabulary matchers in `audit_ux_copy` fired on substrings of
+  ordinary English, not the words on their own lists.** `FILLER` used
+  `lower.includes(f)` with no boundary at all: `just` fired on "Adjust the
+  layout" (via *adjust*), and `very` fired on "Every delivery" (via *every*).
+  `WEAK_CTA` used `startsWith`, so `go` fired on "Government portal".
+  `JARGON` used `\b`, which treats a hyphen as a boundary, so `cutting-edge`
+  fired inside `non-cutting-edge` — a phrase meaning the opposite of jargon.
+  One helper now serves all three, over a character class derived from what
+  these entries are (prose words and hyphenated marketing jargon: letters,
+  digits, and the internal hyphen `cutting-edge` needs), not from whichever
+  character a failing fixture showed next. `WEAK_CTA` **keeps `startsWith`
+  deliberately** — "Submit form" is a weak CTA and still has to fire — and
+  gains the same trailing boundary the other two lists gained, plus the
+  ability to begin after a leading quote, bracket, or emoji: `"Go"`, `(Go)`,
+  and `👉 Go` now all fire; "Government portal" still does not.
+
+  Checked directly rather than trusted from fixtures alone — and the result is
+  not the same for all three lists, so it is stated per list rather than as one
+  sentence about "the matcher". Over the markdown this repository tracks
+  (`git ls-files '*.md'`, 151 files as of this change) the new **jargon and
+  filler** matchers gained a hit in zero files and lost one in 128. Most of
+  what they lost is the defect above: `very` inside *every*, *everything*,
+  *everywhere*, *recovery*, *delivery* and *discovery* accounts for 124 of the
+  removed hits, and `just` inside *adjust*, *justify* and *justification* for
+  17. Not all of it, though, and "every removed hit was a false positive" would
+  be a second claim resting on nobody having read them: `leverage` inside
+  *highest-leverage* (9) and `obviously` inside *obviously-secret* (1) are
+  hyphenated compounds where the listed word really is present, and the new
+  boundary declines them deliberately — one rule cannot treat the hyphen in
+  *non-cutting-edge* as part of the word and the hyphen in *highest-leverage*
+  as a break.
+
+  **`WEAK_CTA` moved the other way, on purpose.** Against the pre-change
+  matcher, 12 of 26 short-copy inputs differ: `"Go"`, `(Go)`, `👉 Go`, `_Go_`,
+  `“Go”`, `›Go`, `#Go`, `→ Continue`, `**Submit**` and `[Continue]` all fire
+  now and none of them did before, while `Government portal` and `Okay`
+  stopped firing. Those ten are new matches, so no claim of the form "this
+  change only ever removes a match" is true of the tool as a whole — only of
+  the two lists named above, on the corpus named above. That corpus cannot
+  speak to `WEAK_CTA` in either direction, which is worth stating because it
+  is the trap: `isLikelyCta` is `wordCount <= 5 && sentCount === 1`, and
+  **zero** of those 151 markdown files satisfy it, so a per-file old-vs-new
+  comparison provably never evaluates `WEAK_CTA` once and would report "no
+  violations" whatever that list's change had done.
+
+- **A non-ASCII letter was read as a word boundary, so an English entry could
+  match inside a word in another script.** `[a-z0-9-]`, `\w` and `\b` are all
+  ASCII-only, and an ASCII-only boundary does not merely fail to read another
+  script — it silently reclassifies every letter of that script as a word
+  *edge*. Turkish `Çok yakında` reported the weak CTA `ok`: `Ç` is not in
+  `[a-z0-9-]`, so the anchor skipped it as leading noise and `ok` matched
+  inside the word. `robust` matched inside `設定robust設定` and `just` inside
+  `простоjustдалее` for the mirror reason, and `\b`'s ASCII definition made the
+  "we"/"our" counter read the end of German `Löwe` as first-person voice. All
+  four matchers in `src/uxcopy.ts` now take their notion of "inside a word"
+  from one `\p{L}\p{N}` class instead of each carrying its own, so what is
+  fixed is the class rather than the letter that exposed it. `\p{L}\p{N}`
+  alone was still one class short of the same defect — a combining mark or a
+  zero-width joiner is not a letter or digit either, so it was still read as
+  an edge instead of as part of the letter it modifies (`設定‍robust‍設定`
+  with a zero-width joiner still fired, an NFD-normalized `Löwe` still counted
+  as ending in "we", and Hebrew niqqud — which has no precomposed form to
+  normalize away — still read as a boundary). `\p{M}` and `\p{Cf}` close both.
+
+  ASCII copy is close to unaffected, with a self-reference this sentence
+  cannot avoid being part of: the only behaviour change on plain ASCII text is
+  that a TypeScript identifier's underscore now separates two words that read
+  as themselves once split (`en_US`, `WE_RE`) — the same underscore-is-an-edge
+  rule the word lists already applied to `_robust_`, now applied by the
+  you/we counter too. This file is one of the inputs that changes, because it
+  quotes `WE_RE` above and is itself part of the markdown corpus that rule
+  reads. No fixed count of affected files is given for that reason: a
+  sentence describing this change is, by describing it, one of the things the
+  change affects, so a number attached here would be stale on arrival — the
+  same self-reference the corpus hit count in `audit_ux_copy`'s own
+  disclosure list already had to be rewritten around.
+
+- **`audit_ux_copy` called copy "clear" over a metrics table saying it was
+  not, and pointed a vocabulary finding at the wrong line.** Reading grade
+  level is the one row that table grades against a target while no rule fires
+  on it, so a grade of 8.4 could print `≤ 8 ⚠️` directly above "✅ No copy
+  issues flagged — clear, active, user-focused."; the all-clear now names the
+  off-target metric instead of contradicting it. And a jargon or filler
+  finding's `line` was `hits[0]`'s position — first in *word-list* order, not
+  in the text — so "This design is innovative.\nWe built a robust system."
+  pointed at line 2 while the first flagged word sits on line 1. It is now the
+  earliest hit in the text, as its own doc comment always claimed.
+
+### Added
+
+- **`audit_ux_copy` now returns `structuredContent`** — one `LintFinding` per
+  triggered check, in the shape `design_lint` and the other structured
+  auditors already use — so an agent can chain its findings instead of
+  re-parsing markdown. It also now renders a "Not visible to this audit"
+  disclosure, making it the **eighth** tool in this server to publish one,
+  joining `design_lint` and the six `audit_*` tools that already had it. The
+  disclosure names what class of thing the tool cannot see — among them, the
+  three word lists' closed, English-only vocabulary — which is not the same
+  as silence on other languages, since `Das System ist robust.` reports
+  `robust`; the shape gate (`isLikelyCta`) that skips any candidate CTA over
+  five words or split across more than one sentence, and grades every other
+  five-word sentence as a CTA whether or not it is one, so
+  `Enter a valid email address.` reports the weak CTA `enter`; a syllable
+  count produced by a heuristic with no dictionary behind it; a sentence
+  splitter with no abbreviation handling, so a title like "Mr." inflates the
+  sentence count it feeds every readability number the tool reports; a passive
+  regex that misses irregular participles and fires on predicate adjectives,
+  so `This field is required.` is reported as passive voice; a `passiveHits`
+  list capped at 8 whose length both registers print as a total; and — the
+  one that matters most for a reader acting on a clean result — an ASCII-only
+  tokeniser, which returns *zero* words for a script written without ASCII
+  letters and reports that as one word, a Flesch score of 206 and four green
+  ticks. Two Japanese sentences come back as a confident pass, not as
+  silence. The list is not reproduced entry-by-entry here — a second copy in
+  this file would drift from the tool's own the first time either changed, so
+  read the tool's own output for all of it. (`skills/ship-quality-gate/
+  SKILL.md`'s row summarises a few of the entries and says itself that it is
+  not the list.)
+
+  `structuredContent` also carries the metrics table itself — words,
+  sentences, average sentence length, Flesch reading ease, grade level and the
+  you/we counts — the way `audit_generic_design` carries its `score`. Without
+  it an agent reading only the structured half got findings and no numbers,
+  and reading grade level, which is graded in the table but raises no finding,
+  had no machine-readable form at all.
+
+  One number in that disclosure is deliberately not exact: how often the
+  three word lists fire across this repository's own 105-file documentation
+  corpus is stated as "well over a hundred hits across the large majority of
+  those files," not a point count — because that corpus includes the
+  documents describing the tool's own reach, this changelog entry now among
+  them, so quoting a flagged phrase to document the gap moves the count each
+  time it's written about.
+
 ## [0.27.0] — 2026-08-30
 
 Eight of the entries below describe releases that were never published:

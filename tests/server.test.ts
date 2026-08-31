@@ -84,7 +84,7 @@ const SMOKE: Record<string, Record<string, unknown>> = {
 /** Every tool that declares an outputSchema. */
 const STRUCTURED_TOOLS = [
   "audit_seo_geo", "audit_performance", "design_lint", "audit_security", "audit_generic_design", "audit_project",
-  "audit_apple_ui",
+  "audit_apple_ui", "audit_ux_copy",
 ];
 
 /**
@@ -102,6 +102,9 @@ const EXTRA_SCHEMA_PROPS: Record<string, string[]> = {
   audit_generic_design: ["score", "scan"],
   audit_project: ["scan"],
   audit_apple_ui: ["scan"],
+  // `audit_ux_copy` returns the metrics table its markdown prints — every call
+  // computes it, so it is required rather than optional below.
+  audit_ux_copy: ["metrics"],
 };
 
 /**
@@ -121,6 +124,7 @@ const EXTRA_REQUIRED_PROPS: Record<string, string[]> = {
   // successful call scanned a directory and there is no shape in which the
   // block is legitimately absent.
   audit_apple_ui: ["scan"],
+  audit_ux_copy: ["metrics"],
 };
 
 /**
@@ -801,8 +805,8 @@ describe("audit_apple_ui is directory-only and says so", () => {
 });
 
 // The cross-cutting gate: every task above added its own coverage as it wired
-// up structured output for one more tool, but nothing yet asserts the six as
-// a set — that this exact list, no more and no fewer, advertises a schema,
+// up structured output for one more tool, but nothing yet asserts the eight
+// as a set — that this exact list, no more and no fewer, advertises a schema,
 // and that the two invariants (structuredContent present, the two registers
 // in agreement) hold across all of them read together rather than tool by
 // tool. This is the C2-style check: two tool descriptions once advertised a
