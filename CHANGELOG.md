@@ -50,7 +50,7 @@ the seven auditors that already had the first two.
   not the same for all three lists, so it is stated per list rather than as one
   sentence about "the matcher". Over the markdown this repository tracks
   (`git ls-files '*.md'`, 151 files as of this change) the new **jargon and
-  filler** matchers gained a hit in zero files and lost one in 135. Most of
+  filler** matchers gained a hit in zero files and lost one in 128. Most of
   what they lost is the defect above: `very` inside *every*, *everything*,
   *everywhere*, *recovery*, *delivery* and *discovery* accounts for 124 of the
   removed hits, and `just` inside *adjust*, *justify* and *justification* for
@@ -86,12 +86,26 @@ the seven auditors that already had the first two.
   "we"/"our" counter read the end of German `Löwe` as first-person voice. All
   four matchers in `src/uxcopy.ts` now take their notion of "inside a word"
   from one `\p{L}\p{N}` class instead of each carrying its own, so what is
-  fixed is the class rather than the letter that exposed it. ASCII copy is
-  unaffected: across all 151 tracked markdown files and 71 real UI-copy
-  strings the only two inputs whose result changes are TypeScript sources,
-  where an underscore-separated identifier (`en_US`, `WE_RE`) now reads as the
-  words around its underscore — the same underscore-is-an-edge rule the word
-  lists already applied to `_robust_`, now applied by the you/we counter too.
+  fixed is the class rather than the letter that exposed it. `\p{L}\p{N}`
+  alone was still one class short of the same defect — a combining mark or a
+  zero-width joiner is not a letter or digit either, so it was still read as
+  an edge instead of as part of the letter it modifies (`設定‍robust‍設定`
+  with a zero-width joiner still fired, an NFD-normalized `Löwe` still counted
+  as ending in "we", and Hebrew niqqud — which has no precomposed form to
+  normalize away — still read as a boundary). `\p{M}` and `\p{Cf}` close both.
+
+  ASCII copy is close to unaffected, with a self-reference this sentence
+  cannot avoid being part of: the only behaviour change on plain ASCII text is
+  that a TypeScript identifier's underscore now separates two words that read
+  as themselves once split (`en_US`, `WE_RE`) — the same underscore-is-an-edge
+  rule the word lists already applied to `_robust_`, now applied by the
+  you/we counter too. This file is one of the inputs that changes, because it
+  quotes `WE_RE` above and is itself part of the markdown corpus that rule
+  reads. No fixed count of affected files is given for that reason: a
+  sentence describing this change is, by describing it, one of the things the
+  change affects, so a number attached here would be stale on arrival — the
+  same self-reference the corpus hit count in `audit_ux_copy`'s own
+  disclosure list already had to be rewritten around.
 
 - **`audit_ux_copy` called copy "clear" over a metrics table saying it was
   not, and pointed a vocabulary finding at the wrong line.** Reading grade

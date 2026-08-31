@@ -30,18 +30,29 @@ function escapeRegExp(s: string): string {
 
 // One notion of "inside a word", for every boundary in this file.
 //
-// It is `\p{L}\p{N}` and not `[a-z0-9]`, `\w` or `\b`, because all three of
-// those are ASCII-only and an ASCII-only boundary does not merely fail to
-// read another script — it silently reclassifies every letter of that script
-// as a *word edge*, so an English entry matches inside a foreign word:
-// `ok` fired inside Turkish "Çok", `robust` inside "設定robust設定", `just`
-// inside "простоjustдалее", and `\b`'s ASCII definition counted the "we"
-// ending German "Löwe" as first-person voice. Each of those is one character
-// class away from the last, which is why there is one class here rather than
-// a fix at each site. An underscore is deliberately NOT a word character:
-// markdown italics (`_robust_`, `_you_`) read as the word they wrap, which is
-// the same rule stated once instead of differing between matchers.
-const WORD_CHAR = "\\p{L}\\p{N}";
+// It is `\p{L}\p{M}\p{N}\p{Cf}` and not `[a-z0-9]`, `\w` or `\b`, because all
+// three of those are ASCII-only and an ASCII-only boundary does not merely
+// fail to read another script — it silently reclassifies every letter of
+// that script as a *word edge*, so an English entry matches inside a foreign
+// word: `ok` fired inside Turkish "Çok", `robust` inside "設定robust設定",
+// `just` inside "простоjustдалее", and `\b`'s ASCII definition counted the
+// "we" ending German "Löwe" as first-person voice. `\p{L}\p{N}` alone fixed
+// those four but was still one class short of the same defect: it has no
+// notion of a combining mark or a zero-width joiner, so it re-treats *those*
+// as edges instead — `robust` still fired inside a ZWJ-joined
+// "設定‍robust‍設定", an NFD-normalized "Löwe" (base letter +
+// combining diaeresis, rather than the precomposed character) still read as
+// ending in "we", and Hebrew `לְwe` still counted as first-person, which is
+// not an NFD artefact at all — Hebrew niqqud, Arabic harakat and Indic vowel
+// signs have no precomposed form to normalize to, so the combining mark *is*
+// the only spelling. `\p{M}` (combining marks) and `\p{Cf}` (formatting
+// characters — ZWJ/ZWNJ among them) close both. Each of these is one
+// character class away from the last, which is why there is one class here
+// rather than a fix at each site. An underscore is deliberately NOT a word
+// character: markdown italics (`_robust_`, `_you_`) read as the word they
+// wrap, which is the same rule stated once instead of differing between
+// matchers.
+const WORD_CHAR = "\\p{L}\\p{M}\\p{N}\\p{Cf}";
 
 // Characters that extend a word list entry — a hyphen included, since entries
 // like "cutting-edge" carry one internally. `\b` is wrong here for a second
@@ -55,12 +66,15 @@ const ENTRY_EDGE = `[${WORD_CHAR}-]`;
 // A leading run of characters that are themselves never part of an entry —
 // punctuation, a quote mark, an emoji, whitespace. Skippable before an
 // anchored match because none of it is content: "👉 Go" and "\"Go\"" still
-// begin with "Go" once the wrapper around it is set aside. Built as the exact
-// complement of ENTRY_EDGE from the same source, so it can never eat a letter,
-// digit or hyphen on the way to a later match — "Please submit the form"
-// still fails to start with "submit", and "Çok yakında" no longer starts
-// with "ok".
-const LEADING_NOISE = `[^${WORD_CHAR}-]*`;
+// begin with "Go" once the wrapper around it is set aside. Derived from
+// ENTRY_EDGE by stripping its brackets and negating the class, rather than a
+// second hand-written copy of WORD_CHAR + "-" — the two constants agreeing was
+// a comment's claim once already; deriving one from the other makes it a fact
+// the next edit to WORD_CHAR cannot silently break. So it can never eat a
+// letter, digit or hyphen on the way to a later match — "Please submit the
+// form" still fails to start with "submit", and "Çok yakında" no longer
+// starts with "ok".
+const LEADING_NOISE = `[^${ENTRY_EDGE.slice(1, -1)}]*`;
 
 // The you/we balance and the passive-voice shape need the same boundary and
 // used `\b` for it. Hoisted here so all four matchers read from `WORD_CHAR`
@@ -190,9 +204,9 @@ export const UXCOPY_NOT_VISIBLE: string[] = [
 
   `**Whether the text being audited is short UI copy at all, which this tool assumes and never checks.** Run over this repository's own knowledge base — 96 documents, README.md, and 8 skill files, 105 files in total — the three word lists draw well over a hundred hits across the large majority of those files, almost none of it hype: \`knowledge/marketing/branding-identity.md:75\` reads "Don't: \"Leverage our best-in-class solution\" → Do: \"Ship your first campaign in 10 minutes.\"" — a sentence teaching a writer not to say "leverage" or "best-in-class" is itself flagged for both, because the tool has no notion of a quoted counter-example and no calibration for long-form prose at all. (No exact hit count is given: this corpus includes the very documents that describe this tool's reach — this sentence and \`ship-quality-gate\`'s table row among them — so a point figure over it changes with what gets written about it, this entry included, and would be stale on arrival.) Point it at a paragraph of documentation instead of a button label or a toast, and the jargon/filler counts describe the vocabulary of careful technical writing, not a defect in it.`,
 
-  `**Three closed, English-only word lists** — ${JARGON.length} jargon entries, ${FILLER.length} filler entries, ${WEAK_CTA.length} weak-CTA entries — matched with no synonym expansion and no entry in any other language. A hyped or weak word that is not on one of these three lists is invisible however hyped or weak it reads. What does *not* follow — and what an earlier version of this entry claimed — is that copy in another language therefore scores clean. These are English words, and other languages contain English words: \`Das System ist robust.\` reports the jargon hit \`robust\`, which German carries as its own adjective, while \`innovativ\`, \`Synergie\` and \`holistisch\` in the same sentence stay invisible. So the reach over non-English copy is neither full nor none — it is whichever of these ${JARGON.length + FILLER.length + WEAK_CTA.length} English strings that language happens to share, which is a fact about the two vocabularies and not about the copy. (The lists match whole words in every script, not fragments: \`robust\` no longer fires inside \`設定robust設定\` and \`ok\` no longer fires inside Turkish \`Çok\`. What a script this tool cannot tokenise does to the *metrics* is the next entry.)`,
+  `**Three closed, English-only word lists** — ${JARGON.length} jargon entries, ${FILLER.length} filler entries, ${WEAK_CTA.length} weak-CTA entries — matched with no synonym expansion and no entry in any other language. A hyped or weak word that is not on one of these three lists is invisible however hyped or weak it reads. What does *not* follow — and what an earlier version of this entry claimed — is that copy in another language therefore scores clean. These are English words, and other languages contain English words: \`Das System ist robust.\` reports the jargon hit \`robust\`, which German carries as its own adjective, while \`innovativ\`, \`Synergie\` and \`holistisch\` in the same sentence stay invisible. So the reach over non-English copy is neither full nor none — it is whichever of these ${JARGON.length + FILLER.length + WEAK_CTA.length} English strings that language happens to share, which is a fact about the two vocabularies and not about the copy. (The word boundary reads a combining mark or a zero-width joiner as part of the letter it modifies, not as an edge, so an entry does not fire on a fragment split out by one: \`robust\` no longer fires inside \`設定robust設定\` or a zero-width-joined \`設定‍robust‍設定\`, \`ok\` no longer fires inside Turkish \`Çok\`, and Hebrew niqqud — which has no precomposed form to normalize away, unlike an accent — reads as part of the letter it decorates rather than as a boundary. That is a claim about this tool's own boundary logic, not about "every script": a script this tool cannot tokenise at all behaves differently, and what it does to the *metrics* is the next entry.)`,
 
-  `**Copy in a script this tool cannot tokenise — which it reports as a clean pass, not as silence.** \`words()\` matches \`/[a-z0-9']+/g\`: ASCII letters, digits and an apostrophe. A letter outside \`a–z\` is not a word character, so text with no ASCII letters in it yields **zero** tokens, and \`wordCount = wds.length || 1\` turns zero into one. \`設定を保存しました。変更はいつでも元に戻せます。\` — two Japanese sentences, 22 characters — is reported as 1 word and 1 sentence, with a Flesch reading ease of **206** (above the top of the scale), a grade level of **0**, four green ticks in the metrics table and "No copy issues flagged". Chinese, Arabic, Russian, a bare emoji and the empty string all do the same. Accented Latin fragments rather than vanishing: \`Änderungen\` tokenises as \`nderungen\` and \`können\` as \`k\` + \`nnen\`, so a 12-word German sentence is counted as 15 words and those fragments are what the syllable heuristic below is then handed. This is a third route into \`avgSentenceLen\`, Flesch reading ease and grade level, beside the two disclosed further down — and the only one of the three that returns a confident pass on text that was never read. (\`sentences()\` is ASCII-terminated too: it splits on \`.\`, \`!\` and \`?\`, not on \`。\` or \`？\`.) Disclosed rather than fixed: tokenising a script written without spaces needs word segmentation with a dictionary behind it, which is a different tool than a regex.`,
+  `**Copy in a script this tool cannot tokenise — which it reports as a clean pass, not as silence.** \`words()\` matches \`/[a-z0-9']+/g\`: ASCII letters, digits and an apostrophe. A letter outside \`a–z\` is not a word character, so text with no ASCII letters in it yields **zero** tokens, and \`wordCount = wds.length || 1\` turns zero into one. \`設定を保存しました。変更はいつでも元に戻せます。\` — two Japanese sentences, 24 code points — is reported as 1 word and 1 sentence, with a Flesch reading ease of **206** (above the top of the scale), a grade level of **0**, four green ticks in the metrics table and "No copy issues flagged". Chinese, Arabic, Russian, a bare emoji and the empty string all do the same. Accented Latin fragments rather than vanishing: \`Änderungen\` tokenises as \`nderungen\` and \`können\` as \`k\` + \`nnen\`, so a 12-word German sentence is counted as 15 words and those fragments are what the syllable heuristic below is then handed. This is a third route into \`avgSentenceLen\`, Flesch reading ease and grade level, beside the two disclosed further down — and the only one of the three that returns a confident pass on text that was never read. (\`sentences()\` is ASCII-terminated too: it splits on \`.\`, \`!\` and \`?\`, not on \`。\` or \`？\`.) Disclosed rather than fixed: tokenising a script written without spaces needs word segmentation with a dictionary behind it, which is a different tool than a regex.`,
 
   `**A multi-word filler entry split by a line break in the text it is checking.** \`FILLER\` stores \`"please note"\` and \`"in order to"\` as one literal string with a single interior space, so \`please\\nnote this.\` does not match \`please note\` — the entry's stored space and the text's actual newline are different characters. Demonstrated under both the pre-boundary substring match this tool used before and the boundary-anchored one it uses now: the boundary fix changed what counts as an edge around an entry, not how a multi-word entry is compared against the text it searches.`,
 
@@ -204,7 +218,7 @@ export const UXCOPY_NOT_VISIBLE: string[] = [
 
   `**Syllables, counted by a heuristic rather than looked up.** \`countSyllables\` strips a trailing "es"/"ed"/silent "e" and then counts vowel-group clusters; it has no dictionary and no exception list, so it miscounts ordinary words — \`countSyllables("queue")\` returns 2, though "queue" is one syllable. Every Flesch reading-ease and grade-level number this tool reports is computed on counts like that one, not on verified syllables.`,
 
-  `**A sentence count inflated by a period that does not end a sentence.** \`sentences()\` splits on any \`.\`/\`!\`/\`?\` followed by whitespace, with no notion of an abbreviation or a title: "Ask Mr. Smith for help now." counts as two sentences instead of one, because the period after "Mr" satisfies the same split as the period that actually ends the sentence. The rule is narrower than "any abbreviation", and worth stating as the shape it is — a \`.\`/\`!\`/\`?\` followed by whitespace: "Contact us, e.g. via email." splits, "Contact us, e.g., via email." does not (the comma is next, not a space), a three-dot "Loading... please wait." splits, and the single-character ellipsis "Loading… please wait." — the spelling Apple's HIG and Material both prescribe, so the one real UI copy uses — does not split at all. \`avgSentenceLen\`, Flesch reading ease and grade level are all computed from that inflated count — a distinct error source from the syllable heuristic above, feeding the same three headline numbers by a different route. Disclosed rather than fixed: recognising "Mr.", "e.g.", "i.e.", "etc." and the rest needs a maintained abbreviation list, which is a different tool than a sentence-boundary splitter.`,
+  `**A sentence count inflated by a period that does not end a sentence — or by a line break with no terminal punctuation at all.** \`sentences()\` is \`split(/(?<=[.!?])\\s+|\\n+/)\`, two rules and not one. The first splits on any \`.\`/\`!\`/\`?\` followed by whitespace, with no notion of an abbreviation or a title: "Ask Mr. Smith for help now." counts as two sentences instead of one, because the period after "Mr" satisfies the same split as the period that actually ends the sentence. It is narrower than "any abbreviation", and worth stating as the shape it is: "Contact us, e.g. via email." splits, "Contact us, e.g., via email." does not (the comma is next, not a space), a three-dot "Loading... please wait." splits, and the single-character ellipsis "Loading… please wait." — the spelling Apple's HIG and Material both prescribe, so the one real UI copy uses — does not split at all. The second rule is the one this entry used to leave unstated: a bare newline splits on its own, with no punctuation involved and no whitespace required around it. "Save your work\\nUndo any time" — two lines, no \`.\`/\`!\`/\`?\` anywhere — counts as two sentences, and multi-line copy (a toast with a title and a body line, a tooltip, a multi-line error) is an ordinary input to this tool, not an edge case. \`avgSentenceLen\`, Flesch reading ease and grade level are all computed from that count, in both directions: the "Mr." case inflates it and moves Flesch and grade level toward "hard to read"; the bare-newline case can inflate it too, moving them toward a pass on copy that was never one sentence to begin with. Disclosed rather than fixed: recognising "Mr.", "e.g.", "i.e.", "etc." and the rest needs a maintained abbreviation list, and telling a hard line break from a paragraph break needs a notion of structure a regex over raw text does not have — both are a different tool than a sentence-boundary splitter.`,
 
   `**Passive voice recognised only through a participle spelled with a trailing "-ed" or "-en".** The regex is \`\\b(is|are|was|were|be|been|being)\\s+\\w+(ed|en)\\b\`, so an irregular past participle spelled neither way is invisible to it: "The announcement was made this morning." reports zero passive-voice hits, because "made" ends in neither "ed" nor "en". **The false positives that shape admits are ours in the same measure**, because a predicate adjective after "be" is spelled exactly like a passive: "This field is required." reports \`is required\`, and so do "The button is disabled.", "2 items are selected.", "Your plan is limited to 3 seats." and "The file is corrupted." — the first of those being the most common validation string in software, shipped by Material, Ant, Bootstrap and HTML5 constraint validation alike. The miss and the false positive are one rule read in its two directions: this is a spelling test, not a grammar one.`,
 

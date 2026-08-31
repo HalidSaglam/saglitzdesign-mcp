@@ -119,6 +119,27 @@ describe("a non-ASCII letter is a letter, not a word boundary", () => {
     expect(a("_robust_ code").jargonHits).toContain("robust");
     expect(a("déjà vu just").fillerHits).toContain("just"); // a real hit beside non-ASCII text
   });
+
+  // `\p{L}\p{N}` alone was one class short of the same defect: a combining
+  // mark or a zero-width joiner is not a letter or a digit, so it was still
+  // read as a word *edge* rather than as part of the letter it modifies —
+  // the exact shape of bug this branch exists to fix, one class over.
+  it("does not read a zero-width joiner as a word boundary", () => {
+    const zwj = "‍";
+    expect(a(`設定${zwj}robust${zwj}設定`).jargonHits).toEqual([]);
+  });
+
+  it("does not read an NFD combining mark as ending a word", () => {
+    const nfd = "Der Löwe schläft.".normalize("NFD"); // base letter + combining diaeresis
+    expect(a(nfd).weCount).toBe(0);
+    expect(a(nfd.normalize("NFC")).weCount).toBe(0); // both spellings agree
+  });
+
+  it("does not read a combining mark with no precomposed form as a boundary", () => {
+    // Hebrew niqqud has no precomposed base+mark character to normalize to —
+    // this is not an NFD artefact, the combining mark is the only spelling.
+    expect(a("לְwe").weCount).toBe(0);
+  });
 });
 
 /**
@@ -160,6 +181,13 @@ describe("what the disclosure list says about copy it cannot read", () => {
     expect(a("Contact us, e.g., via email.").sentences).toBe(1);
     expect(a("Loading... please wait.").sentences).toBe(2);
     expect(a("Loading\u2026 please wait.").sentences).toBe(1);
+  });
+
+  it("also splits on a bare newline with no terminal punctuation at all", () => {
+    const m = a("Save your work\nUndo any time");
+    expect(m.sentences).toBe(2);
+    expect(m.avgSentenceLen).toBe(3);
+    expect(m.fleschReadingEase).toBe(105);
   });
 
   it("reads a predicate adjective after `be` as a passive construction", () => {

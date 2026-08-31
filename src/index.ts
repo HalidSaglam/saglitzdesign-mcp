@@ -735,7 +735,7 @@ const UXCOPY_OUTPUT_SCHEMA = {
   metrics: z
     .object({
       words: z.number().int().describe("Tokens matched by /[a-z0-9']+/ — ASCII only, and never 0: an empty match set is reported as 1. See `notVisible`."),
-      sentences: z.number().int().describe("Runs split on `.`/`!`/`?` followed by whitespace, with no abbreviation handling. Never 0."),
+      sentences: z.number().int().describe("Runs split on `.`/`!`/`?` followed by whitespace, with no abbreviation handling, OR on a bare newline with no punctuation at all — a two-line toast or tooltip counts as two sentences. Never 0."),
       avgSentenceLen: z.number().describe("words / sentences, to one decimal. The target the report grades is ≤ 20."),
       fleschReadingEase: z.number().describe("Flesch reading ease, rounded. Higher is easier; the target the report grades is ≥ 60. Computed from the two counts above and a heuristic syllable count, all three of which `notVisible` bounds."),
       gradeLevel: z.number().describe("Flesch–Kincaid grade level, floored at 0. The report grades it against ≤ 8 but raises no finding on it — this field is the only structured form of that row."),
@@ -751,7 +751,7 @@ tool(
   "Audit UI / marketing copy objectively: readability (Flesch reading ease + grade level), average sentence length, passive voice, jargon/hype words, filler, user-focus ('you' vs 'we'), and weak CTAs. Returns metrics plus specific flagged phrases and fixes. The machine-checkable slice of UX writing — pair with get_design_doc('ux-writing') for voice/tone judgment. "
     + "It reads source and does not measure anything: no usability session is run, no A/B result is read, and no finding here is or can be a statement about whether the copy actually works for a reader. "
     + "It also has no notion of register: it has no way to tell short UI copy from long-form prose, so a paragraph of accurate technical documentation can draw more jargon/filler hits than a paragraph of real hype. "
-    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, line), a severity summary, and a machine-readable `notVisible` list of what it could not check.",
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, line), a severity summary, a machine-readable `notVisible` list of what it could not check, and a `metrics` block carrying the same words/sentences/avgSentenceLen/Flesch/grade-level/you-we numbers the markdown table prints.",
   {
     text: z.string().describe("The copy to audit (a headline, paragraph, button label, error message, or full page copy)"),
   },
