@@ -23,6 +23,7 @@ import { elevationReport } from "./elevation.js";
 import { motionReport, MOTION_IDS, type MotionStack } from "./motion.js";
 import { designLintReport } from "./lint.js";
 import { uxCopyReport } from "./uxcopy.js";
+import { ethicalReport } from "./ethical.js";
 import { designSystemAuditReport } from "./dsaudit.js";
 import { layoutSystemReport, type LayoutPreset } from "./layout.js";
 import { compareDesignLanguages, COMPARE_TOPICS, COMPARE_PLATFORMS, type CompareTopic, type ComparePlatform } from "./compare.js";
@@ -36,6 +37,7 @@ import { genericReport } from "./generic.js";
 import { seoReport, SEO_CAPABILITIES } from "./seo.js";
 import { perfReport, PERF_CAPABILITIES } from "./perf.js";
 import { appleReport } from "./apple.js";
+import { androidReport } from "./android.js";
 import { createDesignSystem, type DSPlatform } from "./designsystem.js";
 import { normalizeHex } from "./tokens.js";
 
@@ -412,13 +414,11 @@ tool(
     : "Fetch curated real-world examples of a design pattern from top apps and websites (paywalls, onboarding, auth, navigation, checkout, settings, empty states, heroes, pricing, features, social proof, signup, dashboards, footers). Returns, for each example, the app/site, what it does well, and a source link to view the screenshot. NOTE: this installation does not bundle the screenshot images (they are third-party assets, excluded from the published package), so the notes and links are returned WITHOUT inline images — open the links, or use your own browser tool, if you need to see them.",
   {
     query: z.string().describe("Pattern to see examples of, e.g. 'paywall', 'pricing section', 'dark hero', 'empty state'"),
-    platform: z.enum(["mobile", "web"]).optional().describe("'mobile' for iOS app screens, 'web' for website examples"),
+    platform: z.enum(["mobile", "ios", "android", "web"]).optional().describe("'mobile' for iOS and Android app screens, 'ios' or 'android' to pin one, 'web' for website examples"),
     limit: z.number().int().min(1).max(6).optional().describe("Max examples to return (default 4; images are large)"),
   },
   async ({ query, platform, limit }) => {
-    // examples are stored with platform "ios" | "web"; map "mobile"→"ios"
-    const mapped = platform === "mobile" ? "ios" : platform;
-    const hits = searchExamples(examples, query, { platform: mapped, limit: limit ?? 4 });
+    const hits = searchExamples(examples, query, { platform, limit: limit ?? 4 });
     if (hits.length === 0) {
       const patterns = [...new Set(examples.map((e) => e.pattern))].sort().join(", ");
       return text(`No visual examples match "${query}". Available patterns: ${patterns || "(example library is empty)"}.`);
@@ -552,9 +552,9 @@ tool(
 // ── Tool 13: component recipe ────────────────────────────────────────────────
 tool(
   "get_component_recipe",
-  "Get production-ready, accessible reference CODE for a UI component in a chosen stack (react-tailwind, html-css, swiftui, compose) — not advice, actual copy-paste code with all states, ARIA/accessibility, keyboard support and correct motion, grounded in the SaglitzDesign specs. Use when you need to actually build a button, input, modal, toast, card, switch, tabs, empty-state, or list-row. Pair with get_component_guidance (the design rationale) and generate_design_tokens (the theme).",
+  "Get production-ready, accessible reference CODE for a UI component in a chosen stack (react-tailwind, html-css, swiftui, compose) — not advice, actual copy-paste code with all states, ARIA/accessibility, keyboard support and correct motion, grounded in the SaglitzDesign specs. Use when you need to actually build a button, input, modal, toast, card, switch, tabs, empty-state, list-row, navigation, search, select, table, tooltip, form, pagination, skeleton, badge, or breadcrumb. Pair with get_component_guidance (the design rationale) and generate_design_tokens (the theme).",
   {
-    component: z.string().describe("Component name, e.g. 'button', 'input', 'modal', 'toast', 'card', 'switch', 'tabs', 'empty-state', 'list-row'"),
+    component: z.string().describe("Component name, e.g. 'button', 'input', 'modal', 'toast', 'card', 'switch', 'tabs', 'empty-state', 'list-row', 'navigation', 'search', 'select', 'table', 'tooltip', 'form', 'pagination', 'skeleton', 'badge', 'breadcrumb'"),
     stack: z.enum(["react-tailwind", "html-css", "swiftui", "compose"]).optional().describe("Target stack. Omit to get the spec + all available stacks."),
     tokens: z.record(z.string()).optional().describe(
       "Your colours, so the code comes back in them instead of the house palette. Roles: " +
@@ -762,10 +762,26 @@ tool(
   UXCOPY_OUTPUT_SCHEMA,
 );
 
+// ── Tool: audit ethical design (snippet only) ────────────────────────────────
+tool(
+  "audit_ethical_design",
+  "Audit a pasted snippet for named deceptive-pattern tells from ethical-design: confirmshaming decline copy, a pre-checked marketing or newsletter checkbox, a scarcity or deadline phrase with no live binding nearby, and an Accept all with no equally-named reject. "
+    + "It reads source and does not measure anything: no checkout is completed, no countdown is timed, no warehouse is queried, and no consent banner is clicked, so no finding is or can be a verdict on the business. "
+    + "Snippet only — there is no directory mode. Returns markdown plus structured output: findings (rule, severity, message, fix, doc, line), a severity summary, and a machine-readable `notVisible` list of what it could not check. Pair with get_design_doc('ethical-design') and a human looking at the render.",
+  {
+    code: z.string().describe("The HTML/JSX/copy snippet to audit for named deceptive-pattern tells"),
+  },
+  async ({ code }) => {
+    const { text: body, structured } = ethicalReport(code);
+    return { ...text(body), structuredContent: structured };
+  },
+  AUDIT_OUTPUT_SCHEMA,
+);
+
 // ── Tool 23: create design system (flagship orchestrator) ────────────────────
 tool(
   "create_design_system",
-  "THE one-call foundation. Turn a brand color + product vibe + platform into a complete, coherent design-system starter: accessibility-verified color (light+dark), a matched font pairing, an icon library, a modular type scale, an elevation ramp, ready-to-paste design tokens (CSS/Tailwind or SwiftUI/Compose), the components to build, and a build checklist — all generated to work together. Use this FIRST when someone says 'design/build me a website/app' to lay the foundation, then get_component_recipe for each component and get_design_roadmap for the full process.",
+  "THE one-call foundation. Turn a brand color + product vibe + platform into a complete, coherent design-system starter: a direction card (named defaults to leave, the type pairing as a decision, one signature move, and a stock-region fact if the seed sits in indigo/violet/purple), accessibility-verified color (light+dark), a matched font pairing, an icon library, a modular type scale, an elevation ramp, ready-to-paste design tokens (CSS/Tailwind or SwiftUI/Compose), the components to build, and a build checklist — all generated to work together. Use this FIRST when someone says 'design/build me a website/app' to lay the foundation, then get_component_recipe for each component and get_design_roadmap for the full process.",
   {
     brand_color: z.string().describe("Brand / primary color as hex, e.g. '#4F46E5'"),
     vibe: z.string().describe("Product vibe / use case, e.g. 'modern SaaS dashboard', 'premium fintech app', 'bold marketing site', 'minimal portfolio'"),
@@ -1035,7 +1051,7 @@ const GENERIC_OUTPUT_SCHEMA = {
 // ── Tool 31: audit generic design ────────────────────────────────────────────
 tool(
   "audit_generic_design",
-  "Audits a web project or snippet for the specific defaults generated interfaces reach for: the stock Tailwind indigo/violet/purple gradient (as classes, hex, or OKLCH), Inter/Roboto/Open Sans/DM Sans/Plus Jakarta Sans as the only declared typeface on a brand surface, emoji standing in for icons, the rounded-2xl + shadow-lg + border card recipe repeated across a page, gradient-filled heading text, an eyebrow label over every heading, the backdrop-blur + white/10 glassmorphism recipe, stock hype-opener copy ('unlock the power of', 'say goodbye to', …), stacked filler adverbs ('seamlessly', 'effortlessly', …), and a page whose every call to action is drawn from the stock set ('Get Started', 'Learn More'). "
+  "Audits a web project or snippet for the specific defaults generated interfaces reach for: the stock Tailwind indigo/violet/purple gradient (as classes, hex, or OKLCH), Inter/Roboto/Open Sans/DM Sans/Plus Jakarta Sans as the only declared typeface on a brand surface, emoji standing in for icons, the rounded-2xl + shadow-lg + border card recipe repeated across a page, gradient-filled heading text, an eyebrow label over every heading, the backdrop-blur + white/10 glassmorphism recipe, three or more animate-pulse or animate-shimmer placeholders, stock hype-opener copy ('unlock the power of', 'say goodbye to', …), stacked filler adverbs ('seamlessly', 'effortlessly', …), and a page whose every call to action is drawn from the stock set ('Get Started', 'Learn More'). "
     + "Every finding is a fact about the source text — a class name, a phrase, a repeated structure — never a judgement about whether the result is good design; it reports facts, not taste, so pair it with design_review_checklist or get_design_doc(\"design-critique-scoring\") for actual critique. "
     + "It reads source and does not measure anything: it makes no network request, renders nothing, and no finding is or can be a rendered-output or aesthetic judgement. "
     + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, file, line), a severity summary, a machine-readable `notVisible` list of what it could not check, and a 0-100 score itemised to the same rule, weight and evidence the markdown prints — each rule counts once no matter how many times it fires, so a long page never scores higher purely for its length. "
@@ -1266,6 +1282,73 @@ tool(
     return { ...text(body), structuredContent: structured };
   },
   APPLE_OUTPUT_SCHEMA,
+);
+
+const ANDROID_OUTPUT_SCHEMA = {
+  ...AUDIT_OUTPUT_SCHEMA,
+  scan: z
+    .object({
+      filesRead: z.number().int().describe("How many files were actually opened and read — Kotlin source, AndroidManifest.xml and resource XML together."),
+      scannedBytes: z.number().int().describe("Total bytes read, which is what the byte cap is measured against."),
+      skippedLarge: z.array(z.string()).describe("Files past the per-file byte cap. Never opened, so nothing in `findings` is claimed about anything inside them."),
+      hitFileCap: z.boolean().describe("True when some files were not read because the file cap was reached. Configuration is read first and exempt from that cap, so the platform verdict may still be sound while this is true — but no absence in `findings` covers the part that was never opened."),
+      hitByteCap: z.boolean().describe("True when the scan stopped because the total-bytes cap was reached before every candidate file was read. Same caveat as hitFileCap."),
+      unreadable: z.array(z.string()).describe("Files and directories that could not be opened."),
+    })
+    .describe("What the scan reached. Read it before trusting any absence claim: a capped scan looked at part of the project, and the configuration rules are gated on Android signals this scan may never have opened."),
+};
+
+// ── Tool 35: audit an Android app's UI ───────────────────────────────────────
+tool(
+  "audit_android_ui",
+  "Audit an Android app's UI against Material 3 and android-app-design: point it at the project (or module) directory and it reads AndroidManifest.xml, resource XML and Kotlin, infers whether the folder is an Android project from those plus Compose/Android imports, and runs six rules. "
+    + "Configuration: `windowOptOutEdgeToEdgeEnforcement=\"true\"` (deprecated and ignored on Android 16), `enableOnBackInvokedCallback=\"false\"` (the predictive-back opt-out), and a `values/themes.xml` or `values/colors.xml` with no `values-night/` file among the surfaces read. "
+    + "Compose: a `Color(0x…)` literal, `fontSize = N.sp`, and an `androidx.compose.material.Button`-style Material 2 import (not `material3`, not `material.icons`). "
+    + "Every configuration rule stays silent when no Android signal was found, and the report says whether the platform was inferred and from what, so a silence can be read as the gate rather than as a result. "
+    + "It reads source and does not measure anything: it builds nothing, starts no emulator, takes no screenshot, and no finding is or can be a rendered-output, contrast, TalkBack or Play review result. "
+    + "Returns markdown plus structured output: findings (rule, severity, message, fix, doc, file, line — configuration findings carry no line, since a manifest attribute has no useful source position), a severity summary, a `scan` block saying how much was actually read, and a machine-readable `notVisible` list of what it structurally could not check, every entry of it derived from a run. "
+    + "Directory only — there is no snippet mode, because configuration is the backbone of this audit and a snippet carries none of it. A missing path, a path that is a file, or a `code` argument is returned as an error result, not as an empty audit. "
+    + "Pair with get_design_doc(\"material-3\") and get_design_doc(\"android-app-design\") for the guidance behind the rules.",
+  {
+    path: z.string().optional().describe("The Android project or module directory to audit — the folder holding `AndroidManifest.xml`, `res/` and Kotlin sources. Required. Absolute paths are strongly preferred: a relative path is resolved against the server's working directory, which is usually not your project folder."),
+    code: z.string().optional().describe("Not supported by this tool, and rejected with an explanation if passed. There is no snippet mode: the platform verdict and half the rules are read from AndroidManifest.xml and resource XML, and a pasted snippet carries none of them. Pass `path` instead."),
+  },
+  async ({ path, code }) => {
+    if (code) {
+      return {
+        ...text(
+          "`audit_android_ui` has no snippet mode — pass `path`, the directory holding the Android project. "
+          + "Configuration is the backbone of this audit and a snippet carries none of it: whether the folder is an Android project is inferred from AndroidManifest.xml, resource XML and the Kotlin imports together, and every configuration rule stays silent without that verdict. "
+          + "Three of the six rules read configuration surfaces and nothing else. Run `design_lint` on a snippet for the language-agnostic checks that do work on one.",
+        ),
+        isError: true,
+      };
+    }
+    if (!path) {
+      return {
+        ...text("Pass `path`: the directory holding the Android project you want audited. This tool audits a directory and has no other mode."),
+        isError: true,
+      };
+    }
+    const abs = isAbsolute(path) ? path : resolve(process.cwd(), path);
+    let stat;
+    try {
+      stat = statSync(abs);
+    } catch {
+      return { ...text(`There is no directory at \`${abs}\`. Pass an absolute path to the Android project folder you want audited.`), isError: true };
+    }
+    if (!stat.isDirectory()) {
+      return {
+        ...text(
+          `\`${abs}\` is a file, not a directory. Pass its parent folder. This audit has no single-file mode: configuration is its backbone — the platform verdict, and with it every configuration rule, is read from AndroidManifest.xml and resource XML, and one file carries none of them.`,
+        ),
+        isError: true,
+      };
+    }
+    const { text: body, structured } = androidReport(abs);
+    return { ...text(body), structuredContent: structured };
+  },
+  ANDROID_OUTPUT_SCHEMA,
 );
 
 // ── resources ────────────────────────────────────────────────────────────────

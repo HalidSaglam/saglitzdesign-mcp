@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.Ledger" parent="Theme.Material3.Dark" />
+</resources>

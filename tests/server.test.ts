@@ -79,12 +79,14 @@ const SMOKE: Record<string, Record<string, unknown>> = {
   // below has a Swift finding to find and the summary probe has something to
   // count.
   audit_apple_ui: { path: join(root, "tests", "fixtures", "apple", "ios-findings") },
+  audit_android_ui: { path: join(root, "tests", "fixtures", "android", "compose-findings") },
+  audit_ethical_design: { code: `<button>Accept all</button>` },
 };
 
 /** Every tool that declares an outputSchema. */
 const STRUCTURED_TOOLS = [
   "audit_seo_geo", "audit_performance", "design_lint", "audit_security", "audit_generic_design", "audit_project",
-  "audit_apple_ui", "audit_ux_copy",
+  "audit_apple_ui", "audit_android_ui", "audit_ux_copy", "audit_ethical_design",
 ];
 
 /**
@@ -102,6 +104,7 @@ const EXTRA_SCHEMA_PROPS: Record<string, string[]> = {
   audit_generic_design: ["score", "scan"],
   audit_project: ["scan"],
   audit_apple_ui: ["scan"],
+  audit_android_ui: ["scan"],
   // `audit_ux_copy` returns the metrics table its markdown prints — every call
   // computes it, so it is required rather than optional below.
   audit_ux_copy: ["metrics"],
@@ -124,6 +127,7 @@ const EXTRA_REQUIRED_PROPS: Record<string, string[]> = {
   // successful call scanned a directory and there is no shape in which the
   // block is legitimately absent.
   audit_apple_ui: ["scan"],
+  audit_android_ui: ["scan"],
   audit_ux_copy: ["metrics"],
 };
 
@@ -804,8 +808,86 @@ describe("audit_apple_ui is directory-only and says so", () => {
   }, 20_000);
 });
 
+describe("audit_android_ui is directory-only and says so", () => {
+  it("returns an error result for a `code` argument, naming configuration as the reason", async () => {
+    const result = (await client.callTool({
+      name: "audit_android_ui",
+      arguments: { code: "import androidx.compose.material3.Text\n" },
+    })) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    const body = textOf(result);
+    expect(body).toMatch(/no snippet mode/i);
+    expect(body).toMatch(/configuration is the backbone/i);
+    expect(body).toMatch(/AndroidManifest/i);
+  });
+
+  it("returns an error result for a path that does not exist", async () => {
+    const result = (await client.callTool({
+      name: "audit_android_ui",
+      arguments: { path: "/nonexistent-android-xyz" },
+    })) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(textOf(result)).toMatch(/There is no directory at/);
+  });
+
+  it("returns an error result for a path that is a file, and says why one file cannot do", async () => {
+    const result = (await client.callTool({
+      name: "audit_android_ui",
+      arguments: { path: join(root, "package.json") },
+    })) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    const body = textOf(result);
+    expect(body).toMatch(/is a file, not a directory/);
+    expect(body).toMatch(/no single-file mode/i);
+  });
+
+  it("returns an error result when nothing at all is passed", async () => {
+    const result = (await client.callTool({
+      name: "audit_android_ui",
+      arguments: {},
+    })) as { isError?: boolean; structuredContent?: unknown; content?: Array<{ type: string; text?: string }> };
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toBeUndefined();
+    expect(textOf(result)).toMatch(/Pass `path`/);
+  });
+
+  it("still returns structuredContent for a real audit", async () => {
+    const result = (await client.callTool({
+      name: "audit_android_ui",
+      arguments: SMOKE.audit_android_ui,
+    })) as {
+      isError?: boolean;
+      structuredContent?: { scan: { filesRead: number }; findings: Array<{ file?: string; line?: number }> };
+    };
+    expect(result.isError ?? false).toBe(false);
+    expect(result.structuredContent).toBeTruthy();
+    expect(result.structuredContent!.scan.filesRead).toBeGreaterThan(0);
+    expect(result.structuredContent!.findings.some((f) => f.file === undefined)).toBe(true);
+    expect(result.structuredContent!.findings.some((f) => typeof f.file === "string")).toBe(true);
+  }, 20_000);
+
+  it("returns a successful, structured audit for an empty directory", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "saglitz-empty-android-"));
+    const result = (await client.callTool({
+      name: "audit_android_ui",
+      arguments: { path: empty },
+    })) as {
+      isError?: boolean;
+      structuredContent?: { scan: { filesRead: number }; findings: unknown[]; notVisible: string[] };
+    };
+    expect(result.isError ?? false).toBe(false);
+    expect(result.structuredContent!.scan.filesRead).toBe(0);
+    expect(result.structuredContent!.findings).toEqual([]);
+    expect(result.structuredContent!.notVisible.length).toBeGreaterThan(4);
+    rmSync(empty, { recursive: true, force: true });
+  }, 20_000);
+});
+
 // The cross-cutting gate: every task above added its own coverage as it wired
-// up structured output for one more tool, but nothing yet asserts the eight
+// up structured output for one more tool, but nothing yet asserts the nine
 // as a set — that this exact list, no more and no fewer, advertises a schema,
 // and that the two invariants (structuredContent present, the two registers
 // in agreement) hold across all of them read together rather than tool by

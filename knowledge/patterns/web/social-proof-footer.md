@@ -4,21 +4,7 @@ title: "Website Social Proof & Footer Patterns"
 category: pattern
 platform: web
 tags: [testimonials, social-proof, footer, newsletter, sitemap]
-sources:
-  - "https://mobbin.com/sites/sections/1a0904da-e870-48b5-bd03-18e75cbb8de3"
-  - "https://mobbin.com/sites/sections/15b459ef-ab1a-4648-8f36-940ab45d4731"
-  - "https://mobbin.com/sites/sections/02e3c65c-ed1d-42b0-9439-4c285f360e44"
-  - "https://mobbin.com/sites/sections/eed4c66c-5c16-4493-945c-0ce6610ce9d4"
-  - "https://mobbin.com/sites/sections/25b74d46-54e3-4564-9a7d-044360efd897"
-  - "https://mobbin.com/sites/sections/58a55724-34ad-4dc5-accb-743f3b00cd68"
-  - "https://mobbin.com/sites/sections/84369ba1-6d5b-4709-9bdc-0dbe58183c62"
-  - "https://mobbin.com/sites/sections/f1844604-7696-4970-b30e-43a7669e9ee1"
-  - "https://mobbin.com/sites/sections/6d088b40-a574-4e35-905c-bff022cfc5d5"
-  - "https://mobbin.com/sites/sections/c6e14a19-78bb-4396-9a3d-387d3f996980"
-  - "https://mobbin.com/sites/sections/dfd1f2e5-2a98-4621-95dd-3786d5b5d07b"
-  - "https://mobbin.com/sites/sections/5271842f-2780-414a-b9f6-aed741bbb222"
-  - "https://mobbin.com/sites/sections/572867f5-c7e0-47e1-bb03-d135047170ff"
-  - "https://mobbin.com/sites/sections/6efab40e-de5e-4dff-bf1c-b28c818a934d"
+sources: ["https://mobbin.com/sites/sections/1a0904da-e870-48b5-bd03-18e75cbb8de3", "https://mobbin.com/sites/sections/15b459ef-ab1a-4648-8f36-940ab45d4731", "https://mobbin.com/sites/sections/02e3c65c-ed1d-42b0-9439-4c285f360e44", "https://mobbin.com/sites/sections/eed4c66c-5c16-4493-945c-0ce6610ce9d4", "https://mobbin.com/sites/sections/25b74d46-54e3-4564-9a7d-044360efd897", "https://mobbin.com/sites/sections/58a55724-34ad-4dc5-accb-743f3b00cd68", "https://mobbin.com/sites/sections/84369ba1-6d5b-4709-9bdc-0dbe58183c62", "https://mobbin.com/sites/sections/f1844604-7696-4970-b30e-43a7669e9ee1", "https://mobbin.com/sites/sections/6d088b40-a574-4e35-905c-bff022cfc5d5", "https://mobbin.com/sites/sections/c6e14a19-78bb-4396-9a3d-387d3f996980", "https://mobbin.com/sites/sections/dfd1f2e5-2a98-4621-95dd-3786d5b5d07b", "https://mobbin.com/sites/sections/5271842f-2780-414a-b9f6-aed741bbb222", "https://mobbin.com/sites/sections/572867f5-c7e0-47e1-bb03-d135047170ff", "https://mobbin.com/sites/sections/6efab40e-de5e-4dff-bf1c-b28c818a934d"]
 updated: 2026-07-08
 ---
 

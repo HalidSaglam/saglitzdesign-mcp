@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign — Skeleton</title>
+<style>
+  :root { --fill: #e5e5e5; --text: #171717; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fill: #404040; --text: #fafafa; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; font: 15px/1.5 system-ui, sans-serif; color: var(--text); background: Canvas; }
+  .sk { display: flex; flex-direction: column; gap: 12px; max-width: 28rem; }
+  .sk__title { height: 16px; width: 40%; border-radius: 10px; background: var(--fill); }
+  .sk__line { height: 16px; border-radius: 10px; background: var(--fill); }
+  .sk__line--short { width: 70%; }
+  .sk__row { height: 44px; border-radius: 10px; background: var(--fill); }
+</style>
+</head>
+<body>
+  <div class="sk" role="status" aria-busy="true" aria-label="Loading invoices">
+    <div class="sk__title" aria-hidden="true"></div>
+    <div class="sk__row" aria-hidden="true"></div>
+    <div class="sk__row" aria-hidden="true"></div>
+    <div class="sk__line" aria-hidden="true"></div>
+    <div class="sk__line sk__line--short" aria-hidden="true"></div>
+  </div>
+</body>
+</html>

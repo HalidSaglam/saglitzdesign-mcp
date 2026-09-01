@@ -4,6 +4,114 @@ All notable changes to SaglitzDesign MCP are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.29.0] — 2026-09-01
+
+v0.28.0 is on the registry. This is the work that release could not be: the
+mobile workflow has been telling agents to call `get_component_recipe` with
+`"swiftui"` or `"compose"` for controls that only had web stacks, Apple had
+an auditor and a skill and an example library and Android had documents, and
+fifteen knowledge files declared `sources:` as a YAML list that
+`parseFrontmatter` never read, so they loaded with an empty array.
+
+### Added
+
+- **`audit_android_ui`.** Directory only, same contract as `audit_apple_ui`:
+  it reads `AndroidManifest.xml`, resource XML and Kotlin, infers whether
+  the folder is an Android project, and runs six rules — the edge-to-edge
+  opt-out, the predictive-back opt-out, a day theme XML with no
+  `values-night/` among the surfaces read, a `Color(0x…)` literal,
+  `fontSize = N.sp`, and a Material 2 component import (`material.Button`,
+  not `material3` and not `material.icons`). Configuration rules stay
+  silent when no Android signal was found. Markdown plus structured output
+  with `scan` and `notVisible`. A `code` argument, a missing path or a
+  file path is an error result, not an empty audit.
+
+- **`android-platform-design` skill**, routed from the umbrella immediately
+  after Apple, and **`knowledge/examples/android.json`** (16 annotated
+  Material / Android Identity / Play Billing screens). `get_design_examples`
+  now accepts `ios` / `android` / `web`, and `mobile` means iOS and Android
+  together rather than silently mapping to iOS.
+
+- **Recipe parity, then five new components.** `modal`, `toast`, `switch`,
+  `tabs` and `empty-state` now have SwiftUI and Compose; `list-row` now has
+  react-tailwind and html-css. Then `navigation`, `search`, `select`,
+  `table` and `tooltip` ship in all four stacks. Every recipe in the library
+  now has all four; the house palette is still indigo / neutral / red, and
+  concatenated web recipes still score `audit_design_system ≥ 85`.
+
+- **`create_design_system` now opens with a direction card.** Named defaults
+  to leave (Inter as the only family, the `rounded-2xl` card triad, the
+  stock indigo/violet/purple gradient, eyebrow-on-every-heading), the type
+  pairing as a decision, one signature move derived from the vibe, and — when
+  the seed's hue sits within 18° of Tailwind `indigo-500` / `violet-500` /
+  `purple-500` — a stock-region fact. A genuine indigo brand is not refused;
+  the card states the distance and tells the agent to keep it or pick another
+  seed. The component list is the recipes this server actually ships.
+
+- **Verify gate names `audit_generic_design`.** Every build workflow already
+  ran `design_lint`, `audit_accessibility`, `audit_design_system` and
+  `audit_ux_copy` before `design_review_checklist`. The auditor that measures
+  the stock generated look was missing from that list. It is step 5 now.
+
+- **Font pairing splits brand and product surfaces.** Unqualified
+  "modern saas" and any landing/marketing/website vibe no longer return
+  Inter / Inter (or the system stack) as the first pick — those are what
+  `audit_generic_design` calls `default-ui-font` on a brand route, and the
+  report now says so. A dashboard/app/native vibe still gets Inter or SF.
+  `create_design_system` feeds the platform into the same query, so an iOS
+  vibe actually lands on the system stack.
+
+- **`build_dashboard` workflow.** A ninth guided workflow: dense SaaS app
+  shell, not a marketing page. Roadmap `saas-web-app`, layout preset
+  `web-app`, vibe including "dashboard" so type pairing stays product-UI,
+  recipes for navigation/table/search/empty-state/skeleton/badge/tabs/toast/form/pagination,
+  and `design_review_checklist("dashboard")`. Explicitly refuses a row of
+  identical KPI cards in the `rounded-2xl` triad.
+
+- **`measure_screenshot` names stock-region accents.** When a significant
+  cluster sits within 18° of Tailwind indigo/violet/purple 500/600, the
+  markdown and HTML reports say so — the same fact `create_design_system`
+  already prints on a nearby seed. A genuine indigo brand still lists.
+
+- **`audit_ethical_design`.** Snippet only. Four named tells from
+  `ethical-design`: confirmshaming decline copy, a pre-checked marketing
+  checkbox, a scarcity or deadline phrase with no live binding nearby, and
+  Accept all without an equally-named reject. Markdown plus structured
+  output with `notVisible`. It does not load a page or complete a purchase.
+
+- **`form` and `pagination` recipes.** All four stacks. Marketing opt-in
+  defaults to off; the current page is named to assistive tech, not colour
+  alone. The component list `create_design_system` returns includes both.
+
+- **`skeleton` and `badge` recipes, and `stock-pulse-skeleton`.** All four
+  stacks. The skeleton is a static placeholder (`aria-busy`, no pulse).
+  `audit_generic_design` now flags three or more `animate-pulse` /
+  `animate-shimmer` hits — the scaffold loading state — citing
+  `ai-default-aesthetic`. One live pip stays silent.
+
+- **Verify gate names `audit_ethical_design`.** The auditor already existed
+  and the quality bar already named it. Build, redesign and port workflows
+  now run it as a numbered step on the consent / decline / scarcity snippet
+  before `design_review_checklist`.
+
+- **`breadcrumb` recipe.** All four stacks. Ancestors are links; the current
+  page is named (`aria-current="page"`), not colour alone. Native stacks are
+  a compact nested-settings path — iPhone still uses the back button.
+
+The live counts this description is held against: **36 tools**, **10** of
+them auditors that publish `notVisible`, **9 skills**, **19 recipes**, still
+**96 documents** and **9 workflows**.
+
+### Fixed
+
+- **Fifteen knowledge documents declared `sources:` as a YAML list, and the
+  parser only reads an inline `[…]` array.** Pattern, craft and book files
+  (web and mobile pattern packs, `animation-craft`, `data-visualization`,
+  `interaction-design-classics`) therefore loaded with `sources: []` even
+  though the URLs were in the file. They are inline arrays now, which is
+  the shape `parseFrontmatter` actually understands. This is not an
+  allowlist expansion — those documents remain curated, not host-checked.
+
 ## [0.28.0] — 2026-08-31
 
 v0.27.0's tag is pushed (`refs/tags/v0.27.0` exists on `origin`) but the

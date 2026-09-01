@@ -1,14 +1,14 @@
 ---
 name: design-review
 description: Critique a UI (screenshot, live page, or code) like a rigorous senior designer — grounded, reproducible, element-citing, and ranked by severity. Use when someone asks "review this design", "what's wrong with this screen", or wants feedback on a mockup/site/app. Avoids the failure modes of typical AI critique (hallucinated issues, padded lists, critiquing the description instead of the pixels).
-sources: design-critique-scoring, principles-heuristics, accessibility, visual-craft-standards, clean-app-design, ux-writing, motion-microinteractions
+sources: design-critique-scoring, principles-heuristics, accessibility, visual-craft-standards, clean-app-design, ux-writing, motion-microinteractions, ai-default-aesthetic
 ---
 
 # Design Review
 
 Most AI design feedback guesses: it flags issues inconsistently, pads the list to look thorough, and critiques a text description instead of the actual pixels. Do the opposite — a fixed rubric applied to what you actually see.
 
-> Full rubric + checklists are in the **SaglitzDesign MCP** (`npx saglitzdesign-mcp`): docs `design-critique-scoring`, `accessibility`, `principles-heuristics`; tools `design_review_checklist`, plus the deterministic auditors that turn opinions into numbers — `design_lint`, `audit_design_system`, `audit_accessibility`, `audit_ux_copy` — and the `/saglitzdesign:critique_screenshot` and `/saglitzdesign:design_review` workflows.
+> Full rubric + checklists are in the **SaglitzDesign MCP** (`npx saglitzdesign-mcp`): docs `design-critique-scoring`, `accessibility`, `principles-heuristics`, `ai-default-aesthetic`; tools `design_review_checklist`, plus the deterministic auditors that turn opinions into numbers — `design_lint`, `audit_design_system`, `audit_accessibility`, `audit_ux_copy`, `audit_generic_design` — and the `/saglitzdesign:critique_screenshot` and `/saglitzdesign:design_review` workflows.
 
 ## Method
 

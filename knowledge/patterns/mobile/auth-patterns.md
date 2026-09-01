@@ -4,14 +4,7 @@ title: "Mobile Login & Social Sign-In Patterns"
 category: pattern
 platform: mobile
 tags: [auth, login, social-sign-in, sso, forms]
-sources:
-  - "https://mobbin.com/screens/3a993e71-e6d1-49bc-9451-495fca570e36"
-  - "https://mobbin.com/screens/faef2f5a-0953-470e-b56b-38a4c3ccd789"
-  - "https://mobbin.com/screens/08780534-efa2-4feb-a429-6bbb525e59aa"
-  - "https://mobbin.com/screens/7336baf0-22a8-4e07-be82-59bd383432a4"
-  - "https://mobbin.com/screens/62f02032-d47e-49ff-9bef-1424e97d00ac"
-  - "https://mobbin.com/screens/71bd698f-b9a5-4943-8f1f-1753ea918739"
-  - "https://mobbin.com/screens/f12af768-77c6-45cd-b71a-bce949365de4"
+sources: ["https://mobbin.com/screens/3a993e71-e6d1-49bc-9451-495fca570e36", "https://mobbin.com/screens/faef2f5a-0953-470e-b56b-38a4c3ccd789", "https://mobbin.com/screens/08780534-efa2-4feb-a429-6bbb525e59aa", "https://mobbin.com/screens/7336baf0-22a8-4e07-be82-59bd383432a4", "https://mobbin.com/screens/62f02032-d47e-49ff-9bef-1424e97d00ac", "https://mobbin.com/screens/71bd698f-b9a5-4943-8f1f-1753ea918739", "https://mobbin.com/screens/f12af768-77c6-45cd-b71a-bce949365de4"]
 updated: 2026-07-08
 ---
 

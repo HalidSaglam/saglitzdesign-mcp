@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign — List row</title>
+<style>
+  :root {
+    --ring: #4f46e5;
+    --text: #171717;
+    --muted: #525252;
+    --surface: #ffffff;
+    --hover: #f5f5f5;
+    --track-off: #d4d4d4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ring: #818cf8; --text: #fafafa; --muted: #a3a3a3;
+      --surface: #171717; --hover: #262626; --track-off: #525252;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: Canvas;
+    font: 15px/1.5 system-ui, -apple-system, sans-serif; color: var(--text);
+  }
+  .list { max-width: 420px; background: var(--surface); border-radius: 10px; overflow: hidden; }
+  .row {
+    display: flex; align-items: center; gap: 12px;
+    min-height: 44px; padding: 8px 12px; color: inherit; text-decoration: none;
+  }
+  a.row:hover { background: var(--hover); }
+  a.row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+  .icon {
+    width: 28px; height: 28px; display: grid; place-items: center;
+    color: var(--ring); flex-shrink: 0;
+  }
+  .copy { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .title { font-size: .875rem; font-weight: 500; }
+  .sub { font-size: .75rem; color: var(--muted); }
+  .chevron { color: var(--muted); }
+  .value { font-size: .875rem; color: var(--muted); }
+  .switch {
+    position: relative; width: 52px; height: 32px; border: 0; border-radius: 9999px;
+    background: var(--track-off); cursor: pointer; flex-shrink: 0;
+  }
+  .switch[aria-checked="true"] { background: var(--ring); }
+  .switch:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .thumb {
+    position: absolute; top: 4px; left: 4px; width: 24px; height: 24px;
+    border-radius: 50%; background: #fff;
+    transition: transform 150ms ease-out;
+  }
+  .switch[aria-checked="true"] .thumb { transform: translateX(20px); }
+  @media (prefers-reduced-motion: reduce) { .thumb { transition: none; } }
+</style>
+</head>
+<body>
+  <div class="list">
+    <a class="row" href="#account">
+      <span class="icon" aria-hidden="true">●</span>
+      <span class="copy">
+        <span class="title">Account</span>
+        <span class="sub">Profile, security</span>
+      </span>
+      <span class="chevron" aria-hidden="true">›</span>
+    </a>
+    <div class="row">
+      <span class="icon" aria-hidden="true">●</span>
+      <span class="copy">
+        <label class="title" for="notify">Notifications</label>
+      </span>
+      <button id="notify" class="switch" type="button" role="switch" aria-checked="true">
+        <span class="thumb" aria-hidden="true"></span>
+      </button>
+    </div>
+    <a class="row" href="#language">
+      <span class="icon" aria-hidden="true">●</span>
+      <span class="copy"><span class="title">Language</span></span>
+      <span class="value">English</span>
+      <span class="chevron" aria-hidden="true">›</span>
+    </a>
+  </div>
+  <script>
+    document.querySelectorAll('[role="switch"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const on = btn.getAttribute("aria-checked") === "true";
+        btn.setAttribute("aria-checked", on ? "false" : "true");
+      });
+    });
+  </script>
+</body>
+</html>

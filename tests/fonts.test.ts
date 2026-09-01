@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { suggestFontPairing, PAIRINGS } from "../dist/fonts.js";
+import { suggestFontPairing, fontPairingReport, PAIRINGS } from "../dist/fonts.js";
 import { genericVisualRules } from "../dist/generic.js";
 
 describe("suggestFontPairing", () => {
@@ -8,6 +8,27 @@ describe("suggestFontPairing", () => {
     expect(suggestFontPairing("luxury editorial magazine", { limit: 1 })[0].vibe).toContain("editorial");
     const saas = suggestFontPairing("modern saas dashboard", { limit: 3 });
     expect(saas.some((p) => p.vibe.includes("saas"))).toBe(true);
+  });
+
+  it("does not lead a brand surface with a default UI font", () => {
+    // Unqualified "modern saas" is the prompt generated landing pages arrive as.
+    // Inter / Inter wins on raw keyword score; it is also what
+    // audit_generic_design calls default-ui-font on a marketing route.
+    const brand = suggestFontPairing("modern saas", { limit: 1 })[0];
+    expect(brand.id).not.toBe("inter-inter");
+    expect(brand.id).not.toBe("sf-system");
+    expect(brand.heading.family).not.toBe(brand.body.family);
+    expect(suggestFontPairing("modern saas landing", { limit: 1 })[0].id).not.toBe("inter-inter");
+  });
+
+  it("keeps Inter on a product surface that is not also a landing", () => {
+    expect(suggestFontPairing("modern saas dashboard", { limit: 1 })[0].id).toBe("inter-inter");
+  });
+
+  it("lets a landing keyword beat a dashboard keyword", () => {
+    const pick = suggestFontPairing("saas dashboard landing", { limit: 1 })[0];
+    expect(pick.id).not.toBe("inter-inter");
+    expect(pick.heading.family).not.toBe(pick.body.family);
   });
   it("respects the limit", () => {
     expect(suggestFontPairing("modern", { limit: 2 })).toHaveLength(2);
@@ -67,5 +88,19 @@ describe("pairings agree with what audit_generic_design will say about them", ()
     for (const id of ["cal-inter", "instrument-inter", "clash-satoshi", "playfair-inter"]) {
       expect(flagged(PAIRINGS.find((p) => p.id === id)!), id).toBe(false);
     }
+  });
+});
+
+describe("fontPairingReport names a skipped default on a brand surface", () => {
+  it("says Inter / Inter scored higher and why it was dropped", () => {
+    const report = fontPairingReport("modern saas", suggestFontPairing("modern saas", { limit: 3 }));
+    expect(report).toMatch(/Inter \/ Inter scored higher but was skipped/);
+    expect(report).toContain("default-ui-font");
+    expect(report).toContain("audit_generic_design");
+  });
+
+  it("does not claim a skip when the product-surface winner is Inter", () => {
+    const report = fontPairingReport("modern saas dashboard", suggestFontPairing("modern saas dashboard", { limit: 3 }));
+    expect(report).not.toMatch(/scored higher but was skipped/);
   });
 });

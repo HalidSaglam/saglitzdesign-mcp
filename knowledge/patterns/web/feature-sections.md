@@ -4,14 +4,7 @@ title: "Website Feature Section Patterns (Grids & Bento)"
 category: pattern
 platform: web
 tags: [features, bento, grid, screenshots, product-marketing]
-sources:
-  - "https://mobbin.com/sites/sections/7295b73f-1281-49d3-99dd-3701cae70072"
-  - "https://mobbin.com/sites/sections/54ba196c-c979-4564-a54a-c02a23e8e8f7"
-  - "https://mobbin.com/sites/sections/3f148051-6eff-401c-bc33-113cc1d2e964"
-  - "https://mobbin.com/sites/sections/011f833e-b660-43b2-abce-affa60297789"
-  - "https://mobbin.com/sites/sections/a37dec6a-3829-46e4-b3df-a5cb16185f55"
-  - "https://mobbin.com/sites/sections/9038df26-d13c-4c95-98d5-62ba4fd5fad3"
-  - "https://mobbin.com/sites/sections/a0b1fcee-ed8b-4709-a230-d750ca54c280"
+sources: ["https://mobbin.com/sites/sections/7295b73f-1281-49d3-99dd-3701cae70072", "https://mobbin.com/sites/sections/54ba196c-c979-4564-a54a-c02a23e8e8f7", "https://mobbin.com/sites/sections/3f148051-6eff-401c-bc33-113cc1d2e964", "https://mobbin.com/sites/sections/011f833e-b660-43b2-abce-affa60297789", "https://mobbin.com/sites/sections/a37dec6a-3829-46e4-b3df-a5cb16185f55", "https://mobbin.com/sites/sections/9038df26-d13c-4c95-98d5-62ba4fd5fad3", "https://mobbin.com/sites/sections/a0b1fcee-ed8b-4709-a230-d750ca54c280"]
 updated: 2026-07-08
 ---
 

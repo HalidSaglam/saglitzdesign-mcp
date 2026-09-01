@@ -37,6 +37,47 @@ export function rgbToHsl({ r, g, b }: RGB): HSL {
   return { h, s, l };
 }
 
+/** Tailwind stops that `ai-default-aesthetic` names as the generated-UI accent region. */
+export const STOCK_ACCENT_STOPS = [
+  { stop: "indigo-500", hex: "#615fff" },
+  { stop: "indigo-600", hex: "#4f39f6" },
+  { stop: "violet-500", hex: "#8e51ff" },
+  { stop: "purple-500", hex: "#ad46ff" },
+] as const;
+
+const STOCK_HUE_MAX_DEG = 18;
+const STOCK_SAT_MIN = 0.25;
+
+function hueDelta(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return Math.min(d, 360 - d);
+}
+
+export interface StockAccentHit {
+  stop: string;
+  hex: string;
+  degrees: number;
+}
+
+/**
+ * Whether a brand seed sits in the documented indigo/violet/purple region.
+ * A hit is a fact about hue distance, not a defect — a genuine indigo brand
+ * still returns one. Grey and distant chromatic hues return null.
+ */
+export function stockAccentProximity(hex: string): StockAccentHit | null {
+  const n = normalizeHex(hex);
+  if (!n) return null;
+  const hsl = rgbToHsl(hexToRgb(n));
+  if (hsl.s < STOCK_SAT_MIN) return null;
+  let best: StockAccentHit | null = null;
+  for (const s of STOCK_ACCENT_STOPS) {
+    const degrees = Math.round(hueDelta(hsl.h, rgbToHsl(hexToRgb(s.hex)).h));
+    if (degrees > STOCK_HUE_MAX_DEG) continue;
+    if (!best || degrees < best.degrees) best = { stop: s.stop, hex: s.hex, degrees };
+  }
+  return best;
+}
+
 export function hslToRgb({ h, s, l }: HSL): RGB {
   h = ((h % 360) + 360) % 360;
   const c = (1 - Math.abs(2 * l - 1)) * s;

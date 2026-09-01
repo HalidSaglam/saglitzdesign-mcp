@@ -4,14 +4,7 @@ title: "Website Hero Section Patterns"
 category: pattern
 platform: web
 tags: [hero, landing, cta, headline, signup]
-sources:
-  - "https://mobbin.com/sites/sections/8aefc8b7-fe79-4dfa-b0ce-9aa1677e4e45"
-  - "https://mobbin.com/sites/sections/8fdb8f57-192b-43e5-b448-532203ec444d"
-  - "https://mobbin.com/sites/sections/86f504e1-5a41-4a12-9683-b6e6b9672111"
-  - "https://mobbin.com/sites/sections/d008689a-c73f-4513-a760-25a93ef6f043"
-  - "https://mobbin.com/sites/sections/e727f26d-79e1-49d9-9ed7-f6590091ec8d"
-  - "https://mobbin.com/sites/sections/5f84e90e-f4ae-48e5-bdb0-9b0b9b303f03"
-  - "https://mobbin.com/sites/sections/edb14076-5e1f-48d8-ba26-5e5e43f9a9b0"
+sources: ["https://mobbin.com/sites/sections/8aefc8b7-fe79-4dfa-b0ce-9aa1677e4e45", "https://mobbin.com/sites/sections/8fdb8f57-192b-43e5-b448-532203ec444d", "https://mobbin.com/sites/sections/86f504e1-5a41-4a12-9683-b6e6b9672111", "https://mobbin.com/sites/sections/d008689a-c73f-4513-a760-25a93ef6f043", "https://mobbin.com/sites/sections/e727f26d-79e1-49d9-9ed7-f6590091ec8d", "https://mobbin.com/sites/sections/5f84e90e-f4ae-48e5-bdb0-9b0b9b303f03", "https://mobbin.com/sites/sections/edb14076-5e1f-48d8-ba26-5e5e43f9a9b0"]
 updated: 2026-07-08
 ---
 

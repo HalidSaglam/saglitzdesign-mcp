@@ -54,6 +54,16 @@ describe("palette measurement", () => {
     const r = measure(img, { name: "shot.png", scale: 2 });
     expect(r.source).toMatchObject({ name: "shot.png", width: 40, height: 20, scale: 2 });
   });
+
+  it("names a stock-region fact when a significant cluster sits on indigo, and stays silent on teal", () => {
+    const indigo = canvas(100, 100, WHITE, [{ x: 0, y: 0, w: 40, h: 40, rgb: BRAND }]);
+    const hit = measure(indigo).stockRegion;
+    expect(hit.length).toBeGreaterThan(0);
+    expect(hit[0].stop).toBe("indigo-500");
+    expect(hit[0].hex).toBe("#4f46e5");
+    const teal = canvas(100, 100, WHITE, [{ x: 0, y: 0, w: 40, h: 40, rgb: [5, 150, 105] }]);
+    expect(measure(teal).stockRegion).toEqual([]);
+  });
 });
 
 describe("density measurement", () => {

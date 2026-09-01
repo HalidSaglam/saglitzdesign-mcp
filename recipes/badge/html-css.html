@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign — Badge</title>
+<style>
+  :root {
+    --text: #171717; --muted-bg: #f5f5f5; --muted-fg: #404040;
+    --accent-bg: #4f46e5; --accent-fg: #fff;
+    --danger-bg: #dc2626; --danger-fg: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --text: #fafafa; --muted-bg: #262626; --muted-fg: #e5e5e5;
+      --accent-bg: #818cf8; --accent-fg: #171717;
+      --danger-bg: #f87171; --danger-fg: #171717;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; font: 15px/1.5 system-ui, sans-serif; color: var(--text); background: Canvas; display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge {
+    display: inline-flex; align-items: center; min-height: 24px; padding: 4px 8px;
+    border-radius: 9999px; font-size: 14px; font-weight: 500;
+  }
+  .badge--neutral { background: var(--muted-bg); color: var(--muted-fg); }
+  .badge--accent { background: var(--accent-bg); color: var(--accent-fg); }
+  .badge--danger { background: var(--danger-bg); color: var(--danger-fg); }
+  .badge .num { font-variant-numeric: tabular-nums; margin-left: 4px; }
+</style>
+</head>
+<body>
+  <span class="badge badge--neutral">Draft</span>
+  <span class="badge badge--accent">Due <span class="num">3</span></span>
+  <span class="badge badge--danger">Overdue</span>
+</body>
+</html>

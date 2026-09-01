@@ -2,7 +2,8 @@
 
 The `get_design_examples` tool serves real screenshots of design patterns.
 Those image files are **not** shipped with this repo or the npm package — only
-the metadata in `knowledge/examples/ios.json` and `knowledge/examples/web.json`
+the metadata in `knowledge/examples/ios.json`, `knowledge/examples/web.json`
+and `knowledge/examples/android.json`
 is. Without the images, the tool still works, degrading to description + source
 link ("link mode").
 
@@ -17,8 +18,8 @@ give the agent this instruction:
 > Load the Mobbin tools:
 > `ToolSearch "select:mcp__mobbin__search_screens,mcp__mobbin__search_flows,mcp__mobbin__search_sections"`.
 >
-> For every entry in `knowledge/examples/ios.json` and
-> `knowledge/examples/web.json`, find the matching screen on Mobbin (search by
+> For every entry in `knowledge/examples/ios.json`,
+> `knowledge/examples/web.json` and `knowledge/examples/android.json`, find the matching screen on Mobbin (search by
 > the entry's `app` + `pattern` + `title`), download its screenshot to the path
 > in the entry's `image` field (relative to `knowledge/examples/`), and verify
 > each file is a valid image over 15 KB. Do not change the JSON. Report how many

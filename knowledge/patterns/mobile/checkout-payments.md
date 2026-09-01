@@ -4,14 +4,7 @@ title: "Mobile Checkout & Payment Method Selection Patterns"
 category: pattern
 platform: mobile
 tags: [checkout, payments, ecommerce, forms, trust]
-sources:
-  - "https://mobbin.com/screens/b01088bd-226f-45fa-9f9e-1c990e3b1b76"
-  - "https://mobbin.com/screens/a4f7b96f-ff18-49ef-914a-9a9cff8c8a42"
-  - "https://mobbin.com/screens/5712cce4-8d52-4d29-bee9-ece6ca849b5c"
-  - "https://mobbin.com/screens/2a0f9220-30a0-4b1d-b122-88b3e49500d2"
-  - "https://mobbin.com/screens/b595b518-e339-44c9-86ca-83fd80a0184c"
-  - "https://mobbin.com/screens/b488d6f6-ce3d-4853-a0c1-15a4a4be3944"
-  - "https://mobbin.com/screens/229ed6f0-0414-4be4-b4d0-54395b56037c"
+sources: ["https://mobbin.com/screens/b01088bd-226f-45fa-9f9e-1c990e3b1b76", "https://mobbin.com/screens/a4f7b96f-ff18-49ef-914a-9a9cff8c8a42", "https://mobbin.com/screens/5712cce4-8d52-4d29-bee9-ece6ca849b5c", "https://mobbin.com/screens/2a0f9220-30a0-4b1d-b122-88b3e49500d2", "https://mobbin.com/screens/b595b518-e339-44c9-86ca-83fd80a0184c", "https://mobbin.com/screens/b488d6f6-ce3d-4853-a0c1-15a4a4be3944", "https://mobbin.com/screens/229ed6f0-0414-4be4-b4d0-54395b56037c"]
 updated: 2026-07-08
 ---
 

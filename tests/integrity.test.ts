@@ -273,6 +273,9 @@ describe("bundled assets", () => {
     expect(examples.length).toBeGreaterThan(0);
     const bad = examples.filter((e) => !e.pattern || !e.mobbin_url).map((e) => e.id);
     expect(bad).toEqual([]);
+    expect(examples.some((e) => e.platform === "android")).toBe(true);
+    expect(examples.some((e) => e.platform === "ios")).toBe(true);
+    expect(examples.some((e) => e.platform === "web")).toBe(true);
   });
 });
 
@@ -1196,7 +1199,7 @@ describe("the umbrella skill routes into every depth skill", () => {
     // not to the paragraph, and not to the file. A whole-file sweep would be
     // satisfied by any backticked name anywhere, which is the vacuity this
     // guard exists to avoid.
-    const list = /eight guided workflows — (.+?) — which drive/s.exec(body);
+    const list = /\bguided workflows — (.+?) — which drive/s.exec(body);
     expect(list, "the workflow list has moved or been reworded").toBeTruthy();
     const named = [...list![1].matchAll(/`([a-z_]+)`/g)].map((m) => m[1]);
     expect(named.sort()).toEqual([...PROMPT_NAMES].sort());

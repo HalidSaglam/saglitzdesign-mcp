@@ -18,6 +18,7 @@ const TOOL_NAMES = [
   "suggest_icon_library", "generate_type_scale", "generate_elevation_system", "generate_motion",
   "design_lint", "audit_ux_copy", "create_design_system", "audit_design_system",
   "generate_layout_system", "compare_design_languages", "measure_screenshot", "import_design_tokens", "audit_project",
+  "audit_apple_ui", "audit_android_ui", "audit_generic_design", "audit_ethical_design",
 ];
 
 const allText = PROMPT_NAMES.map((n: string) => buildPromptText(n, "a test brief")).join("\n\n");
@@ -30,6 +31,7 @@ function toolMentions(text: string): string[] {
 describe("prompt workflows", () => {
   it("registers the advertised workflows", () => {
     expect(PROMPT_NAMES).toContain("build_landing_page");
+    expect(PROMPT_NAMES).toContain("build_dashboard");
     expect(PROMPT_NAMES).toContain("design_review");
     expect(PROMPT_NAMES).toContain("port_to_platform");
     expect(PROMPT_NAMES.length).toBeGreaterThanOrEqual(7);
@@ -90,17 +92,19 @@ describe("prompt workflows", () => {
   });
 
   it("gates every build workflow on the deterministic auditors", () => {
-    for (const name of ["build_landing_page", "build_website", "build_mobile_app_ui", "redesign", "port_to_platform"]) {
+    for (const name of ["build_landing_page", "build_website", "build_mobile_app_ui", "build_dashboard", "redesign", "port_to_platform"]) {
       const text = buildPromptText(name);
       expect(text, `${name}: verify gate`).toContain("Verify gate");
-      for (const tool of ["design_lint", "audit_accessibility", "audit_design_system", "audit_ux_copy"]) {
+      for (const tool of ["design_lint", "audit_accessibility", "audit_design_system", "audit_ux_copy", "audit_generic_design"]) {
         expect(text, `${name}: ${tool}`).toContain(tool);
       }
+      // QUALITY_BAR already names the tool; the gate must call it as a numbered step.
+      expect(text, `${name}: ethical in verify gate`).toContain("**audit_ethical_design(code)**");
     }
   });
 
   it("tells build workflows to generate the foundation instead of inventing values", () => {
-    for (const name of ["build_landing_page", "build_website", "build_mobile_app_ui"]) {
+    for (const name of ["build_landing_page", "build_website", "build_mobile_app_ui", "build_dashboard"]) {
       const text = buildPromptText(name);
       expect(text, name).toContain("create_design_system");
       expect(text, name).toContain("get_component_recipe");
@@ -112,6 +116,18 @@ describe("prompt workflows", () => {
     const text = buildPromptText("port_to_platform");
     expect(text).toContain("compare_design_languages");
     expect(text).toMatch(/do NOT port/i);
+  });
+
+  it("builds a dashboard as a dense product surface, not a marketing page", () => {
+    const text = buildPromptText("build_dashboard");
+    expect(text).toContain('get_design_roadmap("saas-web-app")');
+    expect(text).toContain("web-app");
+    expect(text).toContain("web-dashboards");
+    expect(text).toContain("get_component_recipe");
+    expect(text).toMatch(/table/);
+    expect(text).toMatch(/empty-state/);
+    expect(text).toMatch(/Density over chrome|no hero gradient/i);
+    expect(text).toContain('design_review_checklist("dashboard")');
   });
 });
 
@@ -129,7 +145,7 @@ describe("workflows measure before they judge", () => {
 
 describe("existing design systems are respected, not replaced", () => {
   it("build workflows import an existing theme before generating a new one", () => {
-    for (const name of ["build_landing_page", "build_website", "build_mobile_app_ui"]) {
+    for (const name of ["build_landing_page", "build_website", "build_mobile_app_ui", "build_dashboard"]) {
       const text = buildPromptText(name);
       expect(text, name).toContain("import_design_tokens");
       expect(text, `${name}: must not introduce a second system`).toMatch(/do NOT introduce a second one/);

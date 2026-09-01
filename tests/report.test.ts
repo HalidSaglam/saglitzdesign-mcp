@@ -23,6 +23,14 @@ describe("markdown report", () => {
     expect(md).toMatch(/%/);
   });
 
+  it("states the stock-region fact only when a cluster sits in indigo/violet/purple", () => {
+    expect(renderMarkdown(shot())).not.toMatch(/Stock-region accents/);
+    const rows = canvasRows(100, 100, [255, 255, 255], [{ x: 0, y: 0, w: 40, h: 40, rgb: [79, 70, 229] }]);
+    const indigo = measure(decodePng(encodePng({ width: 100, height: 100, colorType: 2, bitDepth: 8, rows })), { name: "indigo.png" });
+    expect(renderMarkdown(indigo)).toMatch(/Stock-region accents/);
+    expect(renderMarkdown(indigo)).toContain("indigo-500");
+  });
+
   it("reports contrast with the measured ratio", () => {
     expect(md).toMatch(/17\.\d+:1/);
   });

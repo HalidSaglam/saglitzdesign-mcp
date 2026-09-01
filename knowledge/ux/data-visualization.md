@@ -5,14 +5,7 @@ category: "ux"
 platform: "both"
 tags: [dataviz, charts, dashboards, tufte, storytelling-with-data]
 updated: "2026-07-09"
-sources:
-  - "https://www.edwardtufte.com/notebook/chartjunk/"
-  - "https://en.wikipedia.org/wiki/Edward_Tufte"
-  - "https://jtr13.github.io/cc19/tuftes-principles-of-data-ink.html"
-  - "https://www.storytellingwithdata.com/"
-  - "https://www.goodreads.com/book/show/26535513-storytelling-with-data"
-  - "https://blog.datawrapper.de/colorblind-check/"
-  - "https://developer.mozilla.org/en-US/docs/Web/CSS/font-variant-numeric"
+sources: ["https://www.edwardtufte.com/notebook/chartjunk/", "https://en.wikipedia.org/wiki/Edward_Tufte", "https://jtr13.github.io/cc19/tuftes-principles-of-data-ink.html", "https://www.storytellingwithdata.com/", "https://www.goodreads.com/book/show/26535513-storytelling-with-data", "https://blog.datawrapper.de/colorblind-check/", "https://developer.mozilla.org/en-US/docs/Web/CSS/font-variant-numeric"]
 ---
 
 # Data Visualization

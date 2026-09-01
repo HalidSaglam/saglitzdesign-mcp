@@ -4,14 +4,7 @@ title: "Mobile Home Feed & Bottom Tab Navigation Patterns"
 category: pattern
 platform: mobile
 tags: [navigation, tab-bar, home-feed, cards, skeleton-loading]
-sources:
-  - "https://mobbin.com/screens/27c8555f-f63a-40f5-b83f-ab2c62472421"
-  - "https://mobbin.com/screens/857360ff-cae6-4b2c-a198-9929531590ec"
-  - "https://mobbin.com/screens/5da431f9-f050-424c-92b9-40522bb7cccb"
-  - "https://mobbin.com/screens/cae51397-2fa9-4e28-9426-ee99b8cfe395"
-  - "https://mobbin.com/screens/07a2eeb8-1f5f-46d9-bbba-f8c56a989025"
-  - "https://mobbin.com/screens/53fd138d-3c0b-4832-824b-657e6563e36b"
-  - "https://mobbin.com/screens/ecf0ad43-2bdc-4950-af5d-774b414a4a48"
+sources: ["https://mobbin.com/screens/27c8555f-f63a-40f5-b83f-ab2c62472421", "https://mobbin.com/screens/857360ff-cae6-4b2c-a198-9929531590ec", "https://mobbin.com/screens/5da431f9-f050-424c-92b9-40522bb7cccb", "https://mobbin.com/screens/cae51397-2fa9-4e28-9426-ee99b8cfe395", "https://mobbin.com/screens/07a2eeb8-1f5f-46d9-bbba-f8c56a989025", "https://mobbin.com/screens/53fd138d-3c0b-4832-824b-657e6563e36b", "https://mobbin.com/screens/ecf0ad43-2bdc-4950-af5d-774b414a4a48"]
 updated: 2026-07-08
 ---
 

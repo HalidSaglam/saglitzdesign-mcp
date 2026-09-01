@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign — Form</title>
+<style>
+  :root { --ring: #4f46e5; --accent: #4f46e5; --accent-hover: #4338ca; --text: #171717; --muted: #737373; --border: #d4d4d4; --bg: #fff; --danger: #dc2626; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ring: #818cf8; --accent: #6366f1; --accent-hover: #818cf8; --text: #fafafa; --muted: #a3a3a3; --border: #404040; --bg: #171717; --danger: #f87171; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; font: 16px/1.5 system-ui, sans-serif; color: var(--text); background: Canvas; }
+  form { display: flex; flex-direction: column; gap: 24px; max-width: 28rem; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field__label { font-size: 14px; font-weight: 500; }
+  .field__hint { font-weight: 400; color: var(--muted); margin-left: 4px; }
+  .field__input {
+    height: 44px; padding: 0 12px; font: inherit; font-size: 16px;
+    color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  }
+  .field__input:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .field__input[aria-invalid="true"] { border-color: var(--danger); }
+  .field__message { font-size: 14px; color: var(--muted); margin: 0; }
+  .field__message--error { color: var(--danger); }
+  .check { display: flex; align-items: flex-start; gap: 12px; }
+  .check input { width: 16px; height: 16px; margin-top: 4px; accent-color: var(--accent); }
+  .check label { font-size: 14px; }
+  .btn {
+    height: 44px; padding: 0 16px; border: 0; border-radius: 10px; font: inherit; font-weight: 500;
+    background: var(--accent); color: #fff; cursor: pointer;
+  }
+  .btn:hover { background: var(--accent-hover); }
+  .btn:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+</style>
+</head>
+<body>
+  <form aria-labelledby="form-title">
+    <h1 id="form-title" style="font-size:16px;font-weight:600;margin:0">Create account</h1>
+    <div class="field">
+      <label class="field__label" for="email">Work email <span class="field__hint">(required)</span></label>
+      <input class="field__input" id="email" name="email" type="email" autocomplete="email" required placeholder="you@company.com" />
+    </div>
+    <div class="field">
+      <label class="field__label" for="company">Company <span class="field__hint">(optional)</span></label>
+      <input class="field__input" id="company" name="organization" type="text" autocomplete="organization" />
+    </div>
+    <div class="field">
+      <label class="field__label" for="password">Password <span class="field__hint">(required)</span></label>
+      <input class="field__input" id="password" name="password" type="password" autocomplete="new-password" required aria-invalid="true" aria-describedby="password-desc" />
+      <p class="field__message field__message--error" id="password-desc" role="alert">Password must be at least 8 characters.</p>
+    </div>
+    <div class="check">
+      <input id="updates" name="updates" type="checkbox" />
+      <label for="updates">Email me product updates. You can unsubscribe any time.</label>
+    </div>
+    <button class="btn" type="submit">Create account</button>
+  </form>
+</body>
+</html>

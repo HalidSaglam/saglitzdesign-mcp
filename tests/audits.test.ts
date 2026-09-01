@@ -85,6 +85,55 @@ describe("create_design_system", () => {
     const ds = createDesignSystem("#4F46E5", "modern saas dashboard", "web");
     expect(ds).toContain("audit_design_system");
     expect(ds).toContain("design_lint");
+    expect(ds).toContain("audit_generic_design");
+  });
+
+  it("opens with a direction card the agent can leave, not a dump of layers", () => {
+    const ds = createDesignSystem("#4F46E5", "modern saas dashboard", "web", "Acme");
+    expect(ds).toMatch(/^# Acme — design system starter[\s\S]*## Direction[\s\S]*## 1\. Foundations/m);
+    expect(ds).toContain("Inter as the only family");
+    expect(ds).toContain("rounded-2xl");
+    expect(ds).toContain("eyebrow");
+    expect(ds).toContain("ai-default-aesthetic");
+    expect(ds).toMatch(/\*\*Type:\*\*/);
+    expect(ds).toMatch(/\*\*Signature:\*\*/);
+  });
+
+  it("states the stock-region fact when the seed sits in indigo/violet/purple, and not otherwise", () => {
+    const indigo = createDesignSystem("#4F46E5", "modern saas dashboard", "web");
+    expect(indigo).toMatch(/this seed sits \d+° from Tailwind `indigo-500`/i);
+    expect(indigo).toContain("#615fff");
+    const teal = createDesignSystem("#059669", "material android app", "android");
+    expect(teal).not.toMatch(/this seed sits /i);
+    const ibm = createDesignSystem("#0F62FE", "modern saas dashboard", "web");
+    expect(ibm).not.toMatch(/this seed sits /i);
+  });
+
+  it("derives one signature move from the vibe instead of a generic wow list", () => {
+    expect(createDesignSystem("#059669", "modern saas dashboard", "web")).toMatch(/Density over chrome/);
+    expect(createDesignSystem("#e11d48", "editorial luxury magazine", "web")).toMatch(/oversized display line/i);
+    expect(createDesignSystem("#e11d48", "premium fintech app", "ios")).toMatch(/tabular numbers/i);
+  });
+
+  it("does not bind a brand-surface vibe to Inter as the only family", () => {
+    const ds = createDesignSystem("#059669", "modern saas", "web");
+    expect(ds).not.toMatch(/\*\*Type:\*\* \*\*Inter\*\* \/ \*\*Inter\*\*/);
+  });
+
+  it("still binds a dashboard vibe to Inter, and an iOS vibe to the system stack", () => {
+    expect(createDesignSystem("#4F46E5", "modern saas dashboard", "web")).toMatch(/\*\*Type:\*\* \*\*Inter\*\* \/ \*\*Inter\*\*/);
+    expect(createDesignSystem("#e11d48", "premium fintech app", "ios")).toMatch(/\*\*Type:\*\* \*\*system-ui\*\*/);
+  });
+
+  it("lists the recipes the server actually ships, not the pre-parity subset", () => {
+    const web = createDesignSystem("#4F46E5", "modern saas dashboard", "web");
+    for (const c of ["list-row", "navigation", "search", "select", "table", "tooltip", "form", "pagination", "skeleton", "badge", "breadcrumb"]) {
+      expect(web, c).toContain("`" + c + "`");
+    }
+    const ios = createDesignSystem("#e11d48", "premium fintech app", "ios");
+    for (const c of ["navigation", "search", "select", "modal", "tabs", "tooltip"]) {
+      expect(ios, c).toContain("`" + c + "`");
+    }
   });
   it("switches token output by platform", () => {
     expect(createDesignSystem("#e11d48", "premium fintech app", "ios")).toContain("Tokens.swift");

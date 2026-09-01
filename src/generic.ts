@@ -440,12 +440,22 @@ export function genericVisualRules(code: string, filename?: string): LintFinding
     push(0, "info", "eyebrow-over-every-heading",
       `${eyebrowRuns} headings are each introduced by a small uppercase label.`,
       `Keep the eyebrow where it earns its place; a label on every section is chrome, not structure.`,
-      // ai-default-aesthetic, not visual-craft-standards. The latter was cited
-      // here and does not contain the claim — it has no mention of eyebrows,
-      // kickers, tracked uppercase or small section labels anywhere. "A
-      // tracked-uppercase eyebrow above every section without exception" is
-      // named in ai-default-aesthetic's list of structural companions to the
-      // stock phrases, which is where this rule's fact comes from.
+      "ai-default-aesthetic");
+  }
+
+  // Same threshold shape as stock-card-chrome: one `animate-pulse` is a live
+  // pip; three is the scaffold skeleton. `animate-spin` is a different
+  // documented animation and is not this tell.
+  const PULSE_TELL =
+    /\banimate-pulse\b|\banimate-shimmer\b|animation(?:-name)?\s*:\s*[^;{]*\b(?:pulse|shimmer)\b/gi;
+  const pulseHits: number[] = [];
+  let pm: RegExpExecArray | null;
+  PULSE_TELL.lastIndex = 0;
+  while ((pm = PULSE_TELL.exec(masked)) !== null) pulseHits.push(pm.index);
+  if (pulseHits.length >= 3) {
+    push(pulseHits[0]!, "info", "stock-pulse-skeleton",
+      `The stock Tailwind pulse/shimmer loading animation appears ${pulseHits.length} times.`,
+      `Use a static placeholder that matches the content shape (\`get_component_recipe("skeleton")\`), or a real progress value. Honor prefers-reduced-motion. See ai-default-aesthetic.`,
       "ai-default-aesthetic");
   }
 
@@ -760,7 +770,7 @@ export function genericCopyRules(code: string, filename?: string): LintFinding[]
 // have saved it, because those tiles genuinely do sit in a grid. Separating
 // "cards that need hierarchy" from "components that should be consistent" is a
 // judgement about what the elements mean, not a fact about the source, so it
-// falls outside this module's governing rule. Ten rules, not eleven.
+// falls outside this module's governing rule. Eleven rules, not twelve.
 export const RULE_WEIGHTS: Record<string, number> = {
   "ai-default-gradient": 20,
   "default-ui-font": 15,
@@ -770,6 +780,7 @@ export const RULE_WEIGHTS: Record<string, number> = {
   "gradient-text": 7,
   "eyebrow-over-every-heading": 6,
   "stock-glass-on-dark": 6,
+  "stock-pulse-skeleton": 8,
   "filler-adverb": 5,
   "generic-cta": 3,
 };
@@ -780,9 +791,8 @@ export const RULE_WEIGHTS: Record<string, number> = {
 // nothing and reads as coverage; a rule with no weight scores zero and reads
 // as clean. Both pass a naive suite that only checks one direction.
 //
-// These ten weights currently sum to 92 — headroom the 100-cap in
-// `genericScore` exists for. Adding an eleventh rule can push the sum past
-// 100; when it does, `total` clamps but `rawTotal` (see below) still carries
+// These eleven weights currently sum to 100 — the cap in `genericScore`.
+// Adding a twelfth rule can push the sum past 100; when it does, `total` clamps but `rawTotal` (see below) still carries
 // the true, uncapped sum, so the itemised list and the headline number never
 // silently disagree.
 
@@ -796,7 +806,7 @@ export const RULE_WEIGHTS: Record<string, number> = {
  * the score.
  *
  * `total` is `rawTotal` clamped to 100 — a safety bound for future rules.
- * Today's ten weights sum to 92, so the clamp never actually engages and
+ * Today's eleven weights sum to 100, so the clamp does not yet bite and
  * `total === rawTotal === items.reduce((n, i) => n + i.weight, 0)`.
  *
  * If a future rule ever pushes the unclamped sum past 100, `total` stops
@@ -885,6 +895,7 @@ export const GENERIC_NOT_VISIBLE: string[] = [
   the surface reads as a brand page — a marketing route, or a heading beside a
   conventional call to action — so a landing page at an unconventional path
   with distinctive call-to-action copy is not assessed for it.`,
+  `**Fewer than three \`animate-pulse\` / \`animate-shimmer\` / CSS \`animation: pulse|shimmer\` hits.** A live indicator, a recording pip, or two placeholder bars stay silent — three is the scaffold skeleton. \`animate-spin\` is a different documented animation and is not this tell. A Framer Motion opacity loop, a SwiftUI \`.redacted\` placeholder, and a Compose gray box with none of those class names are invisible here.`,
 ];
 
 export const GENERIC_CLOSING =
@@ -907,7 +918,7 @@ recurring defaults — not that the design is good.`;
  *
  * This is a fact about the path, not a judgement about the file, which is why
  * it sits inside the module's governing rule rather than being special-cased
- * inside any one of the ten. It is disclosed in `GENERIC_NOT_VISIBLE` and
+ * inside any one of the eleven. It is disclosed in `GENERIC_NOT_VISIBLE` and
  * counted in the report's scanned line, so a skip is never silent.
  */
 // The extension is left open rather than listed. `scanProject` reads `.vue`,

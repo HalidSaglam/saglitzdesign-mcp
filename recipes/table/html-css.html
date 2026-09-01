@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign — Table</title>
+<style>
+  :root {
+    --ring: #4f46e5; --accent: #4f46e5; --text: #171717; --muted: #737373;
+    --border: #e5e5e5; --row: #f5f5f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ring: #818cf8; --accent: #6366f1; --text: #fafafa; --muted: #a3a3a3;
+      --border: #262626; --row: #262626;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; font: 15px/1.5 system-ui, sans-serif; color: var(--text); background: Canvas; }
+  table { width: 100%; border-collapse: collapse; font-size: .875rem; text-align: left; }
+  caption { text-align: left; font-weight: 600; margin-bottom: 12px; }
+  th, td { padding: 12px; border-bottom: 1px solid var(--border); }
+  thead th { font-weight: 500; color: var(--muted); }
+  tbody th { font-weight: 500; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr[aria-selected="true"] { box-shadow: inset 2px 0 0 var(--accent); }
+  tr[aria-selected="true"]:focus { outline: 2px solid var(--ring); outline-offset: -2px; }
+  tbody tr:hover { background: var(--row); }
+</style>
+</head>
+<body>
+  <table>
+    <caption>Open invoices</caption>
+    <thead>
+      <tr>
+        <th scope="col">Invoice</th>
+        <th scope="col">Status</th>
+        <th scope="col" class="num">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr aria-selected="true" tabindex="0">
+        <th scope="row">INV-1042</th>
+        <td>Due</td>
+        <td class="num">$240.00</td>
+      </tr>
+      <tr>
+        <th scope="row">INV-1043</th>
+        <td>Paid</td>
+        <td class="num">$80.00</td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>

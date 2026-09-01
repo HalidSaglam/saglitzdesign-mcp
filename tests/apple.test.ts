@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, chmodSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, chmodSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1030,7 +1030,7 @@ describe("appleReport returns both registers", () => {
 // both carry that placeholder rather than a colorset invented for the test.
 
 /**
- * `recipes-swiftui` is **not** a copy. The four shipped recipes are audited
+ * `recipes-swiftui` is **not** a copy. The shipped SwiftUI recipes are audited
  * where they live, so a change to one is caught by this suite instead of
  * drifting away from a duplicate that no longer resembles what the server
  * ships. Every other name resolves under `tests/fixtures/apple/`.
@@ -1055,7 +1055,7 @@ describe("the fixture matrix: correct work draws nothing", () => {
   // An empty findings list is also what an empty directory returns. Each of the
   // three read real files, so none of them passed by having nothing to read.
   it.each([
-    ["recipes-swiftui", 4],
+    ["recipes-swiftui", readdirSync(RECIPES).filter((c) => existsSync(join(RECIPES, c, "swiftui.swift"))).length],
     ["ios-clean", 3],
     // Five of the six files under it: the catalog's own root `Contents.json`
     // is not a colorset, so the scan does not open it.
@@ -1066,34 +1066,25 @@ describe("the fixture matrix: correct work draws nothing", () => {
 });
 
 /**
- * The recipes to run under a forced verdict, **derived from the surfaces the
- * audit says it read** rather than listed again here.
- *
- * A second hardcoded list is a second thing to remember: a fifth recipe added
- * to `recipes/` would make the file-count tripwire below fail with a message
- * about a number, and bumping that number would leave the new recipe with no
- * forced-verdict coverage at all. Derived, it picks the fifth one up on its
- * own, and `EXPECTED_RECIPES` below is the assertion that the two agree —
- * failing by naming the list rather than a count.
- *
- * The surfaces line names at most ten paths before it truncates
- * (`…and N more`), so this derivation holds while `recipes/` stays under
- * eleven SwiftUI files; past that the `EXPECTED_RECIPES` check fails first.
+ * The recipes to run under a forced verdict, **derived from the files on disk**
+ * rather than listed again here, and rather than parsed out of the audit's
+ * surfaces line — that line names at most ten paths before it truncates, which
+ * is fewer SwiftUI files than this library now ships.
  */
-const RECIPE_PATHS = [...(
-  appleReport(RECIPES).text.split("\n").find((l) => l.startsWith("- Swift source"))!
-).matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+const RECIPE_PATHS = readdirSync(RECIPES)
+  .filter((c) => existsSync(join(RECIPES, c, "swiftui.swift")))
+  .map((c) => `${c}/swiftui.swift`)
+  .sort();
 
-describe("the four SwiftUI recipes this repository ships", () => {
-  const EXPECTED_RECIPES = ["button/swiftui.swift", "card/swiftui.swift", "input/swiftui.swift", "list-row/swiftui.swift"];
+describe("the SwiftUI recipes this repository ships", () => {
   const recipeSource = (path: string) => ({ path, source: readFileSync(join(RECIPES, path), "utf8") });
 
-  it("audits all four in place, and draws nothing against any of them", () => {
-    expect(RECIPE_PATHS).toEqual(EXPECTED_RECIPES);
+  it("audits every SwiftUI recipe in place, and draws nothing against any of them", () => {
+    expect(RECIPE_PATHS.length).toBeGreaterThanOrEqual(9);
     expect(fixture("recipes-swiftui").structured.findings).toEqual([]);
   });
 
-  // Pointed at `recipes/`, the verdict is null: four SwiftUI files with no
+  // Pointed at `recipes/`, the verdict is null: SwiftUI files with no
   // configuration between them settle nothing, so `fixed-font-size` was never
   // allowed to run in the assertion above. That would make "the recipes are
   // clean" a weaker claim than it sounds, and running each recipe under both

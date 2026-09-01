@@ -230,7 +230,7 @@ export function maskComments(source: string, path: string): string {
   }
 
   const isHeadersFile = /(^|\/)_headers$/.test(path);
-  const isJsLike = /\.(?:jsx?|tsx?|mjs|cjs|mts|cts|vue|svelte|swift)$/i.test(path);
+  const isJsLike = /\.(?:jsx?|tsx?|mjs|cjs|mts|cts|vue|svelte|swift|kt|kts)$/i.test(path);
   const isHashComment = isHeadersFile || /\.toml$/i.test(path);
   const isSwift = /\.swift$/i.test(path);
 

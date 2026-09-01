@@ -5,6 +5,7 @@
 import type { DecodedImage } from "./png.js";
 import { clusterAll, rgbDistance, INDISTINGUISHABLE, type ValueUse } from "./colorutil.js";
 import { contrastRatio } from "./a11y.js";
+import { stockAccentProximity } from "./color.js";
 
 export interface Detection<T> { value: T; confidence: "high" | "medium"; support: number }
 
@@ -14,6 +15,7 @@ export interface ScreenshotReport {
   contrast: Array<{ fg: string; bg: string; ratio: number; passesNormal: boolean; passesLarge: boolean; fgCoverage: number }>;
   density: { backgroundCoverage: number; largestEmptyBand: number; emptyBands: number };
   structure: { leftEdges: Detection<number[]> | null; gaps: Detection<number[]> | null; offGridGaps: number[] };
+  stockRegion: Array<{ hex: string; coverage: number; stop: string; degrees: number }>;
 }
 
 export interface MeasureOptions { name?: string; scale?: 1 | 2 | 3; maxColors?: number }
@@ -61,6 +63,13 @@ export function measure(img: DecodedImage, opts: MeasureOptions = {}): Screensho
     distinctExact: tally.length,
     significant: clusters.filter((c) => c.coverage >= SIGNIFICANT).length,
   };
+
+  const stockRegion = palette.clusters
+    .filter((c) => c.coverage >= SIGNIFICANT)
+    .flatMap((c) => {
+      const hit = stockAccentProximity(c.hex);
+      return hit ? [{ hex: c.hex, coverage: c.coverage, stop: hit.stop, degrees: hit.degrees }] : [];
+    });
 
   // ── contrast ──────────────────────────────────────────────────────────────
   const backgrounds = clusters.filter((c) => c.coverage >= BACKGROUND_MIN);
@@ -150,6 +159,6 @@ export function measure(img: DecodedImage, opts: MeasureOptions = {}): Screensho
 
   return {
     source: { name: opts.name ?? "screenshot.png", width, height, scale, sampledEveryNth: everyNth },
-    palette, contrast, density, structure,
+    palette, contrast, density, structure, stockRegion,
   };
 }

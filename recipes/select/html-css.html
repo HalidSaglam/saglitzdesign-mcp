@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign — Select</title>
+<style>
+  :root {
+    --ring: #4f46e5; --text: #171717; --muted: #737373; --border: #d4d4d4;
+    --bg: #fff; --danger: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ring: #818cf8; --text: #fafafa; --muted: #a3a3a3; --border: #404040;
+      --bg: #171717; --danger: #ef4444;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; font: 15px/1.5 system-ui, sans-serif; color: var(--text); background: Canvas; display: flex; flex-direction: column; gap: 24px; }
+  .field { display: flex; flex-direction: column; gap: 4px; max-width: 20rem; }
+  .field label { font-size: .875rem; font-weight: 500; }
+  .field select {
+    min-height: 44px; padding: 0 12px; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--bg); color: var(--text); font: inherit; font-size: .875rem;
+  }
+  .field select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .field select[aria-invalid="true"] { border-color: var(--danger); }
+  .field .error { margin: 0; font-size: .75rem; color: var(--danger); }
+</style>
+</head>
+<body>
+  <div class="field">
+    <label for="plan">Plan</label>
+    <select id="plan" name="plan">
+      <option value="free">Free</option>
+      <option value="pro" selected>Pro</option>
+      <option value="team">Team</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="seat">Seats</label>
+    <select id="seat" name="seat" aria-invalid="true" aria-describedby="seat-err">
+      <option value="">Select seats</option>
+      <option value="1">1</option>
+      <option value="5">5</option>
+    </select>
+    <p id="seat-err" class="error">Choose how many seats to start with.</p>
+  </div>
+</body>
+</html>

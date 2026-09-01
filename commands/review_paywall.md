@@ -20,10 +20,10 @@ You have the SaglitzDesign tools available. Use them — do not design from memo
 - seo_geo_guide(scope, topic) — SEO & GEO for web.
 
 **Generators (real output, not advice — prefer these over inventing values):**
-- create_design_system(brand_color, vibe, platform) — the one-call foundation: color + fonts + icons + type scale + elevation + tokens + component list.
+- create_design_system(brand_color, vibe, platform) — the one-call foundation: direction card + color + fonts + icons + type scale + elevation + tokens + component list.
 - generate_layout_system(preset) — breakpoints, containers, grid, container queries, section rhythm.
 - generate_color_system / suggest_font_pairing / suggest_icon_library / generate_type_scale / generate_elevation_system / generate_motion / generate_design_tokens — the individual layers.
-- get_component_recipe(component, stack) — production-ready accessible code for button/input/modal/toast/card/switch/tabs/empty-state/list-row.
+- get_component_recipe(component, stack) — production-ready accessible code for button/input/modal/toast/card/switch/tabs/empty-state/list-row/navigation/search/select/table/tooltip/form/pagination/skeleton/badge/breadcrumb.
 - fix_contrast(foreground, background, target) — the corrected color value, not just a fail report.
 
 **Auditors (deterministic gates — run these before claiming done):**
@@ -31,15 +31,19 @@ You have the SaglitzDesign tools available. Use them — do not design from memo
 - design_lint(code) — design & a11y anti-patterns with line numbers.
 - audit_design_system(code) — consistency score + value sprawl across the whole codebase.
 - audit_project(path) — the same auditors over a real directory instead of a pasted snippet, ranked worst-file-first. Prefer this when you have the source on disk.
+- audit_generic_design(code) — the specific defaults generated interfaces reach for (stock indigo/violet/purple gradient, Inter as the only family, the rounded-2xl card recipe, gradient headings, eyebrow-on-every-heading, three or more animate-pulse/shimmer placeholders). Facts about source, not taste. A genuine indigo brand still flags.
 - audit_ux_copy(text) — readability, passive voice, jargon, weak CTAs.
-- measure_screenshot(path, scale, format) — measures a PNG screenshot's real palette, contrast ratios, density and structure. Use it whenever you have an image file rather than source.
+- audit_ethical_design(code) — named deceptive-pattern tells in a pasted snippet (confirmshaming decline copy, a pre-checked marketing checkbox, literal scarcity/deadline copy with no live binding, Accept all without Reject all). Facts about source, not a verdict. Pair with get_design_doc("ethical-design").
+- audit_apple_ui(path) — iOS/macOS project directory. Reads configuration and Swift. Directory only; no snippet mode.
+- audit_android_ui(path) — Android project directory. Reads the manifest, resource XML and Compose. Directory only; no snippet mode.
+- measure_screenshot(path, scale, format) — measures a PNG screenshot's real palette, contrast ratios, density and structure, and names a stock-region fact when a significant cluster sits in Tailwind indigo/violet/purple. Use it whenever you have an image file rather than source.
 - design_review_checklist(project_type, focus) — the assembled audit checklist.
 
 ## Method
 1. Load the data: get_design_doc("paywall-benchmarks") (RevenueCat 2026: hard paywall ~10.7% vs freemium ~2.1%; 17–32 day trials convert 42.5% vs 25.5% for <4 days; 55% of 3-day-trial cancels happen Day 0; Android involuntary churn ~2.2× iOS) and get_design_doc("mobile-onboarding-paywall") for anatomy.
 2. If given a screenshot, look at it and describe the actual paywall (model, plans, trial, price placement, CTA, trust copy). If given a description, work from that; ask up to 3 questions only if a benchmark-critical fact is missing (model, trial length, platform).
 3. Score it against the review rubric in paywall-benchmarks.md — each item pass/fail with the benchmark it maps to.
-4. Run audit_ux_copy on the plan labels, the CTA and the trial/price disclosure — vague or hedging copy at the moment of payment is a measurable conversion leak. Check the pricing disclosure against get_design_doc("ethical-design") for dark patterns; a paywall that converts by confusing people is a refund and a store-review risk, not a win.
+4. Run audit_ux_copy on the plan labels, the CTA and the trial/price disclosure — vague or hedging copy at the moment of payment is a measurable conversion leak. Run audit_ethical_design on the same markup, and check the pricing disclosure against get_design_doc("ethical-design") for dark patterns; a paywall that converts by confusing people is a refund and a store-review risk, not a win.
 5. Estimate where it likely leaves conversion on the table (e.g. "≤4-day trial → ~40% relative conversion lost vs a 14–30 day trial").
 6. Give prioritized, concrete fixes (model choice, trial length, price placement, trial reminder, Android dunning, trust microcopy), each tied to a benchmark number.
 

@@ -30,6 +30,13 @@ describe("maskComments — length-preserving for every syntax it handles", () =>
     expect(maskComments(source, "App.swift").length).toBe(source.length);
   });
 
+  it("line comments in a .kt file", () => {
+    const source = `val c = 1 // Color(0xFF1A73E8)\nval y = 2\n`;
+    const masked = maskComments(source, "Main.kt");
+    expect(masked.length).toBe(source.length);
+    expect(masked).not.toContain("0xFF");
+  });
+
   it("a nested Swift block comment", () => {
     const source = "/* outer /* inner */\nimport AppKit\n*/\n";
     expect(maskComments(source, "App.swift").length).toBe(source.length);

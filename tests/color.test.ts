@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   makeScale, neutralScale, generateColorSystem, suggestAccessibleColor,
-  rgbToHsl, hslToRgb, bestOn,
+  rgbToHsl, hslToRgb, bestOn, stockAccentProximity,
 } from "../dist/color.js";
 import { contrastRatio } from "../dist/a11y.js";
 import { colorDistance } from "../dist/colorutil.js";
@@ -190,4 +190,29 @@ describe("status colours are actually the colour they claim", () => {
       }
     });
   }
+});
+
+describe("stockAccentProximity", () => {
+  // The direction card on create_design_system has to name a fact about the
+  // seed, not a taste judgement. These four hexes are the contract: house
+  // indigo sits on the documented Tailwind stop; a genuine teal, IBM blue
+  // and a grey do not, even when their hue is in the same half of the wheel.
+  it("places house indigo on Tailwind indigo-500", () => {
+    const hit = stockAccentProximity("#4F46E5");
+    expect(hit).not.toBeNull();
+    expect(hit!.stop).toBe("indigo-500");
+    expect(hit!.hex).toBe("#615fff");
+    expect(hit!.degrees).toBeLessThanOrEqual(18);
+  });
+
+  it("does not claim teal, IBM blue or grey are in the stock region", () => {
+    expect(stockAccentProximity("#059669")).toBeNull();
+    expect(stockAccentProximity("#0F62FE")).toBeNull();
+    expect(stockAccentProximity("#6b7280")).toBeNull();
+  });
+
+  it("places violet and purple seeds on their own stops", () => {
+    expect(stockAccentProximity("#8e51ff")!.stop).toBe("violet-500");
+    expect(stockAccentProximity("#ad46ff")!.stop).toBe("purple-500");
+  });
 });

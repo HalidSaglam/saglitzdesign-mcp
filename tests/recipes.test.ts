@@ -11,12 +11,19 @@ const recipes = loadRecipes(join(root, "recipes"));
 
 describe("loadRecipes", () => {
   it("loads the component recipes", () => {
-    expect(recipes.length).toBeGreaterThanOrEqual(9);
+    expect(recipes.length).toBeGreaterThanOrEqual(14);
   });
   it("each recipe has a spec and at least one stack", () => {
     for (const r of recipes) {
       expect(r.spec.length, r.component).toBeGreaterThan(0);
       expect(r.stacks.length, r.component).toBeGreaterThan(0);
+    }
+  });
+  it("every recipe ships all four stacks", () => {
+    const needed = ["react-tailwind", "html-css", "swiftui", "compose"];
+    for (const r of recipes) {
+      const have = new Set(r.stacks.map((s) => s.stack));
+      for (const s of needed) expect(have.has(s), `${r.component} missing ${s}`).toBe(true);
     }
   });
   it("stacks come from the known set", () => {
@@ -27,7 +34,9 @@ describe("loadRecipes", () => {
   });
   it("includes the core components", () => {
     const names = new Set(recipes.map((r) => r.component));
-    for (const c of ["button", "input", "modal", "toast", "card"]) expect(names.has(c), c).toBe(true);
+    for (const c of ["button", "input", "modal", "toast", "card", "navigation", "search", "select", "table", "tooltip", "form", "pagination", "skeleton", "badge", "breadcrumb"]) {
+      expect(names.has(c), c).toBe(true);
+    }
   });
 });
 

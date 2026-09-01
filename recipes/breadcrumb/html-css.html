@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign — Breadcrumb</title>
+<style>
+  :root { --ring: #4f46e5; --accent: #4f46e5; --text: #171717; --muted: #737373; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ring: #818cf8; --accent: #6366f1; --text: #fafafa; --muted: #a3a3a3; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; font: 15px/1.5 system-ui, sans-serif; color: var(--text); background: Canvas; }
+  ol { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  a {
+    display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px;
+    color: var(--accent); text-decoration: none; font: inherit;
+  }
+  a:hover { text-decoration: underline; }
+  a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  [aria-current="page"] { font-weight: 600; color: var(--text); }
+  .sep { color: var(--muted); }
+</style>
+</head>
+<body>
+  <nav aria-label="Breadcrumb">
+    <ol>
+      <li><a href="/">Home</a></li>
+      <li class="sep" aria-hidden="true">/</li>
+      <li><a href="/billing">Billing</a></li>
+      <li class="sep" aria-hidden="true">/</li>
+      <li><span aria-current="page">Invoices</span></li>
+    </ol>
+  </nav>
+</body>
+</html>

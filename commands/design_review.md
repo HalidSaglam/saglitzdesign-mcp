@@ -20,10 +20,10 @@ You have the SaglitzDesign tools available. Use them — do not design from memo
 - seo_geo_guide(scope, topic) — SEO & GEO for web.
 
 **Generators (real output, not advice — prefer these over inventing values):**
-- create_design_system(brand_color, vibe, platform) — the one-call foundation: color + fonts + icons + type scale + elevation + tokens + component list.
+- create_design_system(brand_color, vibe, platform) — the one-call foundation: direction card + color + fonts + icons + type scale + elevation + tokens + component list.
 - generate_layout_system(preset) — breakpoints, containers, grid, container queries, section rhythm.
 - generate_color_system / suggest_font_pairing / suggest_icon_library / generate_type_scale / generate_elevation_system / generate_motion / generate_design_tokens — the individual layers.
-- get_component_recipe(component, stack) — production-ready accessible code for button/input/modal/toast/card/switch/tabs/empty-state/list-row.
+- get_component_recipe(component, stack) — production-ready accessible code for button/input/modal/toast/card/switch/tabs/empty-state/list-row/navigation/search/select/table/tooltip/form/pagination/skeleton/badge/breadcrumb.
 - fix_contrast(foreground, background, target) — the corrected color value, not just a fail report.
 
 **Auditors (deterministic gates — run these before claiming done):**
@@ -31,8 +31,12 @@ You have the SaglitzDesign tools available. Use them — do not design from memo
 - design_lint(code) — design & a11y anti-patterns with line numbers.
 - audit_design_system(code) — consistency score + value sprawl across the whole codebase.
 - audit_project(path) — the same auditors over a real directory instead of a pasted snippet, ranked worst-file-first. Prefer this when you have the source on disk.
+- audit_generic_design(code) — the specific defaults generated interfaces reach for (stock indigo/violet/purple gradient, Inter as the only family, the rounded-2xl card recipe, gradient headings, eyebrow-on-every-heading, three or more animate-pulse/shimmer placeholders). Facts about source, not taste. A genuine indigo brand still flags.
 - audit_ux_copy(text) — readability, passive voice, jargon, weak CTAs.
-- measure_screenshot(path, scale, format) — measures a PNG screenshot's real palette, contrast ratios, density and structure. Use it whenever you have an image file rather than source.
+- audit_ethical_design(code) — named deceptive-pattern tells in a pasted snippet (confirmshaming decline copy, a pre-checked marketing checkbox, literal scarcity/deadline copy with no live binding, Accept all without Reject all). Facts about source, not a verdict. Pair with get_design_doc("ethical-design").
+- audit_apple_ui(path) — iOS/macOS project directory. Reads configuration and Swift. Directory only; no snippet mode.
+- audit_android_ui(path) — Android project directory. Reads the manifest, resource XML and Compose. Directory only; no snippet mode.
+- measure_screenshot(path, scale, format) — measures a PNG screenshot's real palette, contrast ratios, density and structure, and names a stock-region fact when a significant cluster sits in Tailwind indigo/violet/purple. Use it whenever you have an image file rather than source.
 - design_review_checklist(project_type, focus) — the assembled audit checklist.
 
 ## Sequence
@@ -42,7 +46,8 @@ You have the SaglitzDesign tools available. Use them — do not design from memo
    - audit_design_system(code) — is there actually a system, or is every screen re-deciding the basics? This is the finding senior reviewers make and juniors miss.
    - audit_accessibility on the real color pairs and target sizes; fix_contrast for each failure.
    - audit_ux_copy on the primary headlines, CTAs and error messages.
-   - measure_screenshot(path) — when you are reviewing a screenshot file rather than source, this is the equivalent of the auditors above: real palette, real contrast ratios, real spacing.
+   - audit_ethical_design on consent, decline, urgency and checkout copy when the surface has any of those.
+   - measure_screenshot(path) — when you are reviewing a screenshot file rather than source, this is the equivalent of the auditors above: real palette, real contrast ratios, real spacing. If a significant cluster sits in Tailwind indigo/violet/purple, the report names that as a stock-region fact — keep it if it is the brand.
 3. Run design_review_checklist for that type, plus a focused pass where it matters (accessibility, conversion, seo, copywriting).
 4. Score against get_design_doc("design-critique-scoring") (0–40) with per-heuristic notes.
 5. Report findings ranked by severity (P0→P3): what's wrong, why (cite the rule/doc, or the measured number), and the concrete fix. Separate "must fix" from "polish". Lead with anything the tools measured — a stated ratio of 2.9:1 or a score of 41/100 ends an argument that an opinion cannot.

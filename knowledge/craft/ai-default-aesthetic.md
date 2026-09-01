@@ -4,8 +4,8 @@ title: "The AI-Default Aesthetic — What the Systems Ship"
 category: craft
 platform: web
 tags: [craft, ai, defaults, tailwind, shadcn, typography, color, icons]
-sources: ["https://tailwindcss.com/docs/colors", "https://ui.shadcn.com/docs/theming", "https://ui.shadcn.com/docs/installation", "https://rsms.me/inter/", "https://lucide.dev/", "https://heroicons.com/", "https://fonts.google.com/specimen/Inter", "https://tailwindcss.com/docs/box-shadow", "https://tailwindcss.com/docs/border-radius", "https://tailwindcss.com/docs/background-image"]
-updated: 2026-08-13
+sources: ["https://tailwindcss.com/docs/colors", "https://ui.shadcn.com/docs/theming", "https://ui.shadcn.com/docs/installation", "https://rsms.me/inter/", "https://lucide.dev/", "https://heroicons.com/", "https://fonts.google.com/specimen/Inter", "https://tailwindcss.com/docs/box-shadow", "https://tailwindcss.com/docs/border-radius", "https://tailwindcss.com/docs/background-image", "https://tailwindcss.com/docs/animation"]
+updated: 2026-09-01
 ---
 
 # The AI-Default Aesthetic — What the Systems Ship
@@ -84,6 +84,12 @@ That is the fifth of seven steps (`2xs`, `xs`, `sm`, `md`, `lg`, `xl`, `2xl`) �
 **shadcn/ui rebases the same class names.** Its scaffold sets `--radius: 0.625rem` and derives the scale from it, `--radius-2xl: calc(var(--radius) * 1.8)`. So `rounded-2xl` is **1rem (16px) in stock Tailwind and 1.125rem (18px) in a shadcn project** — one class name, two values, which is worth knowing before you compare two codebases by eye.
 
 **The system part is the scale; the habit part is using one step of it.** A shadow scale exists to encode elevation: modal above popover above card. Applied at a single value to every surface, it encodes nothing and costs contrast — [[visual-craft-standards]] states the threshold ("Shadows must be subtle. If you can clearly see it, it's probably too strong") and carries the elevation and border rules. The check here is arithmetic, not taste: **count the distinct radius values and distinct shadow values in the file.** One of each on every surface means the scales are decoration, and the fix is to use two or three steps with meaning, or drop to `border` alone. See [[clean-app-design]] for surfaces that hold up without either.
+
+## The loading state
+
+**Tailwind documents `animate-pulse` as a built-in.** `tailwindcss.com/docs/animation` ships four named animations — `spin`, `ping`, `pulse`, `bounce` — and describes `pulse` as a gentle fade: opacity 1 → 0.5 → 1 over two seconds, infinite. Generated interfaces reach for it as the loading state: a row of `h-4 w-full animate-pulse rounded-lg bg-neutral-200` blocks standing in for content that has not arrived.
+
+The measurable part is the class, not the intent. A single `animate-pulse` on a live indicator is a choice. Three or more on placeholder blocks is the scaffold default. `get_component_recipe("skeleton")` is the static shape that does not use it; `prefers-reduced-motion` still applies if you add any motion later.
 
 ## The icons
 

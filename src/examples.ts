@@ -54,7 +54,11 @@ export function searchExamples(
   const terms = [...new Set(query.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 1))];
   const scored: Array<{ e: DesignExample; score: number }> = [];
   for (const e of examples) {
-    if (opts.platform && e.platform !== opts.platform) continue;
+    if (opts.platform) {
+      if (opts.platform === "mobile") {
+        if (e.platform !== "ios" && e.platform !== "android") continue;
+      } else if (e.platform !== opts.platform) continue;
+    }
     const hay = {
       strong: (e.pattern + " " + e.tags.join(" ")).toLowerCase(),
       medium: (e.title + " " + e.app).toLowerCase(),

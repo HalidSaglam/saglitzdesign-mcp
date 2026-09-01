@@ -20,10 +20,10 @@ const TOOLKIT = `You have the SaglitzDesign tools available. Use them — do not
 - seo_geo_guide(scope, topic) — SEO & GEO for web.
 
 **Generators (real output, not advice — prefer these over inventing values):**
-- create_design_system(brand_color, vibe, platform) — the one-call foundation: color + fonts + icons + type scale + elevation + tokens + component list.
+- create_design_system(brand_color, vibe, platform) — the one-call foundation: direction card + color + fonts + icons + type scale + elevation + tokens + component list.
 - generate_layout_system(preset) — breakpoints, containers, grid, container queries, section rhythm.
 - generate_color_system / suggest_font_pairing / suggest_icon_library / generate_type_scale / generate_elevation_system / generate_motion / generate_design_tokens — the individual layers.
-- get_component_recipe(component, stack) — production-ready accessible code for button/input/modal/toast/card/switch/tabs/empty-state/list-row.
+- get_component_recipe(component, stack) — production-ready accessible code for button/input/modal/toast/card/switch/tabs/empty-state/list-row/navigation/search/select/table/tooltip/form/pagination/skeleton/badge/breadcrumb.
 - fix_contrast(foreground, background, target) — the corrected color value, not just a fail report.
 
 **Auditors (deterministic gates — run these before claiming done):**
@@ -31,14 +31,18 @@ const TOOLKIT = `You have the SaglitzDesign tools available. Use them — do not
 - design_lint(code) — design & a11y anti-patterns with line numbers.
 - audit_design_system(code) — consistency score + value sprawl across the whole codebase.
 - audit_project(path) — the same auditors over a real directory instead of a pasted snippet, ranked worst-file-first. Prefer this when you have the source on disk.
+- audit_generic_design(code) — the specific defaults generated interfaces reach for (stock indigo/violet/purple gradient, Inter as the only family, the rounded-2xl card recipe, gradient headings, eyebrow-on-every-heading, three or more animate-pulse/shimmer placeholders). Facts about source, not taste. A genuine indigo brand still flags.
 - audit_ux_copy(text) — readability, passive voice, jargon, weak CTAs.
-- measure_screenshot(path, scale, format) — measures a PNG screenshot's real palette, contrast ratios, density and structure. Use it whenever you have an image file rather than source.
+- audit_ethical_design(code) — named deceptive-pattern tells in a pasted snippet (confirmshaming decline copy, a pre-checked marketing checkbox, literal scarcity/deadline copy with no live binding, Accept all without Reject all). Facts about source, not a verdict. Pair with get_design_doc("ethical-design").
+- audit_apple_ui(path) — iOS/macOS project directory. Reads configuration and Swift. Directory only; no snippet mode.
+- audit_android_ui(path) — Android project directory. Reads the manifest, resource XML and Compose. Directory only; no snippet mode.
+- measure_screenshot(path, scale, format) — measures a PNG screenshot's real palette, contrast ratios, density and structure, and names a stock-region fact when a significant cluster sits in Tailwind indigo/violet/purple. Use it whenever you have an image file rather than source.
 - design_review_checklist(project_type, focus) — the assembled audit checklist.`;
 
 const FOUNDATION = `## Foundation before pixels
 Do NOT hand-pick hex values, font sizes, radii or shadows. Generate the system, then build against it:
 1. Ask for (or infer from the brief) a brand color and a one-line vibe.
-2. Call **create_design_system(brand_color, vibe, platform)** — this returns an accessibility-verified palette (light + dark), a matched font pairing, an icon library, a type scale, an elevation ramp, paste-ready tokens, and the component list to build.
+2. Call **create_design_system(brand_color, vibe, platform)** — this returns an accessibility-verified palette (light + dark), a matched font pairing, an icon library, a type scale, an elevation ramp, paste-ready tokens, and the component list to build. Follow the **Direction** card it returns: leave the named defaults, treat the type pairing as a decision, and if the seed sits in the stock indigo/violet/purple region, confirm it is the brand before painting the UI with it.
 3. For web/app layout, also call **generate_layout_system(preset)** and use its breakpoints, container widths, grid and section-rhythm tokens.
 4. Emit the tokens into the codebase as the single source of truth, then reference them everywhere. Every later value you write should be a token, not a literal.
 If the user already has a design system, do NOT introduce a second one: run **import_design_tokens(source)** on their theme (CSS custom properties, a shadcn :root block, a DTCG file) to read the roles it already names and see which ones it leaves undefined, and **audit_design_system(code)** on the stylesheet to see what is still hardcoded. Build inside what exists.`;
@@ -49,7 +53,9 @@ These are machine-checkable. Do not skip them and do not self-assess in their pl
 2. **audit_accessibility** with the real foreground/background pairs you shipped (body text, muted text, the primary button, borders/focus rings) and the real tap-target sizes. Anything failing → **fix_contrast** and apply the returned value.
 3. **audit_design_system(code)** on the finished styles. Every dimension should land inside its budget; near-duplicate colors and off-grid spacing must be zero — you generated a system, so there is no excuse for drift.
 4. **audit_ux_copy(text)** on the headline, subhead, primary CTA and any error/empty copy.
-5. **design_review_checklist(project_type)** as the final read-through.
+5. **audit_generic_design(code)** on the finished markup — or the same directory you passed to audit_project. This is the measured answer to the stock generated look: indigo/violet/purple gradient, Inter as the only family, the rounded-2xl card recipe, gradient headings, eyebrow-on-every-heading, three or more animate-pulse placeholders. A genuine indigo brand will still flag; that is a fact about the source, not a defect.
+6. **audit_ethical_design(code)** on the markup that contains consent, decline, scarcity or Accept-all copy — a pasted snippet, not a directory. It names confirmshaming, a pre-checked marketing checkbox, literal urgency with no live binding, and Accept all without Reject all. A genuine last-two-items inventory still flags; that is a fact about the source. A surface with none of those still runs it and comes back clean.
+7. **design_review_checklist(project_type)** as the final read-through.
 Report each gate's result. If one fails and you chose not to fix it, say which and why.`;
 
 const CRITIQUE_LOOP = `## Visual critique loop (do this, don't skip it)
@@ -72,6 +78,8 @@ const QUALITY_BAR = `## Non-negotiables (from the knowledge base)
 - Text contrast ≥4.5:1, non-text ≥3:1; visible focus states; keyboard reachable.
 - Design every state: default, empty, loading, error, long-content, zero-results.
 - Respect prefers-reduced-motion; use generate_motion's tokens rather than inventing durations.
+- Do not ship the named generated-UI tells (Inter as the only family on a brand surface, the stock indigo/violet/purple gradient, the rounded-2xl+shadow-lg card triad, an eyebrow on every heading, three or more animate-pulse placeholders). Named in get_design_doc("ai-default-aesthetic"); measured by audit_generic_design.
+- Do not ship named deceptive-pattern tells (guilt-trip decline copy, a pre-checked marketing checkbox, literal "only N left" / "expires in N minutes" with no live binding, Accept all without Reject all). Named in get_design_doc("ethical-design"); measured by audit_ethical_design.
 - For web: semantic HTML, LCP ≤2.5s discipline (image/font rules), no layout shift.`;
 
 interface PromptDef {
@@ -96,7 +104,7 @@ ${TOOLKIT}
 2. **Positioning & message first.** If key facts are missing (who it's for, the offer, the one conversion goal, proof points, brand color), ask me up to 4 concise questions before building. Then draft the hero headline, subhead, primary CTA + risk-reducers, and the section narrative (hero → proof → benefits → objections/FAQ → final CTA). Pull rules from get_design_doc("storybrand-copywriting"), get_design_doc("conversion-ux"), get_design_doc("influence-persuasion"). Run audit_ux_copy on the headline and CTA before you commit to them.
 3. **Reference real examples:** get_design_examples("hero", "web"), get_design_examples("pricing", "web"), get_design_examples("social proof", "web"), and the pattern docs web-hero-sections / web-social-proof-footer / web-landing-signup.
 4. ${"**Generate the foundation**"} — see below — with platform "web" and preset "marketing-site".
-5. **Build it.** Write the actual code (default to a single responsive HTML file with inline CSS unless I specify a stack like Next.js/React/Tailwind). Use get_component_recipe for the button and any form/input so states, ARIA and keyboard support are right the first time.
+5. **Build it.** Write the actual code (default to a single responsive HTML file with inline CSS unless I specify a stack like Next.js/React/Tailwind). Use get_component_recipe for the button, **form**, and any input so states, ARIA and keyboard support are right the first time. Run audit_ethical_design on the signup/consent/CTA snippet before you ship it.
 6. **SEO/GEO:** apply seo_geo_guide("both") essentials — semantic HTML, meta/title, one H1, JSON-LD, fast images/fonts.
 
 ${FOUNDATION}
@@ -150,7 +158,7 @@ ${TOOLKIT}
 1. Ask which platform (iOS or Android) and stack (SwiftUI / Jetpack Compose / React Native / Flutter) if not stated, plus the 2–3 core screens to build and a brand color. Ask up to 4 questions max.
 2. Call get_design_roadmap("ios-app") or ("android-app") and follow it.
 3. Load the platform baseline: get_design_language("ios-app-design") + ("apple-hig-liquid-glass"), or ("android-app-design") + ("material-3"). Respect native navigation, controls, safe areas, Dynamic Type / sp.
-4. **Reference real examples** with get_design_examples (platform "mobile") and the pattern docs: mobile-navigation-home, mobile-onboarding-paywall, mobile-empty-states-buttons, mobile-settings-lists, mobile-auth-patterns.
+4. **Reference real examples** with get_design_examples (platform "ios" or "android", or "mobile" for both) and the pattern docs: mobile-navigation-home, mobile-onboarding-paywall, mobile-empty-states-buttons, mobile-settings-lists, mobile-auth-patterns.
 5. **Generate the foundation** (below) with platform "ios" or "android" so the tokens come out as Tokens.swift / Tokens.kt.
 6. **Build the screens** using get_component_recipe(component, "swiftui" | "compose") for the standard controls and get_component_guidance for the rest. Design every state; thumb-zone the primary actions.
 7. If this UI also exists (or will exist) on another platform, call compare_design_languages for each surface you are porting rather than translating the design literally.
@@ -161,11 +169,39 @@ ${QUALITY_BAR}
 
 ${VERIFY_GATE}
 
-For native code, design_lint is web-oriented — still run audit_accessibility on your real color pairs and tap-target sizes (iOS 44pt / Android 48dp), and audit_design_system on any stylesheet/theme file.
+For native code, design_lint is web-oriented — still run audit_accessibility on your real color pairs and tap-target sizes (iOS 44pt / Android 48dp), and audit_design_system on any stylesheet/theme file. On an Android module directory also run audit_android_ui(path); on an Xcode project directory run audit_apple_ui(path). Neither has a snippet mode.
 
 ${CRITIQUE_LOOP}
 
 Finish with: screens built, how to run/preview, gate results, critique scores, platform-fit notes, and next steps.`,
+  },
+  {
+    name: "build_dashboard",
+    title: "Build a dashboard / app shell (SaglitzDesign)",
+    description: "Design & build a dense SaaS dashboard or app shell — navigation, tables, empty/loading states, a generated product-UI system — not a marketing page in disguise.",
+    build: (brief) => `Build a **SaaS dashboard / app shell**${brief ? ` for: ${brief}` : ""}, using the SaglitzDesign method.
+
+${TOOLKIT}
+
+## Sequence
+1. Call get_design_roadmap("saas-web-app") and follow its phases. This is a product surface, not a landing page.
+2. **Jobs first.** If key facts are missing (who uses it, the 2–3 core workflows, the primary object on the home view, brand color), ask me up to 4 concise questions. Then name the app-shell destinations (sidebar or top nav, ≤7), the home view's job, and the empty/loading/error/zero-results copy for that view. get_design_doc("information-architecture"), get_design_doc("web-dashboards"), get_design_doc("data-visualization").
+3. **Reference real examples:** get_design_examples("dashboard", "web"), get_design_examples("navigation", "web"), get_design_examples("empty state", "web").
+4. **Generate the foundation** — see below — with platform "web", layout preset **"web-app"**, and a vibe that includes "dashboard" (so type pairing stays product-UI, not a marketing display face). Follow the Direction card: density over chrome, no hero gradient, no eyebrow labels.
+5. **Build it.** Default to a single responsive HTML file with inline CSS unless I specify a stack. App shell + one working home view. Use get_component_recipe for **navigation**, **table**, **search**, **empty-state**, **skeleton**, **badge**, **tabs**, **toast** — and **form** / **pagination** / **breadcrumb** when the view needs them. Real column names, real empty copy, one primary action per view. Loading is a static skeleton, not animate-pulse.
+6. Do **not** ship a row of identical KPI cards in the rounded-2xl + shadow-lg + border triad, a marketing hero, or gradient-filled heading type. \`audit_generic_design\` will name those.
+
+${FOUNDATION}
+
+${QUALITY_BAR}
+
+${VERIFY_GATE}
+
+Run design_review_checklist("dashboard") as the checklist in the gate.
+
+${CRITIQUE_LOOP}
+
+Finish with: the files created, how to preview it, the gate results, the critique score, and which empty/loading/error states you designed.`,
   },
 ];
 
@@ -184,7 +220,7 @@ Research shows most AI critiques (a) hallucinate issues inconsistently, (b) pad 
 1. **Look at the image first.** Describe what you actually see (layout, hierarchy, the primary action, states shown) before judging. If you're unsure what an element is, say so — don't invent.
 2. **Apply the fixed rubric.** Call get_design_doc("design-critique-scoring") and score each of the 10 heuristics 0–4 for a total /40. Use the SAME rubric every time so scores are reproducible.
 3. **Cite specific elements.** Every finding must point to a concrete element ("the secondary 'Learn more' button competes with the primary CTA — two filled buttons"), not generic advice.
-4. **Measure before you judge.** If the screenshot exists as a file, call measure_screenshot(path) FIRST and let its numbers drive the critique — the real palette and how many colours the screen actually uses, exact WCAG ratios for the pairs on screen, density, and the structural detections with their confidence. Cite those numbers instead of impressions ("the muted text measures 2.9:1; AA needs 4.5"), and run fix_contrast for each failure. Respect the confidence levels: a medium-confidence detection is a question to check, not a finding to assert. If you only have an inline image and no file path, say so, and fall back to audit_accessibility on any colours you can read plus audit_ux_copy on legible copy.
+4. **Measure before you judge.** If the screenshot exists as a file, call measure_screenshot(path) FIRST and let its numbers drive the critique — the real palette and how many colours the screen actually uses, exact WCAG ratios for the pairs on screen, density, the structural detections with their confidence, and whether a significant cluster sits in the stock indigo/violet/purple region. Cite those numbers instead of impressions ("the muted text measures 2.9:1; AA needs 4.5"), and run fix_contrast for each failure. Respect the confidence levels: a medium-confidence detection is a question to check, not a finding to assert. If you only have an inline image and no file path, say so, and fall back to audit_accessibility on any colours you can read plus audit_ux_copy on legible copy.
 5. **No padding.** Report only real issues. If the screen is genuinely good, a short list is the correct answer — do not manufacture findings to seem thorough.
 6. **Rank by severity P0→P3** and give one concrete fix per finding, citing the SaglitzDesign rule/doc it comes from.
 7. If it's a known screen type, also run the matching design_review_checklist and get_design_examples to compare against how top apps handle it.
@@ -203,7 +239,7 @@ ${TOOLKIT}
 1. Load the data: get_design_doc("paywall-benchmarks") (RevenueCat 2026: hard paywall ~10.7% vs freemium ~2.1%; 17–32 day trials convert 42.5% vs 25.5% for <4 days; 55% of 3-day-trial cancels happen Day 0; Android involuntary churn ~2.2× iOS) and get_design_doc("mobile-onboarding-paywall") for anatomy.
 2. If given a screenshot, look at it and describe the actual paywall (model, plans, trial, price placement, CTA, trust copy). If given a description, work from that; ask up to 3 questions only if a benchmark-critical fact is missing (model, trial length, platform).
 3. Score it against the review rubric in paywall-benchmarks.md — each item pass/fail with the benchmark it maps to.
-4. Run audit_ux_copy on the plan labels, the CTA and the trial/price disclosure — vague or hedging copy at the moment of payment is a measurable conversion leak. Check the pricing disclosure against get_design_doc("ethical-design") for dark patterns; a paywall that converts by confusing people is a refund and a store-review risk, not a win.
+4. Run audit_ux_copy on the plan labels, the CTA and the trial/price disclosure — vague or hedging copy at the moment of payment is a measurable conversion leak. Run audit_ethical_design on the same markup, and check the pricing disclosure against get_design_doc("ethical-design") for dark patterns; a paywall that converts by confusing people is a refund and a store-review risk, not a win.
 5. Estimate where it likely leaves conversion on the table (e.g. "≤4-day trial → ~40% relative conversion lost vs a 14–30 day trial").
 6. Give prioritized, concrete fixes (model choice, trial length, price placement, trial reminder, Android dunning, trust microcopy), each tied to a benchmark number.
 
@@ -224,7 +260,8 @@ ${TOOLKIT}
    - audit_design_system(code) — is there actually a system, or is every screen re-deciding the basics? This is the finding senior reviewers make and juniors miss.
    - audit_accessibility on the real color pairs and target sizes; fix_contrast for each failure.
    - audit_ux_copy on the primary headlines, CTAs and error messages.
-   - measure_screenshot(path) — when you are reviewing a screenshot file rather than source, this is the equivalent of the auditors above: real palette, real contrast ratios, real spacing.
+   - audit_ethical_design on consent, decline, urgency and checkout copy when the surface has any of those.
+   - measure_screenshot(path) — when you are reviewing a screenshot file rather than source, this is the equivalent of the auditors above: real palette, real contrast ratios, real spacing. If a significant cluster sits in Tailwind indigo/violet/purple, the report names that as a stock-region fact — keep it if it is the brand.
 3. Run design_review_checklist for that type, plus a focused pass where it matters (accessibility, conversion, seo, copywriting).
 4. Score against get_design_doc("design-critique-scoring") (0–40) with per-heuristic notes.
 5. Report findings ranked by severity (P0→P3): what's wrong, why (cite the rule/doc, or the measured number), and the concrete fix. Separate "must fix" from "polish". Lead with anything the tools measured — a stated ratio of 2.9:1 or a score of 41/100 ends an argument that an opinion cannot.

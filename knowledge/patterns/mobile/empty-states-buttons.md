@@ -4,21 +4,7 @@ title: "Mobile Empty States & Bottom Primary Button Patterns"
 category: pattern
 platform: mobile
 tags: [empty-state, illustration, cta, buttons, primary-action]
-sources:
-  - "https://mobbin.com/screens/763e2666-87c9-41d6-a155-c13d050a18db"
-  - "https://mobbin.com/screens/9a3f8ab3-581b-4995-9fd0-65fa1f091fb7"
-  - "https://mobbin.com/screens/c041a22d-8521-4351-8a41-18892e7e795c"
-  - "https://mobbin.com/screens/15181740-6713-4946-b348-777d27483d2f"
-  - "https://mobbin.com/screens/7e5f69c8-bf8b-4a66-99dc-c811a1aeded7"
-  - "https://mobbin.com/screens/1ecb8058-f083-42c9-980a-ae3eb46e3eab"
-  - "https://mobbin.com/screens/66f2bada-95e8-483f-a261-8f3cb8a9c135"
-  - "https://mobbin.com/screens/ae92be67-4594-414c-886d-9cf56f0cf30e"
-  - "https://mobbin.com/screens/860f329c-21e8-476d-8e4d-d232aa8e1c7a"
-  - "https://mobbin.com/screens/bd5ce18a-a93a-44ea-a69e-f2b41207605c"
-  - "https://mobbin.com/screens/3066c4ce-b6c8-4ee5-ac94-6d81a4d1cc2e"
-  - "https://mobbin.com/screens/706d47e1-6f7c-4318-bb98-927e66bb744d"
-  - "https://mobbin.com/screens/f230bb20-7010-4c79-9a3f-4cef18995b31"
-  - "https://mobbin.com/screens/dcf90bfd-070e-42cf-967a-1853377516f4"
+sources: ["https://mobbin.com/screens/763e2666-87c9-41d6-a155-c13d050a18db", "https://mobbin.com/screens/9a3f8ab3-581b-4995-9fd0-65fa1f091fb7", "https://mobbin.com/screens/c041a22d-8521-4351-8a41-18892e7e795c", "https://mobbin.com/screens/15181740-6713-4946-b348-777d27483d2f", "https://mobbin.com/screens/7e5f69c8-bf8b-4a66-99dc-c811a1aeded7", "https://mobbin.com/screens/1ecb8058-f083-42c9-980a-ae3eb46e3eab", "https://mobbin.com/screens/66f2bada-95e8-483f-a261-8f3cb8a9c135", "https://mobbin.com/screens/ae92be67-4594-414c-886d-9cf56f0cf30e", "https://mobbin.com/screens/860f329c-21e8-476d-8e4d-d232aa8e1c7a", "https://mobbin.com/screens/bd5ce18a-a93a-44ea-a69e-f2b41207605c", "https://mobbin.com/screens/3066c4ce-b6c8-4ee5-ac94-6d81a4d1cc2e", "https://mobbin.com/screens/706d47e1-6f7c-4318-bb98-927e66bb744d", "https://mobbin.com/screens/f230bb20-7010-4c79-9a3f-4cef18995b31", "https://mobbin.com/screens/dcf90bfd-070e-42cf-967a-1853377516f4"]
 updated: 2026-07-08
 ---
 

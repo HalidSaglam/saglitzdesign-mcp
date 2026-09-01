@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SaglitzDesign — Navigation</title>
+<style>
+  :root {
+    --ring: #4f46e5; --accent: #4f46e5; --text: #171717; --muted: #737373;
+    --border: #e5e5e5; --bg: #fff; --hover: #f5f5f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ring: #818cf8; --accent: #6366f1; --text: #fafafa; --muted: #a3a3a3;
+      --border: #262626; --bg: #171717; --hover: #262626;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; color: var(--text); background: Canvas; }
+  .tabbar { display: flex; border-top: 1px solid var(--border); background: var(--bg); }
+  .tab {
+    flex: 1; min-height: 44px; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 4px; padding: 8px; text-decoration: none;
+    color: var(--muted); font-size: .75rem; font-weight: 500;
+  }
+  .tab[aria-current="page"] { color: var(--accent); font-weight: 600; }
+  .tab:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  .tab__bar { width: 24px; height: 2px; border-radius: 9999px; background: transparent; }
+  .tab[aria-current="page"] .tab__bar { background: var(--accent); }
+  .side { width: 14rem; display: flex; flex-direction: column; gap: 4px; padding: 12px;
+    border-right: 1px solid var(--border); background: var(--bg); }
+  .side a {
+    display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px;
+    border-radius: 10px; text-decoration: none; color: var(--text); font-size: .875rem;
+  }
+  .side a:hover { background: var(--hover); }
+  .side a[aria-current="page"] { color: var(--accent); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
+  .side a:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+</style>
+</head>
+<body>
+  <nav class="side" aria-label="Dashboard">
+    <a href="#home" aria-current="page">Home</a>
+    <a href="#inbox">Inbox</a>
+    <a href="#settings">Settings</a>
+  </nav>
+  <nav class="tabbar" aria-label="Primary">
+    <a class="tab" href="#home" aria-current="page">Home<span class="tab__bar" aria-hidden="true"></span></a>
+    <a class="tab" href="#inbox">Inbox<span class="tab__bar" aria-hidden="true"></span></a>
+    <a class="tab" href="#settings">Settings<span class="tab__bar" aria-hidden="true"></span></a>
+  </nav>
+</body>
+</html>

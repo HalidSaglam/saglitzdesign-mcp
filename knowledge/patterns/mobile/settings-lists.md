@@ -4,14 +4,7 @@ title: "Mobile Settings & Grouped List Patterns"
 category: pattern
 platform: mobile
 tags: [settings, lists, grouped-lists, toggles, information-architecture]
-sources:
-  - "https://mobbin.com/screens/3f573b95-4bbb-4978-957e-56178543e8e7"
-  - "https://mobbin.com/screens/1402efff-5fe3-487c-8137-a3a96cc81f1a"
-  - "https://mobbin.com/screens/bc43b8c8-3c94-4e67-912e-da5e9f8e4de5"
-  - "https://mobbin.com/screens/2ead27ba-ec0e-4818-b14f-037748c06cef"
-  - "https://mobbin.com/screens/2110f6a5-e7d0-4fd8-a7d0-f081913dfaac"
-  - "https://mobbin.com/screens/ad5aa6e3-c55c-441c-ac9e-691473e07f92"
-  - "https://mobbin.com/screens/d10c285d-ab1d-472b-a5e3-e69f6069c66f"
+sources: ["https://mobbin.com/screens/3f573b95-4bbb-4978-957e-56178543e8e7", "https://mobbin.com/screens/1402efff-5fe3-487c-8137-a3a96cc81f1a", "https://mobbin.com/screens/bc43b8c8-3c94-4e67-912e-da5e9f8e4de5", "https://mobbin.com/screens/2ead27ba-ec0e-4818-b14f-037748c06cef", "https://mobbin.com/screens/2110f6a5-e7d0-4fd8-a7d0-f081913dfaac", "https://mobbin.com/screens/ad5aa6e3-c55c-441c-ac9e-691473e07f92", "https://mobbin.com/screens/d10c285d-ab1d-472b-a5e3-e69f6069c66f"]
 updated: 2026-07-08
 ---
 

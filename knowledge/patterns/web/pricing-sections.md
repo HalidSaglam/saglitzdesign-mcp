@@ -4,14 +4,7 @@ title: "Website Pricing Section Patterns"
 category: pattern
 platform: web
 tags: [pricing, plans, comparison, conversion]
-sources:
-  - "https://mobbin.com/sites/sections/5125964c-8b12-49cc-b037-8e052fc553f9"
-  - "https://mobbin.com/sites/sections/af28a0bd-bca7-461c-881b-23e85ec3c674"
-  - "https://mobbin.com/sites/sections/7506bd76-c42f-431d-8478-8f477d4ba895"
-  - "https://mobbin.com/sites/sections/8fb5fbc1-d28e-4109-a136-08a08db99d2f"
-  - "https://mobbin.com/sites/sections/d845ba92-3fe4-4968-9a69-d5ae6e0a4237"
-  - "https://mobbin.com/sites/sections/1c1738fa-6ce1-47e6-b749-8d52442dba8d"
-  - "https://mobbin.com/sites/sections/13aa6320-cc57-4952-916c-95b0a74300c0"
+sources: ["https://mobbin.com/sites/sections/5125964c-8b12-49cc-b037-8e052fc553f9", "https://mobbin.com/sites/sections/af28a0bd-bca7-461c-881b-23e85ec3c674", "https://mobbin.com/sites/sections/7506bd76-c42f-431d-8478-8f477d4ba895", "https://mobbin.com/sites/sections/8fb5fbc1-d28e-4109-a136-08a08db99d2f", "https://mobbin.com/sites/sections/d845ba92-3fe4-4968-9a69-d5ae6e0a4237", "https://mobbin.com/sites/sections/1c1738fa-6ce1-47e6-b749-8d52442dba8d", "https://mobbin.com/sites/sections/13aa6320-cc57-4952-916c-95b0a74300c0"]
 updated: 2026-07-08
 ---
 

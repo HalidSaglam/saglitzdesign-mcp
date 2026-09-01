@@ -4,16 +4,7 @@ title: "Animation Craft — Motion That Separates Great Interfaces from Slop"
 category: craft
 platform: both
 tags: [animation, motion, easing, springs, interruptibility, css, web]
-sources:
-  - "https://emilkowal.ski/ui/great-animations"
-  - "https://emilkowal.ski/ui/7-practical-animation-tips"
-  - "https://emilkowal.ski/ui/agents-with-taste"
-  - "https://animations.dev/"
-  - "https://motion.dev/docs/react-transitions"
-  - "https://developer.apple.com/design/human-interface-guidelines/motion"
-  - "https://web.dev/articles/animations-guide"
-  - "https://developer.mozilla.org/en-US/docs/Web/CSS/@starting-style"
-  - "https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion"
+sources: ["https://emilkowal.ski/ui/great-animations", "https://emilkowal.ski/ui/7-practical-animation-tips", "https://emilkowal.ski/ui/agents-with-taste", "https://animations.dev/", "https://motion.dev/docs/react-transitions", "https://developer.apple.com/design/human-interface-guidelines/motion", "https://web.dev/articles/animations-guide", "https://developer.mozilla.org/en-US/docs/Web/CSS/@starting-style", "https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion"]
 updated: 2026-07-09
 ---
 

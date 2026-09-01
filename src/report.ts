@@ -30,6 +30,19 @@ export function renderMarkdown(r: ScreenshotReport): string {
     "",
   ];
 
+  if (r.stockRegion.length) {
+    out.push(
+      `**Stock-region accents.** ${r.stockRegion.length} significant cluster(s) sit in Tailwind's indigo/violet/purple band — a fact about hue, not a defect if this *is* the brand:`,
+      "",
+      "| colour | coverage | nearest stop | hue Δ |",
+      "|---|---|---|---|",
+      ...r.stockRegion.map((s) => `| \`${s.hex}\` | ${pct(s.coverage)} | \`${s.stop}\` | ${s.degrees}° |`),
+      "",
+      "Named in get_design_doc(\"ai-default-aesthetic\"); measured in source by `audit_generic_design`. A genuine indigo brand still lists here.",
+      "",
+    );
+  }
+
   out.push("## Contrast", "");
   if (r.contrast.length === 0) {
     out.push("_No foreground/background pair was distinct enough to measure._", "");
@@ -156,6 +169,7 @@ export function renderHtml(r: ScreenshotReport, meta: { version: string; measure
   <h2>Palette</h2>
   <p class="sub"><strong>${r.palette.significant}</strong> significant colour(s) covering at least 0.5% of the screen, out of ${r.palette.distinctExact} distinct values.</p>
   <ul class="swatches">${swatches}</ul>
+  ${r.stockRegion.length ? `<p class="sub"><strong>Stock-region accents.</strong> ${r.stockRegion.length} significant cluster(s) sit in Tailwind's indigo/violet/purple band (${r.stockRegion.map((s) => `<code>${e(s.hex)}</code> → <code>${e(s.stop)}</code> ${s.degrees}°`).join("; ")}). A genuine indigo brand still lists here.</p>` : ""}
 
   <h2>Contrast</h2>
   ${r.contrast.length === 0

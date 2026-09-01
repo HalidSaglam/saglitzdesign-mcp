@@ -149,6 +149,16 @@ describe("visual rules — fire when they should", () => {
   it("flags stock glassmorphism on dark", () => {
     expect(ids(`<div class="backdrop-blur bg-white/10 border border-white/10">`)).toContain("stock-glass-on-dark");
   });
+
+  it("flags the stock pulse skeleton when three or more elements pulse", () => {
+    const bar = `<div class="h-4 w-full animate-pulse rounded-lg bg-neutral-200"></div>`;
+    expect(ids(bar + bar + bar)).toContain("stock-pulse-skeleton");
+  });
+
+  it("flags the same tell written as animate-shimmer", () => {
+    const bar = `<div class="h-4 animate-shimmer bg-neutral-200"></div>`;
+    expect(ids(bar + bar + bar)).toContain("stock-pulse-skeleton");
+  });
 });
 
 describe("visual rules — stay quiet when they should", () => {
@@ -271,6 +281,17 @@ describe("visual rules — stay quiet when they should", () => {
 
   it("accepts gradient-filled text outside the stock indigo/violet/purple region", () => {
     expect(ids(`<span class="bg-gradient-to-r from-teal-400 to-lime-400 bg-clip-text text-transparent">99%</span>`)).not.toContain("gradient-text");
+  });
+
+  it("accepts one or two animate-pulse uses — a live pip, not a skeleton page", () => {
+    expect(ids(`<span class="h-2 w-2 animate-pulse rounded-full bg-red-600"></span>`)).not.toContain("stock-pulse-skeleton");
+    const bar = `<div class="h-4 animate-pulse bg-neutral-200"></div>`;
+    expect(ids(bar + bar)).not.toContain("stock-pulse-skeleton");
+  });
+
+  it("accepts a spinner and a static placeholder, which are not the pulse recipe", () => {
+    expect(ids(`<svg class="h-4 w-4 animate-spin"></svg>`)).not.toContain("stock-pulse-skeleton");
+    expect(ids(`<div class="h-4 w-full rounded-lg bg-neutral-200"></div>`.repeat(4))).not.toContain("stock-pulse-skeleton");
   });
 
   // teal/lime above never reaches the colour test — GRADIENT_STOP_RE does not
@@ -577,7 +598,7 @@ describe("copy rules — say goodbye to: kept as a fixed collocation, not narrow
 // not duplicated: two tests below depend on the "all ten fire" property, and a
 // second copy of these strings would let one of them quietly stop covering
 // what it claims to cover.
-const ALL_TEN_VISUAL = `
+const ALL_RULES_VISUAL = `
   <div class="from-indigo-500 to-purple-600 bg-clip-text text-transparent backdrop-blur bg-white/10 border-white/10 rounded-2xl shadow-lg border"><h3>🚀 Fast</h3></div>
   <div class="rounded-2xl shadow-lg border">A</div>
   <div class="rounded-2xl shadow-lg border">B</div>
@@ -585,8 +606,11 @@ const ALL_TEN_VISUAL = `
   <span class="text-xs uppercase tracking-wide">Eyebrow</span><h2>Two</h2>
   <span class="text-xs uppercase tracking-wide">Eyebrow</span><h2>Three</h2>
   <h1>Ship faster</h1><a href="/signup">Get started</a><style>body{font-family:Inter,sans-serif}</style>
+  <div class="h-4 animate-pulse bg-neutral-200"></div>
+  <div class="h-4 animate-pulse bg-neutral-200"></div>
+  <div class="h-4 animate-pulse bg-neutral-200"></div>
 `;
-const ALL_TEN_COPY = `<h1>Unlock the power of seamlessly modern tooling</h1><a>Get Started</a><a>Learn More</a><p>Seamlessly integrate your effortlessly modern workflow.</p>`;
+const ALL_RULES_COPY = `<h1>Unlock the power of seamlessly modern tooling</h1><a>Get Started</a><a>Learn More</a><p>Seamlessly integrate your effortlessly modern workflow.</p>`;
 
 // The check that would have caught `eyebrow-over-every-heading` citing
 // `visual-craft-standards` — a document with no mention of eyebrows, kickers,
@@ -598,15 +622,15 @@ const ALL_TEN_COPY = `<h1>Unlock the power of seamlessly modern tooling</h1><a>G
 describe("every doc a rule cites resolves to a real knowledge document", () => {
   const docs = loadKnowledge(join(__dirname, "..", "knowledge"));
   const findings = [
-    ...genericVisualRules(ALL_TEN_VISUAL, "app/(marketing)/page.tsx"),
-    ...genericCopyRules(ALL_TEN_COPY),
+    ...genericVisualRules(ALL_RULES_VISUAL, "app/(marketing)/page.tsx"),
+    ...genericCopyRules(ALL_RULES_COPY),
   ];
 
   it("loads the knowledge base, so the check below is not vacuous", () => {
     expect(docs.length).toBeGreaterThan(0);
   });
 
-  it("fires all ten rules, so every doc a rule can cite is actually cited here", () => {
+  it("fires every weighted rule, so every doc a rule can cite is actually cited here", () => {
     expect([...new Set(findings.map((f) => f.rule))].sort()).toEqual(Object.keys(RULE_WEIGHTS).sort());
   });
 
@@ -648,6 +672,9 @@ describe("every doc a rule cites resolves to a real knowledge document", () => {
     "eyebrow-over-every-heading": /eyebrow/i,
     // visual-craft-standards on glassmorphism as a stock surface.
     "stock-glass-on-dark": /glass/i,
+    // ai-default-aesthetic: Tailwind's documented `animate-pulse` as the
+    // loading-state default generated UIs reach for.
+    "stock-pulse-skeleton": /animate-pulse/i,
     // ux-writing's "Extraneous … pure waste — eliminate ruthlessly".
     "filler-adverb": /extraneous/i,
     // ux-writing on naming the action rather than labelling it "Get started".
@@ -678,8 +705,8 @@ describe("the score", () => {
     // weighted id is actually reachable (a stale weight wouldn't silently read
     // as coverage).
     const emitted = new Set([
-      ...genericVisualRules(ALL_TEN_VISUAL),
-      ...genericCopyRules(ALL_TEN_COPY),
+      ...genericVisualRules(ALL_RULES_VISUAL),
+      ...genericCopyRules(ALL_RULES_COPY),
     ].map((f) => f.rule));
 
     for (const id of emitted) expect(Object.keys(RULE_WEIGHTS)).toContain(id);
@@ -780,6 +807,11 @@ describe("the report", () => {
 
     it("says story, test and fixture files are skipped in directory mode", () => {
       expect(notVisible).toMatch(/Story, test and fixture files, in directory mode/);
+    });
+
+    it("says a single pulse is not a skeleton page, and it is not", () => {
+      expect(notVisible).toMatch(/Fewer than three `animate-pulse`/);
+      expect(ids(`<span class="animate-pulse">live</span>`)).not.toContain("stock-pulse-skeleton");
     });
   });
 
@@ -888,6 +920,7 @@ describe("the disclosure section, pinned before the split into an array", () => 
           the surface reads as a brand page — a marketing route, or a heading beside a
           conventional call to action — so a landing page at an unconventional path
           with distinctive call-to-action copy is not assessed for it.
+        - **Fewer than three \`animate-pulse\` / \`animate-shimmer\` / CSS \`animation: pulse|shimmer\` hits.** A live indicator, a recording pip, or two placeholder bars stay silent — three is the scaffold skeleton. \`animate-spin\` is a different documented animation and is not this tell. A Framer Motion opacity loop, a SwiftUI \`.redacted\` placeholder, and a Compose gray box with none of those class names are invisible here.
 
         A clean result here means the source carries none of these specific,
         recurring defaults — not that the design is good."
@@ -1636,6 +1669,9 @@ const GENERIC_LANDING = `
   full potential.</p>
   <p class="mt-6 text-5xl font-extrabold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">10x</p>
   <div class="mt-8 flex justify-center gap-4">
+    <div class="h-11 w-40 animate-pulse rounded-full bg-white/20"></div>
+    <div class="h-11 w-32 animate-pulse rounded-full bg-white/10"></div>
+    <div class="h-11 w-24 animate-pulse rounded-full bg-white/10"></div>
     <a href="/signup" class="rounded-full bg-white px-8 py-3 font-semibold text-indigo-600">Get Started</a>
     <a href="/docs" class="rounded-full border border-white px-8 py-3 font-semibold">Learn More</a>
   </div>
@@ -1799,6 +1835,7 @@ describe("the distinctive-page matrix — pages with a point of view score zero"
       "eyebrow-over-every-heading",
       "gradient-text",
       "stock-glass-on-dark",
+      "stock-pulse-skeleton",
       "hype-opener",
       "filler-adverb",
       "generic-cta",

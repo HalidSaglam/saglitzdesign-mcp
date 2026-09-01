@@ -1,8 +1,8 @@
 {
   "name": "saglitzdesign",
   "displayName": "SaglitzDesign",
-  "version": "0.28.0",
-  "description": "Design knowledge and a ship-quality gate for coding agents: 96 knowledge documents, 34 tools, 8 of them auditors that publish what they could not see, and 8 workflows.",
+  "version": "0.29.0",
+  "description": "Design knowledge and a ship-quality gate for coding agents: 96 knowledge documents, 36 tools, 10 of them auditors that publish what they could not see, and 9 workflows.",
   "author": { "name": "Saglitz Design", "url": "https://github.com/HalidSaglam" },
   "homepage": "https://saglitz.com/apps/saglitzdesign",
   "repository": "https://github.com/HalidSaglam/saglitzdesign-mcp",

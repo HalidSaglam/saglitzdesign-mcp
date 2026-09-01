@@ -4,19 +4,7 @@ title: "Mobile Onboarding & Paywall Patterns"
 category: pattern
 platform: mobile
 tags: [onboarding, paywall, conversion, personalization, free-trial, subscription]
-sources:
-  - "https://mobbin.com/flows/7ffbd4f0-78d1-49be-bf0d-9c90cac00e8c"
-  - "https://mobbin.com/flows/2959b3ec-3a19-475e-82b4-47762857b3a4"
-  - "https://mobbin.com/flows/5df9112e-cba3-41a0-bad1-cf6ea08161e6"
-  - "https://mobbin.com/flows/744ab3a0-fb8c-4d6c-83c3-e4389eeb9916"
-  - "https://mobbin.com/flows/43df4d6b-29ef-484e-98bc-2164e5c193b7"
-  - "https://mobbin.com/flows/f04eeefd-deae-48eb-b2af-cb249490247a"
-  - "https://mobbin.com/flows/afe2cc2a-7672-43f7-b75c-15c1ff369a52"
-  - "https://mobbin.com/flows/97217110-f239-4169-a82b-e92df6c3b23b"
-  - "https://mobbin.com/flows/671e3f4d-bd4d-4d0e-b229-fec56d4e215f"
-  - "https://mobbin.com/flows/d55019e6-7b8a-4bbd-bc64-7682bb183689"
-  - "https://mobbin.com/flows/e6e28fb7-a294-4b88-b03e-1617e967e47b"
-  - "https://mobbin.com/flows/aa956b58-fb2c-40b5-a9af-ca313fb252ba"
+sources: ["https://mobbin.com/flows/7ffbd4f0-78d1-49be-bf0d-9c90cac00e8c", "https://mobbin.com/flows/2959b3ec-3a19-475e-82b4-47762857b3a4", "https://mobbin.com/flows/5df9112e-cba3-41a0-bad1-cf6ea08161e6", "https://mobbin.com/flows/744ab3a0-fb8c-4d6c-83c3-e4389eeb9916", "https://mobbin.com/flows/43df4d6b-29ef-484e-98bc-2164e5c193b7", "https://mobbin.com/flows/f04eeefd-deae-48eb-b2af-cb249490247a", "https://mobbin.com/flows/afe2cc2a-7672-43f7-b75c-15c1ff369a52", "https://mobbin.com/flows/97217110-f239-4169-a82b-e92df6c3b23b", "https://mobbin.com/flows/671e3f4d-bd4d-4d0e-b229-fec56d4e215f", "https://mobbin.com/flows/d55019e6-7b8a-4bbd-bc64-7682bb183689", "https://mobbin.com/flows/e6e28fb7-a294-4b88-b03e-1617e967e47b", "https://mobbin.com/flows/aa956b58-fb2c-40b5-a9af-ca313fb252ba"]
 updated: 2026-07-08
 ---
 

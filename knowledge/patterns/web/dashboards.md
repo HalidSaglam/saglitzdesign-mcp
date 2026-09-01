@@ -4,14 +4,7 @@ title: "Web App Dashboard Patterns (Sidebar + Data Cards)"
 category: pattern
 platform: web
 tags: [dashboard, sidebar, navigation, cards, app-shell, data]
-sources:
-  - "https://mobbin.com/screens/1c5de4d2-cf69-44e3-8352-55790c400acb"
-  - "https://mobbin.com/screens/bcbc434d-f7e8-44f4-a17a-a00655f0ca4b"
-  - "https://mobbin.com/screens/79f37f27-f1f0-4d31-96ec-899917cb9aa4"
-  - "https://mobbin.com/screens/cd6232db-c7ee-4756-a78d-d7b11f772a74"
-  - "https://mobbin.com/screens/4560f04c-5d7c-4a1c-9316-088ec410a8fb"
-  - "https://mobbin.com/screens/f89c973f-b307-4129-a88b-f4ff50b6807f"
-  - "https://mobbin.com/screens/8e9ffe26-ef22-4540-b5e4-101f78abf96a"
+sources: ["https://mobbin.com/screens/1c5de4d2-cf69-44e3-8352-55790c400acb", "https://mobbin.com/screens/bcbc434d-f7e8-44f4-a17a-a00655f0ca4b", "https://mobbin.com/screens/79f37f27-f1f0-4d31-96ec-899917cb9aa4", "https://mobbin.com/screens/cd6232db-c7ee-4756-a78d-d7b11f772a74", "https://mobbin.com/screens/4560f04c-5d7c-4a1c-9316-088ec410a8fb", "https://mobbin.com/screens/f89c973f-b307-4129-a88b-f4ff50b6807f", "https://mobbin.com/screens/8e9ffe26-ef22-4540-b5e4-101f78abf96a"]
 updated: 2026-07-08
 ---
 

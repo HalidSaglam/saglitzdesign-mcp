@@ -147,10 +147,26 @@ function tokenize(s: string): string[] {
   return s.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 1);
 }
 
-export function suggestFontPairing(intent: string, opts: { limit?: number } = {}): FontPairing[] {
+/** Same faces `audit_generic_design` treats as a default UI sans, plus `system-ui`. */
+const DEFAULT_UI_FACE = /^(Inter|Roboto|Open Sans|DM Sans|Plus Jakarta Sans|system-ui)$/i;
+
+const BRAND_TERMS = new Set(["landing", "marketing", "website", "hero", "campaign", "site"]);
+const PRODUCT_TERMS = new Set(["dashboard", "admin", "app", "ios", "android", "native"]);
+const DISPLAY_BONUS = 8;
+
+function inferSurface(terms: string[]): "brand" | "product" {
+  if (terms.some((t) => BRAND_TERMS.has(t))) return "brand";
+  if (terms.some((t) => PRODUCT_TERMS.has(t))) return "product";
+  return "brand";
+}
+
+function isDefaultUiPairing(p: FontPairing): boolean {
+  return DEFAULT_UI_FACE.test(p.heading.family) && DEFAULT_UI_FACE.test(p.body.family);
+}
+
+function rankPairings(intent: string): Array<{ p: FontPairing; score: number }> {
   const terms = [...new Set(tokenize(intent))];
-  if (terms.length === 0) return PAIRINGS.slice(0, opts.limit ?? 3);
-  const scored = PAIRINGS.map((p) => {
+  return PAIRINGS.map((p) => {
     const vibe = new Set(p.vibe);
     let score = 0;
     for (const t of terms) {
@@ -159,10 +175,39 @@ export function suggestFontPairing(intent: string, opts: { limit?: number } = {}
       if (p.name.toLowerCase().includes(t)) score += 4;
     }
     return { p, score };
-  });
-  scored.sort((a, b) => b.score - a.score);
-  const top = scored.filter((s) => s.score > 0);
-  return (top.length ? top : scored).slice(0, opts.limit ?? 3).map((s) => s.p);
+  }).sort((a, b) => b.score - a.score);
+}
+
+/** Highest-scoring default-UI pairing that a brand-surface query refused. */
+function skippedDefaultOnBrand(intent: string): FontPairing | null {
+  const terms = [...new Set(tokenize(intent))];
+  if (terms.length === 0 || inferSurface(terms) !== "brand") return null;
+  const raw = rankPairings(intent).find((s) => s.score > 0);
+  if (!raw || !isDefaultUiPairing(raw.p)) return null;
+  const picked = suggestFontPairing(intent, { limit: 1 })[0];
+  if (!picked || picked.id === raw.p.id) return null;
+  return raw.p;
+}
+
+export function suggestFontPairing(intent: string, opts: { limit?: number } = {}): FontPairing[] {
+  const limit = opts.limit ?? 3;
+  const terms = [...new Set(tokenize(intent))];
+  if (terms.length === 0) return PAIRINGS.slice(0, limit);
+  const ranked = rankPairings(intent);
+  const surface = inferSurface(terms);
+  let chosen = ranked;
+  if (surface === "brand") {
+    chosen = ranked
+      .map((s) => ({
+        ...s,
+        score: s.score + (s.p.heading.family !== s.p.body.family ? DISPLAY_BONUS : 0),
+      }))
+      .sort((a, b) => b.score - a.score)
+      .filter((s) => !isDefaultUiPairing(s.p));
+  }
+  const top = chosen.filter((s) => s.score > 0);
+  const pool = (top.length ? top : chosen).slice(0, limit).map((s) => s.p);
+  return pool.length ? pool : PAIRINGS.slice(0, limit);
 }
 
 const TYPE_SCALE = [
@@ -177,7 +222,14 @@ const TYPE_SCALE = [
 ];
 
 export function fontPairingReport(intent: string, matches: FontPairing[]): string {
+  const skipped = skippedDefaultOnBrand(intent);
   const out: string[] = [`# Font pairing — "${intent}"`, ""];
+  if (skipped) {
+    out.push(
+      `_${skipped.name} scored higher but was skipped — it is a default UI font on a brand surface (\`audit_generic_design\` \`default-ui-font\`)._`,
+      "",
+    );
+  }
   matches.forEach((p, i) => {
     out.push(
       `## ${i === 0 ? "→ " : ""}${p.name}`,

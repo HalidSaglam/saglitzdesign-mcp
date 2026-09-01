@@ -5,13 +5,7 @@ category: "book"
 platform: "both"
 tags: [interaction-design, cooper, about-face, personas, patterns, goal-directed]
 updated: "2026-07-09"
-sources:
-  - "https://en.wikipedia.org/wiki/Alan_Cooper_(software_designer)"
-  - "https://www.dubberly.com/articles/alan-cooper-and-the-goal-directed-design-process.html"
-  - "https://en.wikipedia.org/wiki/Sovereign_application"
-  - "https://www.oreilly.com/library/view/designing-interfaces-3rd/9781492051954/"
-  - "https://www.designsystems.com/jenifer-tidwell-creator-of-a-pattern-language-for-ui-design/"
-  - "https://www.goodreads.com/book/show/6553458-seductive-interaction-design"
+sources: ["https://en.wikipedia.org/wiki/Alan_Cooper_(software_designer)", "https://www.dubberly.com/articles/alan-cooper-and-the-goal-directed-design-process.html", "https://en.wikipedia.org/wiki/Sovereign_application", "https://www.oreilly.com/library/view/designing-interfaces-3rd/9781492051954/", "https://www.designsystems.com/jenifer-tidwell-creator-of-a-pattern-language-for-ui-design/", "https://www.goodreads.com/book/show/6553458-seductive-interaction-design"]
 ---
 
 # Interaction Design Classics

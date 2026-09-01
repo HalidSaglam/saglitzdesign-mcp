@@ -20,10 +20,10 @@ You have the SaglitzDesign tools available. Use them — do not design from memo
 - seo_geo_guide(scope, topic) — SEO & GEO for web.
 
 **Generators (real output, not advice — prefer these over inventing values):**
-- create_design_system(brand_color, vibe, platform) — the one-call foundation: color + fonts + icons + type scale + elevation + tokens + component list.
+- create_design_system(brand_color, vibe, platform) — the one-call foundation: direction card + color + fonts + icons + type scale + elevation + tokens + component list.
 - generate_layout_system(preset) — breakpoints, containers, grid, container queries, section rhythm.
 - generate_color_system / suggest_font_pairing / suggest_icon_library / generate_type_scale / generate_elevation_system / generate_motion / generate_design_tokens — the individual layers.
-- get_component_recipe(component, stack) — production-ready accessible code for button/input/modal/toast/card/switch/tabs/empty-state/list-row.
+- get_component_recipe(component, stack) — production-ready accessible code for button/input/modal/toast/card/switch/tabs/empty-state/list-row/navigation/search/select/table/tooltip/form/pagination/skeleton/badge/breadcrumb.
 - fix_contrast(foreground, background, target) — the corrected color value, not just a fail report.
 
 **Auditors (deterministic gates — run these before claiming done):**
@@ -31,8 +31,12 @@ You have the SaglitzDesign tools available. Use them — do not design from memo
 - design_lint(code) — design & a11y anti-patterns with line numbers.
 - audit_design_system(code) — consistency score + value sprawl across the whole codebase.
 - audit_project(path) — the same auditors over a real directory instead of a pasted snippet, ranked worst-file-first. Prefer this when you have the source on disk.
+- audit_generic_design(code) — the specific defaults generated interfaces reach for (stock indigo/violet/purple gradient, Inter as the only family, the rounded-2xl card recipe, gradient headings, eyebrow-on-every-heading, three or more animate-pulse/shimmer placeholders). Facts about source, not taste. A genuine indigo brand still flags.
 - audit_ux_copy(text) — readability, passive voice, jargon, weak CTAs.
-- measure_screenshot(path, scale, format) — measures a PNG screenshot's real palette, contrast ratios, density and structure. Use it whenever you have an image file rather than source.
+- audit_ethical_design(code) — named deceptive-pattern tells in a pasted snippet (confirmshaming decline copy, a pre-checked marketing checkbox, literal scarcity/deadline copy with no live binding, Accept all without Reject all). Facts about source, not a verdict. Pair with get_design_doc("ethical-design").
+- audit_apple_ui(path) — iOS/macOS project directory. Reads configuration and Swift. Directory only; no snippet mode.
+- audit_android_ui(path) — Android project directory. Reads the manifest, resource XML and Compose. Directory only; no snippet mode.
+- measure_screenshot(path, scale, format) — measures a PNG screenshot's real palette, contrast ratios, density and structure, and names a stock-region fact when a significant cluster sits in Tailwind indigo/violet/purple. Use it whenever you have an image file rather than source.
 - design_review_checklist(project_type, focus) — the assembled audit checklist.
 
 ## The rule this workflow exists to enforce
@@ -53,6 +57,8 @@ Share the intent, the information architecture and the content; re-implement eve
 - Text contrast ≥4.5:1, non-text ≥3:1; visible focus states; keyboard reachable.
 - Design every state: default, empty, loading, error, long-content, zero-results.
 - Respect prefers-reduced-motion; use generate_motion's tokens rather than inventing durations.
+- Do not ship the named generated-UI tells (Inter as the only family on a brand surface, the stock indigo/violet/purple gradient, the rounded-2xl+shadow-lg card triad, an eyebrow on every heading, three or more animate-pulse placeholders). Named in get_design_doc("ai-default-aesthetic"); measured by audit_generic_design.
+- Do not ship named deceptive-pattern tells (guilt-trip decline copy, a pre-checked marketing checkbox, literal "only N left" / "expires in N minutes" with no live binding, Accept all without Reject all). Named in get_design_doc("ethical-design"); measured by audit_ethical_design.
 - For web: semantic HTML, LCP ≤2.5s discipline (image/font rules), no layout shift.
 
 ## Verify gate (deterministic — run before you say it's done)
@@ -61,7 +67,9 @@ These are machine-checkable. Do not skip them and do not self-assess in their pl
 2. **audit_accessibility** with the real foreground/background pairs you shipped (body text, muted text, the primary button, borders/focus rings) and the real tap-target sizes. Anything failing → **fix_contrast** and apply the returned value.
 3. **audit_design_system(code)** on the finished styles. Every dimension should land inside its budget; near-duplicate colors and off-grid spacing must be zero — you generated a system, so there is no excuse for drift.
 4. **audit_ux_copy(text)** on the headline, subhead, primary CTA and any error/empty copy.
-5. **design_review_checklist(project_type)** as the final read-through.
+5. **audit_generic_design(code)** on the finished markup — or the same directory you passed to audit_project. This is the measured answer to the stock generated look: indigo/violet/purple gradient, Inter as the only family, the rounded-2xl card recipe, gradient headings, eyebrow-on-every-heading, three or more animate-pulse placeholders. A genuine indigo brand will still flag; that is a fact about the source, not a defect.
+6. **audit_ethical_design(code)** on the markup that contains consent, decline, scarcity or Accept-all copy — a pasted snippet, not a directory. It names confirmshaming, a pre-checked marketing checkbox, literal urgency with no live binding, and Accept all without Reject all. A genuine last-two-items inventory still flags; that is a fact about the source. A surface with none of those still runs it and comes back clean.
+7. **design_review_checklist(project_type)** as the final read-through.
 Report each gate's result. If one fails and you chose not to fix it, say which and why.
 
 Finish with: a surface-by-surface mapping table (source pattern → target pattern → why), the list of things you deliberately did NOT port, the screens built, gate results, and what still needs a native-device check.

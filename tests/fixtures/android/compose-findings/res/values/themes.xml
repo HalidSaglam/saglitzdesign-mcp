@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.Ledger" parent="Theme.Material3.DayNight">
+        <item name="android:statusBarColor">#1A73E8</item>
+    </style>
+</resources>

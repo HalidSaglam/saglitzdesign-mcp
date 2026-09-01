@@ -4,21 +4,7 @@ title: "SaaS Landing Page & Signup Page Patterns"
 category: pattern
 platform: web
 tags: [landing, saas, signup, onboarding, forms, product-screenshot]
-sources:
-  - "https://mobbin.com/screens/00877e31-4b84-477f-844f-000bb4b4405e"
-  - "https://mobbin.com/screens/bb369cb4-f7e0-4c16-a0f3-f39e7e4a3adf"
-  - "https://mobbin.com/screens/b840e398-8b41-4259-917a-1f0d989b54a6"
-  - "https://mobbin.com/screens/b8490a12-b5c8-4f88-9a68-7bdbaf4b59ad"
-  - "https://mobbin.com/screens/887269c3-bc0d-4090-aaef-13c4462a1b53"
-  - "https://mobbin.com/screens/bdd15498-8db4-480d-b3b4-eecce6d5317e"
-  - "https://mobbin.com/screens/7d8b276e-b850-40f0-8692-ffe16dde5a8a"
-  - "https://mobbin.com/screens/3605d7a3-481f-4a13-a3be-2c8b8f570037"
-  - "https://mobbin.com/screens/6e15fdd2-969a-42bf-8de9-66735dc04257"
-  - "https://mobbin.com/screens/7bebd01a-1b4b-43e4-a573-6ff2115a3823"
-  - "https://mobbin.com/screens/e2e2434d-ae6c-4354-ac0d-a4b7b4bc82a6"
-  - "https://mobbin.com/screens/9435af96-1fb6-46c7-9b67-3fd456ccc485"
-  - "https://mobbin.com/screens/e23573ed-428f-4c2b-9a0d-dde328c1516e"
-  - "https://mobbin.com/screens/afda2628-1eab-42c5-9802-2247692a2cc3"
+sources: ["https://mobbin.com/screens/00877e31-4b84-477f-844f-000bb4b4405e", "https://mobbin.com/screens/bb369cb4-f7e0-4c16-a0f3-f39e7e4a3adf", "https://mobbin.com/screens/b840e398-8b41-4259-917a-1f0d989b54a6", "https://mobbin.com/screens/b8490a12-b5c8-4f88-9a68-7bdbaf4b59ad", "https://mobbin.com/screens/887269c3-bc0d-4090-aaef-13c4462a1b53", "https://mobbin.com/screens/bdd15498-8db4-480d-b3b4-eecce6d5317e", "https://mobbin.com/screens/7d8b276e-b850-40f0-8692-ffe16dde5a8a", "https://mobbin.com/screens/3605d7a3-481f-4a13-a3be-2c8b8f570037", "https://mobbin.com/screens/6e15fdd2-969a-42bf-8de9-66735dc04257", "https://mobbin.com/screens/7bebd01a-1b4b-43e4-a573-6ff2115a3823", "https://mobbin.com/screens/e2e2434d-ae6c-4354-ac0d-a4b7b4bc82a6", "https://mobbin.com/screens/9435af96-1fb6-46c7-9b67-3fd456ccc485", "https://mobbin.com/screens/e23573ed-428f-4c2b-9a0d-dde328c1516e", "https://mobbin.com/screens/afda2628-1eab-42c5-9802-2247692a2cc3"]
 updated: 2026-07-08
 ---
 

@@ -1,0 +1,162 @@
+[
+  {
+    "id": "android-nav-material-bar",
+    "title": "Material 3 — compact navigation bar with labelled destinations",
+    "platform": "android",
+    "app": "Material 3",
+    "pattern": "navigation",
+    "description": "Three-to-five peer destinations on a compact-width bar: 24dp outlined icons that fill when selected, always-visible 12sp labels, and an active indicator pill around the selected icon so selection is a shape rather than colour alone. The bar is the compact-window form of the same destinations the rail shows at medium width.",
+    "tags": ["navigation", "navigation bar", "material 3", "bottom nav", "adaptive"],
+    "mobbin_url": "https://m3.material.io/components/navigation-bar/overview"
+  },
+  {
+    "id": "android-nav-material-rail",
+    "title": "Material 3 — navigation rail mirroring the compact bar",
+    "platform": "android",
+    "app": "Material 3",
+    "pattern": "navigation",
+    "description": "The same destinations as the compact bar, stacked in a 96dp collapsed rail (or ~220dp expanded) with a top FAB slot. Bar and rail never appear together; the app swaps between them on window-size-class change so fold, split-screen and desktop windowing share one information architecture.",
+    "tags": ["navigation", "navigation rail", "material 3", "adaptive", "large screen"],
+    "mobbin_url": "https://m3.material.io/components/navigation-rail/overview"
+  },
+  {
+    "id": "android-search-material-bar",
+    "title": "Material 3 — search bar collapsing to a docked view",
+    "platform": "android",
+    "app": "Material 3",
+    "pattern": "search",
+    "description": "A pill search field with a leading search icon, a placeholder that names the corpus, a trailing clear once there is text, and a back/cancel that dismisses the keyboard. Expanding the bar into a search view keeps predictive-back collapse, so the drag peeks the destination underneath rather than popping.",
+    "tags": ["search", "search bar", "material 3", "predictive back", "clear"],
+    "mobbin_url": "https://m3.material.io/components/search/overview"
+  },
+  {
+    "id": "android-search-expressive-appbar",
+    "title": "Material 3 Expressive — full-width search pill in the app bar",
+    "platform": "android",
+    "app": "Material 3 Expressive",
+    "pattern": "search",
+    "description": "Gmail/Keep/Chat 2025 pattern: the search field occupies the app-bar slot as a full-width pill, with the navigation or avatar sitting outside the pill rather than inside it. Focusing search offers a way out that also dismisses the IME; suggestions sit in the expanded view, not as a second page.",
+    "tags": ["search", "app bar", "material 3 expressive", "pill", "gmail"],
+    "mobbin_url": "https://m3.material.io/components/search/guidelines"
+  },
+  {
+    "id": "android-auth-credential-manager",
+    "title": "Credential Manager — passkey and saved-password bottom sheet",
+    "platform": "android",
+    "app": "Android Identity",
+    "pattern": "auth",
+    "description": "Sign-in starts with Credential Manager's system sheet rather than a custom email/password form: passkeys, saved passwords and federated options in one surface, with the app's own fields as the fallback. The sheet is a system back destination; intercepting back here to 'finish onboarding' is a trap.",
+    "tags": ["auth", "sign in", "passkey", "credential manager", "bottom sheet"],
+    "mobbin_url": "https://developer.android.com/identity/sign-in/credential-manager"
+  },
+  {
+    "id": "android-auth-text-fields",
+    "title": "Material 3 — outlined text fields for email and password",
+    "platform": "android",
+    "app": "Material 3",
+    "pattern": "auth",
+    "description": "Labelled outlined fields with supporting text for errors, a trailing visibility toggle on the password field, and 48dp minimum height. Error is a supporting-text role plus the error colour role — never colour alone — so TalkBack and a greyscale screenshot still carry the state.",
+    "tags": ["auth", "text field", "password", "error", "material 3"],
+    "mobbin_url": "https://m3.material.io/components/text-fields/overview"
+  },
+  {
+    "id": "android-onboarding-permissions",
+    "title": "Android — permission priming before the system dialog",
+    "platform": "android",
+    "app": "Android",
+    "pattern": "onboarding",
+    "description": "A one-screen explanation of why a sensitive permission is asked, with a verb-first continue that then launches the system dialog. Denying is a first-class path back into the product with reduced capability, not a dead-end retry loop. Predictive back from this screen returns to the previous onboarding step.",
+    "tags": ["onboarding", "permissions", "priming", "privacy", "system dialog"],
+    "mobbin_url": "https://developer.android.com/training/permissions/requesting"
+  },
+  {
+    "id": "android-onboarding-adaptive",
+    "title": "Android — adaptive onboarding on compact and expanded widths",
+    "platform": "android",
+    "app": "Android",
+    "pattern": "onboarding",
+    "description": "A short, skippable pager on compact width that becomes a two-pane list-detail on expanded: the step list stays visible while the current step's illustration and CTA occupy the detail pane. Skip and Get started are both ≥48dp; the illustration is decorative to TalkBack.",
+    "tags": ["onboarding", "adaptive", "pager", "list-detail", "large screen"],
+    "mobbin_url": "https://developer.android.com/develop/ui/compose/layouts/adaptive"
+  },
+  {
+    "id": "android-paywall-play-billing",
+    "title": "Play Billing — subscription offers with a base plan and a free trial",
+    "platform": "android",
+    "app": "Google Play Billing",
+    "pattern": "paywall",
+    "description": "Plans are Play Billing products, not in-app radio cards inventing a price: a base plan, an offer with a free-trial phase, and a CTA whose label restates the offer ('Start 14-day trial'). Replacement modes and prepaid plans are Play's surface; a custom 'lifetime' SKU that bypasses Play is a policy defect, not a design variant.",
+    "tags": ["paywall", "subscription", "play billing", "free trial", "pricing"],
+    "mobbin_url": "https://developer.android.com/google/play/billing/integrate"
+  },
+  {
+    "id": "android-paywall-material-cards",
+    "title": "Material 3 — plan cards with a selected shape, not colour alone",
+    "platform": "android",
+    "app": "Material 3",
+    "pattern": "paywall",
+    "description": "Two or three plan cards in a column; the selected card uses a filled container role plus a check icon, so a greyscale screenshot still shows the choice. One primary filled button at 48dp, legal and restore-purchase as text buttons. Back from this screen must not trap the user in a 'complete purchase to exit' loop.",
+    "tags": ["paywall", "cards", "selection", "material 3", "subscription"],
+    "mobbin_url": "https://m3.material.io/components/cards/overview"
+  },
+  {
+    "id": "android-checkout-google-pay",
+    "title": "Google Pay — payment sheet as the primary checkout action",
+    "platform": "android",
+    "app": "Google Pay",
+    "pattern": "checkout",
+    "description": "Checkout leads with the Google Pay button at 48dp, with card-entry as the secondary path. The order summary sits above the action so the amount is visible before the sheet; errors return into supporting text on the field that failed, not a toast that vanishes.",
+    "tags": ["checkout", "google pay", "payments", "order summary", "cta"],
+    "mobbin_url": "https://developers.google.com/pay/api/android/overview"
+  },
+  {
+    "id": "android-checkout-filled-button",
+    "title": "Material 3 — filled button as the only primary checkout action",
+    "platform": "android",
+    "app": "Material 3",
+    "pattern": "checkout",
+    "description": "A single filled button labelled with the verb and the amount ('Pay $24.00'), 48dp tall, pinned above the navigation-bar inset. Secondary actions are text buttons. Loading replaces the label with a circular indicator inside the same target so the layout does not jump.",
+    "tags": ["checkout", "button", "material 3", "loading", "primary action"],
+    "mobbin_url": "https://m3.material.io/components/buttons/overview"
+  },
+  {
+    "id": "android-settings-lists",
+    "title": "Material 3 — settings list with section headers and trailing controls",
+    "platform": "android",
+    "app": "Material 3",
+    "pattern": "settings",
+    "description": "Grouped list: 16sp section headers, 56dp rows, leading 24dp icons in a fixed column so titles align, and exactly one trailing slot — a switch, a value, or a chevron, never a switch and a chevron together. Toggles are labelled by the row text via `toggleable` semantics, not by a second invisible label.",
+    "tags": ["settings", "list", "switch", "material 3", "density"],
+    "mobbin_url": "https://m3.material.io/components/lists/overview"
+  },
+  {
+    "id": "android-settings-switches",
+    "title": "Material 3 — switch with the label as the hit target",
+    "platform": "android",
+    "app": "Material 3",
+    "pattern": "settings",
+    "description": "The visible track is smaller than the 48dp row; the whole row is the switch. Selected state is the track fill plus the thumb position, so colour is not the only signal. Disabled rows drop opacity and are removed from TalkBack's action set rather than left as a silent no-op.",
+    "tags": ["settings", "switch", "toggle", "material 3", "talkback"],
+    "mobbin_url": "https://m3.material.io/components/switch/overview"
+  },
+  {
+    "id": "android-empty-inbox",
+    "title": "Material 3 — empty inbox with one primary action",
+    "platform": "android",
+    "app": "Material 3",
+    "pattern": "empty-state",
+    "description": "A centred illustration marked decorative, a headline that names the missing content ('No messages yet'), one sentence of supporting text, and a single filled button ('Start a conversation'). No second competing CTA. On expanded width the empty state sits in the detail pane with the list pane showing the same emptiness, not a spinner.",
+    "tags": ["empty-state", "inbox", "cta", "material 3", "illustration"],
+    "mobbin_url": "https://m3.material.io/foundations"
+  },
+  {
+    "id": "android-empty-snackbar-recovery",
+    "title": "Material 3 — snackbar as a recoverable empty-adjacent error",
+    "platform": "android",
+    "app": "Material 3",
+    "pattern": "empty-state",
+    "description": "When a refresh fails on an empty list, a snackbar with an action ('Retry') sits above the navigation-bar inset rather than replacing the empty illustration. The snackbar is a short-lived recovery, not the only place the error is stated; the supporting text on the empty state updates too.",
+    "tags": ["empty-state", "snackbar", "error", "retry", "material 3"],
+    "mobbin_url": "https://m3.material.io/components/snackbar/overview"
+  }
+]

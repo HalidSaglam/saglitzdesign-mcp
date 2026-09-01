@@ -3,7 +3,7 @@
 // elevation / token generators and assembles them into a single day-one
 // foundation with real code and a build checklist.
 
-import { generateColorSystem } from "./color.js";
+import { generateColorSystem, stockAccentProximity } from "./color.js";
 import { suggestFontPairing, type FontPairing } from "./fonts.js";
 import { suggestIconLibrary, type IconLibrary } from "./icons.js";
 import { buildTypeScale } from "./typescale.js";
@@ -51,9 +51,36 @@ function tokenFormatFor(platform: DSPlatform): TokenFormat {
 }
 
 function componentsFor(platform: DSPlatform): string[] {
-  const web = ["button", "input", "card", "modal", "toast", "tabs", "switch", "empty-state"];
-  const mobile = ["button", "input", "list-row", "card", "toast", "switch", "empty-state"];
+  const web = [
+    "button", "input", "form", "card", "navigation", "search", "select", "table",
+    "pagination", "skeleton", "badge", "breadcrumb", "modal", "toast", "tabs", "switch", "empty-state", "list-row", "tooltip",
+  ];
+  const mobile = [
+    "button", "input", "form", "list-row", "navigation", "search", "select", "card",
+    "modal", "toast", "tabs", "switch", "empty-state", "tooltip", "table", "pagination", "skeleton", "badge", "breadcrumb",
+  ];
   return platform === "ios" || platform === "android" ? mobile : web;
+}
+
+/** One rememberable move, derived from vibe keywords — not a list of wow moments. */
+function signatureFor(vibe: string): string {
+  const v = vibe.toLowerCase();
+  if (/(editorial|luxury|fashion|magazine|serif)/.test(v)) {
+    return "One oversized display line; everything else is body. No gradient fill on type.";
+  }
+  if (/(fintech|bank|trust|insurance)/.test(v)) {
+    return "Hairline rules and tabular numbers; no glassmorphism.";
+  }
+  if (/(dashboard|admin|dense|analytics)/.test(v)) {
+    return "Density over chrome: no hero gradient, no eyebrow labels, data before decoration.";
+  }
+  if (/(playful|consumer|game|fun)/.test(v)) {
+    return "One springy motion moment (`generate_motion`); the rest is still.";
+  }
+  if (/(minimal|portfolio|calm)/.test(v)) {
+    return "Space carries hierarchy. One accent, used once.";
+  }
+  return "One signature surface (a material, a crop, or a type lockup) — not five competing wow moments.";
 }
 
 export interface DesignSystem {
@@ -72,7 +99,7 @@ export function createDesignSystem(
   name = "Brand",
 ): string {
   const color = generateColorSystem(brandColor);
-  const font = suggestFontPairing(vibe, { limit: 1 })[0];
+  const font = suggestFontPairing(`${vibe} ${platform}`, { limit: 1 })[0];
   const iconQuery = `${vibe} ${platform === "ios" ? "ios apple" : platform === "android" ? "android material" : "web"}`;
   const icon = suggestIconLibrary(iconQuery, { limit: 1 })[0];
   const ratio = ratioForVibe(vibe);
@@ -95,12 +122,23 @@ export function createDesignSystem(
   const tokens = generateTokens(spec, fmt);
   const colorFails = color.checks.filter((c) => !c.pass).length;
   const comps = componentsFor(platform);
+  const stock = stockAccentProximity(brandColor);
 
   const out: string[] = [
     `# ${name} — design system starter`,
     `_From brand \`${brandColor}\` · vibe "${vibe}" · platform ${platform}_`,
     "",
     "A complete, coherent foundation: color, type, space, elevation, fonts, and icons — verified and ready to build on. Each layer below is generated to work together.",
+    "",
+    "## Direction",
+    "A thesis the UI can be remembered by — and the defaults this foundation is *not*. Named so an agent can leave them. Measured later by `audit_generic_design`. Spec: `get_design_doc(\"ai-default-aesthetic\")`.",
+    "",
+    "- **Do not ship these defaults** (unless a finding *is* the brand): Inter as the only family on a brand/marketing surface; the `rounded-2xl` + `shadow-lg` + border card triad; a `from-indigo-500 to-purple-600` (or hex/OKLCH equivalent) gradient; an eyebrow label over every heading; emoji standing in for icons; `backdrop-blur` + `white/10` glass; three or more `animate-pulse` placeholder bars. A genuine indigo brand still flags — that is a fact about the source, not a defect.",
+    `- **Type:** **${font.heading.family}** / **${font.body.family}** — ${font.why} ${font.pairing_rules}`,
+    `- **Signature:** ${signatureFor(vibe)}`,
+    ...(stock
+      ? [`- **Seed:** this seed sits ${stock.degrees}° from Tailwind \`${stock.stop}\` (\`${stock.hex}\`). If this hex *is* the brand, keep it. If it was reached for because generated UIs reach for it, pick a different seed and call this again. Do not invent a second palette silently. \`audit_generic_design\` will flag indigo/violet/purple gradients either way.`]
+      : []),
     "",
     "## 1. Foundations at a glance",
     "| Layer | Choice |",
@@ -175,6 +213,7 @@ export function createDesignSystem(
     "- [ ] Verify contrast on any custom pairs with `audit_accessibility`; fix with `fix_contrast`.",
     "- [ ] Add motion from `generate_motion`; honor reduced-motion.",
     "- [ ] Run `design_lint` and `audit_design_system` on the result — the system you just generated should score inside every budget.",
+    "- [ ] Run `audit_generic_design` on the finished markup. A genuine indigo brand will still flag; that is a fact about the source, not a defect.",
     "- [ ] Run `design_review_checklist` before ship.",
     "",
     colorFails
